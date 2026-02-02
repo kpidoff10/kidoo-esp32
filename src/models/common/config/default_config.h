@@ -20,7 +20,7 @@
 #define SLEEP_FADE_DURATION_MS 1000      // Durée de l'animation de fade-out (1 seconde)
 
 // Version du firmware Kidoo
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "1.0.18"
 
 // URL de base de l'API serveur (pour récupération de configuration)
 // En développement: utiliser l'IP locale du serveur (ex: http://192.168.1.217:3000)
@@ -30,7 +30,7 @@
 // -DAPI_BASE_URL=\"http://192.168.1.217:3000\" pour dev
 // -DAPI_BASE_URL=\"https://api.kidoo.com\" pour prod
 #ifndef API_BASE_URL
-#define API_BASE_URL "https://kidoo-box.com"  // Valeur par défaut (prod)
+#define API_BASE_URL "http://192.168.1.217:3000"  // Valeur par défaut (prod)
 #endif
 
 #endif // COMMON_DEFAULT_CONFIG_H

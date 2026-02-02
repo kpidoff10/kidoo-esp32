@@ -88,8 +88,8 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
       return;
     }
     
-    // getValue() retourne std::string (BLE library)
-    std::string value = pCharacteristic->getValue();
+    // getValue() retourne Arduino String (BLE library) -> convertir en std::string
+    std::string value(pCharacteristic->getValue().c_str());
     if (value.empty()) {
       return;
     }

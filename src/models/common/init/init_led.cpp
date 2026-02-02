@@ -23,13 +23,13 @@ bool InitManager::initLED() {
   
   systemStatus.led = INIT_SUCCESS;
   
-  // Configuration initiale des LEDs : orange qui tourne (indique l'initialisation en cours)
+  // Configuration initiale des LEDs : orange qui tourne (prêt)
   // SAUF si pas de WiFi configuré : dans ce cas, BLE sera activé auto, donc pas de retour lumineux
   #ifdef HAS_WIFI
   if (HAS_WIFI) {
     const SDConfig& config = InitManager::getConfig();
     if (strlen(config.wifi_ssid) > 0) {
-      // WiFi configuré -> orange pour indiquer l'init en cours
+      // WiFi configuré -> orange pour indiquer l'init (prêt)
       LEDManager::setColor(COLOR_ORANGE);
       LEDManager::setEffect(LED_EFFECT_ROTATE);
     } else {
@@ -39,12 +39,12 @@ bool InitManager::initLED() {
       LEDManager::clear();
     }
   } else {
-    // Pas de WiFi hardware -> orange pour indiquer l'init en cours
+    // Pas de WiFi hardware -> orange pour indiquer l'init (prêt)
     LEDManager::setColor(COLOR_ORANGE);
     LEDManager::setEffect(LED_EFFECT_ROTATE);
   }
   #else
-  // Pas de WiFi hardware -> orange pour indiquer l'init en cours
+  // Pas de WiFi hardware -> orange pour indiquer l'init (prêt)
   LEDManager::setColor(COLOR_ORANGE);
   LEDManager::setEffect(LED_EFFECT_ROTATE);
   #endif

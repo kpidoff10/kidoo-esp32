@@ -242,18 +242,18 @@ bool InitManager::init() {
     if (serialAvailable) {
       Serial.println("[INIT] OK");
     }
-    // Mettre les LEDs en vert qui tourne pour indiquer que tout est OK
+    // Mettre les LEDs en orange qui tourne pour indiquer que tout est OK (prêt)
     // SAUF si BLE auto (pas de WiFi) : pas de retour lumineux, LEDs restent éteintes
     #ifdef HAS_LED
     if (HAS_LED && systemStatus.led == INIT_SUCCESS && !bleAutoActivated) {
       // Ne pas réveiller les LEDs si elles sont déjà en sleep mode
       // (par exemple si le timeout de sleep est très court)
       if (!LEDManager::getSleepState()) {
-        LEDManager::setColor(COLOR_SUCCESS);
+        LEDManager::setColor(COLOR_GREEN);
         LEDManager::setEffect(LED_EFFECT_ROTATE);
       } else {
         if (serialAvailable) {
-          Serial.println("[INIT] LEDs en sleep mode - pas d'affichage vert");
+          Serial.println("[INIT] LEDs en sleep mode - pas d'affichage");
         }
       }
     }

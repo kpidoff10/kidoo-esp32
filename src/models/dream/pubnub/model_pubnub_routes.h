@@ -22,6 +22,7 @@
  * - start-test-wakeup: Démarrer le test de l'heure de réveil
  * - stop-test-wakeup: Arrêter le test de l'heure de réveil
  * - set-wakeup-config: Sauvegarder la configuration de l'heure de réveil sur la SD
+ * - firmware-update: Lancer une mise à jour OTA (version cible)
  * 
  * Format des messages:
  * { "action": "get-info" }
@@ -37,6 +38,7 @@
  * { "action": "start-test-wakeup", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50 } }
  * { "action": "stop-test-wakeup" }
  * { "action": "set-wakeup-config", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50, "weekdaySchedule": {...} } }
+ * { "action": "firmware-update", "version": "1.0.1" }
  */
 
 class ModelDreamPubNubRoutes {
@@ -89,6 +91,7 @@ private:
   static bool handleStartTestWakeup(const JsonObject& json);
   static bool handleStopTestWakeup(const JsonObject& json);
   static bool handleSetWakeupConfig(const JsonObject& json);
+  static bool handleFirmwareUpdate(const JsonObject& json);
 };
 
 #endif // MODEL_DREAM_PUBNUB_ROUTES_H
