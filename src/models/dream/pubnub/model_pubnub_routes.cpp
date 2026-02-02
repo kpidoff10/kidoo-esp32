@@ -1,13 +1,16 @@
 #include "model_pubnub_routes.h"
+#include "../../common/config/default_config.h"
 #include "../../common/managers/led/led_manager.h"
 #include "../../common/managers/init/init_manager.h"
 #include "../../common/managers/wifi/wifi_manager.h"
 #include "../../common/managers/pubnub/pubnub_manager.h"
 #include "../../common/managers/sd/sd_manager.h"
 #include "../../common/managers/nfc/nfc_manager.h"
+#include "../../common/managers/ota/ota_manager.h"
 #include "../../common/utils/mac_utils.h"
 #include "../managers/bedtime/bedtime_manager.h"
 #include "../managers/wakeup/wakeup_manager.h"
+#include "../../model_config.h"
 #include <limits.h>   // Pour ULONG_MAX
 
 /**
@@ -73,6 +76,9 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   else if (strcmp(action, "set-wakeup-config") == 0) {
     return handleSetWakeupConfig(json);
   }
+  else if (strcmp(action, "firmware-update") == 0) {
+    return handleFirmwareUpdate(json);
+  }
   
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
   Serial.println(action);
@@ -107,7 +113,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
   
   // Construire le JSON de réponse
   // Note: On utilise un buffer assez grand pour toutes les infos
-  char infoJson[512];
+  char infoJson[560];
   snprintf(infoJson, sizeof(infoJson),
     "{"
       "\"type\":\"info\","
@@ -115,6 +121,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
       "\"mac\":\"%s\","
       "\"ip\":\"%s\","
       "\"model\":\"dream\","
+      "\"firmwareVersion\":\"%s\","
       "\"uptime\":%lu,"
       "\"freeHeap\":%u,"
       "\"wifi\":{"
@@ -135,6 +142,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     DEFAULT_DEVICE_NAME,
     macStr,
     WiFiManager::getLocalIP().c_str(),
+    FIRMWARE_VERSION,
     millis() / 1000,  // uptime en secondes
     ESP.getFreeHeap(),
     config.wifi_ssid,
@@ -822,10 +830,8 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
     
     // Créer un JsonObject avec les paramètres pour le test
     // Utiliser les valeurs qui viennent d'être sauvegardées dans la config
-    StaticJsonDocument<512> testJson;
-    JsonObject testParams = testJson.createNestedObject("params");
-    
-    // Utiliser les valeurs sauvegardées dans la config (qui viennent d'être mises à jour)
+    JsonDocument testJson;
+    JsonObject testParams = testJson["params"].to<JsonObject>();
     testParams["colorR"] = config.bedtime_colorR;
     testParams["colorG"] = config.bedtime_colorG;
     testParams["colorB"] = config.bedtime_colorB;
@@ -1084,10 +1090,8 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     
     // Créer un JsonObject avec les paramètres pour le test
     // Utiliser les valeurs sauvegardées dans la config
-    StaticJsonDocument<512> testJson;
-    JsonObject testParams = testJson.createNestedObject("params");
-    
-    // Utiliser les valeurs sauvegardées dans la config
+    JsonDocument testJson;
+    JsonObject testParams = testJson["params"].to<JsonObject>();
     testParams["colorR"] = config.wakeup_colorR;
     testParams["colorG"] = config.wakeup_colorG;
     testParams["colorB"] = config.wakeup_colorB;
@@ -1105,6 +1109,30 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Erreur lors de la sauvegarde");
     return false;
   }
+}
+
+bool ModelDreamPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
+  // Format: { "action": "firmware-update", "params": { "version": "1.0.1" } }
+  const char* version = nullptr;
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["version"].is<const char*>()) version = params["version"].as<const char*>();
+  }
+  if (json["version"].is<const char*>()) version = json["version"].as<const char*>();
+  if (version == nullptr || strlen(version) == 0) {
+    Serial.println("[PUBNUB-ROUTE] firmware-update: version manquante");
+    return false;
+  }
+
+  Serial.print("[PUBNUB-ROUTE] firmware-update: version cible ");
+  Serial.println(version);
+
+#ifdef HAS_WIFI
+  return OTAManager::startUpdateTask(version);
+#else
+  Serial.println("[PUBNUB-ROUTE] firmware-update: WiFi non disponible sur ce build");
+  return false;
+#endif
 }
 
 void ModelDreamPubNubRoutes::printRoutes() {
@@ -1125,5 +1153,6 @@ void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"start-test-wakeup\", \"params\": { \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100 } }");
   Serial.println("{ \"action\": \"stop-test-wakeup\" }");
   Serial.println("{ \"action\": \"set-wakeup-config\", \"params\": { \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100, \"weekdaySchedule\": {...} } }");
+  Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
   Serial.println("==========================================");
 }

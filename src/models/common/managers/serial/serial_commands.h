@@ -64,6 +64,7 @@ private:
   static void cmdConfigSet(const String& args);
   static void cmdConfigList();
   static void cmdLEDTest();
+  static void cmdOta(const String& args);
   
   // Commandes audio
   static void cmdAudio();

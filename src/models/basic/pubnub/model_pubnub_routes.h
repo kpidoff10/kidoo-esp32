@@ -13,6 +13,7 @@
  * - sleep-timeout: Gérer le délai de mise en veille
  * - reboot: Redémarrer l'appareil
  * - led: Contrôler les LEDs (couleur, effet)
+ * - firmware-update: Lancer une mise à jour OTA (version cible)
  * 
  * Format des messages:
  * { "action": "get-info" }
@@ -20,6 +21,7 @@
  * { "action": "sleep-timeout", "params": { "value": 30000 } }
  * { "action": "reboot", "params": { "delay": 1000 } }
  * { "action": "led", "color": "#FF0000", "effect": "solid" }
+ * { "action": "firmware-update", "version": "1.0.1" }
  */
 
 class ModelBasicPubNubRoutes {
@@ -43,6 +45,7 @@ private:
   static bool handleSleepTimeout(const JsonObject& json);
   static bool handleReboot(const JsonObject& json);
   static bool handleLed(const JsonObject& json);
+  static bool handleFirmwareUpdate(const JsonObject& json);
 };
 
 #endif // MODEL_BASIC_PUBNUB_ROUTES_H

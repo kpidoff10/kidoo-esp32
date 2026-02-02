@@ -28,6 +28,9 @@
 // Configuration PubNub - Basic
 // ============================================
 
+// Version du firmware Kidoo (spécifique au modèle)
+#define FIRMWARE_VERSION "1.0.0"
+
 // Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
 // Subscribe Key (obligatoire pour recevoir des messages)
 #define DEFAULT_PUBNUB_SUBSCRIBE_KEY "sub-c-5f6c027d-31ec-4d2d-96f4-f7a63fa5e747"

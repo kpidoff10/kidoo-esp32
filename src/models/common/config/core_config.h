@@ -71,6 +71,7 @@
   #define CORE_BLE          0
   #define CORE_AUDIO        0
   #define CORE_MAIN         0
+  #define CORE_OTA          0   // Même cœur, priorité plus basse que LED pour laisser l’arc-en-ciel fluide
 #else
   // ESP32/S3 Dual-core :
   // Core 0 : WiFi stack + Réseau + BLE + LED (tâches moins critiques)
@@ -80,7 +81,8 @@
   #define CORE_BLE          0   // BLE sur Core 0 (partage avec WiFi, même radio)
   #define CORE_LED          0   // LEDManager sur Core 0 (FastLED désactive les interruptions)
 
-  // Core 1 : Audio uniquement (temps-réel critique, isolé)
+  // Core 1 : OTA (écriture flash) + Audio + loop — isoler l’écriture flash du cœur LED
+  #define CORE_OTA          1   // OTA sur Core 1 pour ne pas bloquer l’arc-en-ciel pendant esp_ota_write()
   #define CORE_AUDIO        1   // AudioManager (I2S, DOIT être isolé des LEDs)
   #define CORE_MAIN         1   // loop() Arduino (automatique)
 #endif
@@ -93,6 +95,7 @@
   // Single-core : Priorités espacées pour éviter la famine
   #define PRIORITY_AUDIO      4   // La plus haute acceptable
   #define PRIORITY_LED        3   // Animations fluides sans casser le RTOS
+  #define PRIORITY_OTA        2   // Sous LED pour laisser l’arc-en-ciel fluide pendant l’écriture
   #define PRIORITY_PUBNUB     2   // Réseau
   #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que PubNub)
   #define PRIORITY_WIFI_RETRY 1   // Background
@@ -101,6 +104,7 @@
   // Audio a la priorité maximale pour éviter les claquements
   #define PRIORITY_LED        10  // Moyenne - LEDs moins critiques que l'audio
   #define PRIORITY_AUDIO      23  // Maximale - audio temps-réel (égal à WiFi)
+  #define PRIORITY_OTA        3   // OTA sur Core 1, n’affecte pas les LEDs (Core 0)
   #define PRIORITY_PUBNUB     2   // Basse - réseau non critique
   #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que PubNub)
   #define PRIORITY_WIFI_RETRY 1   // Très basse - retry en background
