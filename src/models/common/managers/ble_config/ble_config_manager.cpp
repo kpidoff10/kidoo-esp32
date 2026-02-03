@@ -304,9 +304,15 @@ void BLEConfigManager::handleButtonPress() {
         buttonCooldownUntil = currentTime + COOLDOWN_DELAY;
         Serial.println("[BLE-CONFIG] Appui annule (trop court)");
       } else {
-        // Vérifier si on a atteint le seuil d'appui long
+        // Vérifier si on a atteint 10 secondes -> reboot
         unsigned long pressDuration = currentTime - pressStartTime;
-        
+        if (pressDuration >= REBOOT_LONG_PRESS_MS) {
+          if (Serial) {
+            Serial.println("[BLE-CONFIG] Appui 10s detecte -> REBOOT");
+          }
+          ESP.restart();
+        }
+        // Vérifier si on a atteint le seuil d'appui long (3s) -> BLE
         if (pressDuration >= longPressDuration) {
           // Appui long détecté !
           buttonState = BUTTON_LONG_PRESS;
@@ -320,6 +326,15 @@ void BLEConfigManager::handleButtonPress() {
       if (!pressed) {
         // Bouton relâché après activation
         buttonState = BUTTON_IDLE;
+      } else {
+        // Vérifier si on tient toujours 10 secondes au total -> reboot
+        unsigned long pressDuration = currentTime - pressStartTime;
+        if (pressDuration >= REBOOT_LONG_PRESS_MS) {
+          if (Serial) {
+            Serial.println("[BLE-CONFIG] Appui 10s detecte -> REBOOT");
+          }
+          ESP.restart();
+        }
       }
       break;
       
