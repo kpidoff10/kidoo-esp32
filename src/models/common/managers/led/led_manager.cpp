@@ -269,6 +269,12 @@ uint8_t LEDManager::getCurrentBrightness() {
   return currentBrightness;
 }
 
+void LEDManager::getCurrentColor(uint8_t& r, uint8_t& g, uint8_t& b) {
+  r = (currentColor >> 16) & 0xFF;
+  g = (currentColor >> 8) & 0xFF;
+  b = currentColor & 0xFF;
+}
+
 bool LEDManager::testLEDsSequential() {
   if (!initialized) {
     Serial.println("[LED-TEST] LED Manager non initialise");

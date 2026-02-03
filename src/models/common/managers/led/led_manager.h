@@ -82,6 +82,8 @@ public:
   // Obtenir l'état actuel
   static bool isInitialized();
   static uint8_t getCurrentBrightness();
+  /** Récupère la couleur actuellement affichée (pour transition wake-up depuis effet bedtime) */
+  static void getCurrentColor(uint8_t& r, uint8_t& g, uint8_t& b);
   
   // Test des LEDs une par une
   static bool testLEDsSequential();  // Test séquentiel : allume chaque LED une par une puis toutes en rouge

@@ -123,14 +123,25 @@ bool WakeupManager::loadConfig() {
 }
 
 void WakeupManager::loadBedtimeColor() {
-  // Charger la couleur de coucher depuis la config bedtime
+  // Charger la couleur de départ pour le fade-in
+  // Si le bedtime est actif avec un effet (arc-en-ciel, pulse, etc.), utiliser la couleur
+  // actuellement affichée par les LEDs. Sinon, utiliser la couleur de la config bedtime.
   BedtimeConfig bedtimeConfig = BedtimeManager::getConfig();
-  startColorR = bedtimeConfig.colorR;
-  startColorG = bedtimeConfig.colorG;
-  startColorB = bedtimeConfig.colorB;
-  
-  Serial.printf("[WAKEUP] Couleur bedtime chargee: RGB(%d, %d, %d)\n",
-                startColorR, startColorG, startColorB);
+  bool bedtimeHasEffect = (strlen(bedtimeConfig.effect) > 0 && strcmp(bedtimeConfig.effect, "none") != 0);
+
+  if (BedtimeManager::isBedtimeActive() && bedtimeHasEffect) {
+    // Bedtime en cours avec effet : récupérer la couleur réellement affichée
+    LEDManager::getCurrentColor(startColorR, startColorG, startColorB);
+    Serial.printf("[WAKEUP] Bedtime avec effet actif -> couleur actuelle LEDs: RGB(%d, %d, %d)\n",
+                  startColorR, startColorG, startColorB);
+  } else {
+    // Bedtime couleur fixe ou inactif : utiliser la couleur de la config
+    startColorR = bedtimeConfig.colorR;
+    startColorG = bedtimeConfig.colorG;
+    startColorB = bedtimeConfig.colorB;
+    Serial.printf("[WAKEUP] Couleur bedtime config: RGB(%d, %d, %d)\n",
+                  startColorR, startColorG, startColorB);
+  }
 }
 
 bool WakeupManager::reloadConfig() {
