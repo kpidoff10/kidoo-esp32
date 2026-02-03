@@ -4,6 +4,7 @@
 #include "../../common/managers/wifi/wifi_manager.h"
 #include "../../common/managers/pubnub/pubnub_manager.h"
 #include "../../common/managers/sd/sd_manager.h"
+#include "../../common/managers/ota/ota_manager.h"
 
 /**
  * Routes PubNub spécifiques au modèle Kidoo Mini
@@ -33,6 +34,9 @@ bool ModelMiniPubNubRoutes::processMessage(const JsonObject& json) {
   }
   else if (strcmp(action, "status") == 0) {
     return handleStatus(json);
+  }
+  else if (strcmp(action, "firmware-update") == 0) {
+    return handleFirmwareUpdate(json);
   }
   
   return false;
@@ -146,6 +150,27 @@ bool ModelMiniPubNubRoutes::handleStatus(const JsonObject& json) {
   return true;
 }
 
+bool ModelMiniPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
+  const char* version = nullptr;
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["version"].is<const char*>()) version = params["version"].as<const char*>();
+  }
+  if (json["version"].is<const char*>()) version = json["version"].as<const char*>();
+  if (version == nullptr || strlen(version) == 0) {
+    Serial.println("[PUBNUB-ROUTE] firmware-update: version manquante");
+    return false;
+  }
+  Serial.print("[PUBNUB-ROUTE] firmware-update: version cible ");
+  Serial.println(version);
+#ifdef HAS_WIFI
+  return OTAManager::startUpdateTask(version);
+#else
+  Serial.println("[PUBNUB-ROUTE] firmware-update: WiFi non disponible sur ce build");
+  return false;
+#endif
+}
+
 void ModelMiniPubNubRoutes::printRoutes() {
   Serial.println("");
   Serial.println("========== Routes PubNub Mini ==========");
@@ -154,5 +179,6 @@ void ModelMiniPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"led\", \"color\": \"#RRGGBB\" }");
   Serial.println("{ \"action\": \"led\", \"effect\": \"none|pulse|rotate|rainbow|glossy|off\" }");
   Serial.println("{ \"action\": \"status\" }");
+  Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
   Serial.println("=========================================");
 }

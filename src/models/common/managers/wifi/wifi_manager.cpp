@@ -12,6 +12,7 @@
 
 #ifdef HAS_PUBNUB
 #include "../pubnub/pubnub_manager.h"
+#include "../ota/ota_manager.h"
 #endif
 
 #ifdef HAS_RTC
@@ -179,9 +180,10 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   Serial.println(" dBm");
   Serial.println("[WIFI] ========================================");
   
-  // Déclencher la connexion PubNub si disponible
+  // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
   #ifdef HAS_PUBNUB
-  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()) {
+  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+      && !OTAManager::isOtaInProgress()) {
     Serial.println("[WIFI] Connexion automatique PubNub...");
     PubNubManager::connect();
   }
@@ -189,6 +191,10 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   
   // Synchroniser la configuration via les routes spécifiques au modèle
   ModelConfigSyncRoutes::onWiFiConnected();
+
+  #ifdef HAS_PUBNUB
+  OTAManager::publishLastOtaErrorIfAny();
+  #endif
   
   return true;
 #endif
@@ -405,9 +411,10 @@ void WiFiManager::retryThreadFunction(void* parameter) {
       RTCManager::autoSyncIfNeeded();
       #endif
       
-      // Déclencher la connexion PubNub si disponible
+      // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
       #ifdef HAS_PUBNUB
-      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()) {
+      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+          && !OTAManager::isOtaInProgress()) {
         Serial.println("[WIFI-RETRY] Connexion automatique PubNub...");
         PubNubManager::connect();
       }
@@ -438,9 +445,10 @@ void WiFiManager::retryThreadFunction(void* parameter) {
       RTCManager::autoSyncIfNeeded();
       #endif
       
-      // Déclencher la connexion PubNub si disponible
+      // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
       #ifdef HAS_PUBNUB
-      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()) {
+      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+          && !OTAManager::isOtaInProgress()) {
         Serial.println("[WIFI-RETRY] Connexion automatique PubNub...");
         PubNubManager::connect();
       }

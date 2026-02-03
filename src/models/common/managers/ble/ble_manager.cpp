@@ -346,6 +346,43 @@ void BLEManager::stopAdvertising() {
 #endif
 }
 
+void BLEManager::shutdownForOta() {
+#ifndef HAS_BLE
+  return;
+#else
+  if (!initialized) {
+    return;
+  }
+  // Arrêter la tâche de commandes
+  if (commandTaskRunning && bleCommandTaskHandle != nullptr) {
+    commandTaskRunning = false;
+    vTaskDelay(pdMS_TO_TICKS(150));
+    bleCommandTaskHandle = nullptr;
+  }
+  // Supprimer la queue
+  if (bleCommandQueue != nullptr) {
+    vQueueDelete(bleCommandQueue);
+    bleCommandQueue = nullptr;
+  }
+  // Désactiver l'advertising et libérer la stack BLE (BLEDevice::deinit)
+  if (pServer != nullptr) {
+    BLEDevice::stopAdvertising();
+    BLEDevice::deinit(true);
+    pServer = nullptr;
+    pService = nullptr;
+    pTxCharacteristic = nullptr;
+  }
+  // Libérer le nom du device
+  if (deviceName != nullptr) {
+    free(deviceName);
+    deviceName = nullptr;
+  }
+  initialized = false;
+  available = false;
+  Serial.println("[BLE] shutdownForOta: BLE completement desactive, mem liberee");
+#endif
+}
+
 bool BLEManager::isConnected() {
 #ifdef HAS_BLE
   if (!available || pServer == nullptr) {

@@ -4,24 +4,41 @@
 #include <Arduino.h>
 
 /**
- * Gestionnaire OTA (Over-The-Air) pour mise à jour firmware
- *
- * - Récupère l'URL du .bin via GET /api/firmware/download?model=&version=
- * - Télécharge le binaire et l'écrit en partition OTA
- * - Pendant le téléchargement : effet LED arc-en-ciel (comme au setup)
- * - À la fin : publie un message PubNub "firmware-update-done" puis redémarre
- * - En cas d'erreur : publie "firmware-update-failed" et ne redémarre pas
+ * Gestionnaire OTA (mise à jour firmware par parts).
+ * Télécharge partCount parts depuis les URLs renvoyées par l'API,
+ * écrit dans la partition OTA puis redémarre.
+ * En cas d'échec, publie firmware-update-failed sur PubNub.
  */
 
-class OtaManager {
+class OTAManager {
 public:
   /**
-   * Démarrer la mise à jour OTA (lance une tâche FreeRTOS)
-   * @param model Modèle Kidoo ("dream", "basic", "mini")
+   * Lance une mise à jour OTA vers la version donnée.
+   * Appelle l'API download (partCount + urls), télécharge chaque part, Update.write(), Update.end(true).
    * @param version Version cible (ex: "1.0.1")
-   * @return true si la tâche a été créée, false sinon
+   * @return true si la mise à jour a démarré et va redémarrer (ne retourne pas), false en cas d'erreur (firmware-update-failed publié)
    */
-  static bool start(const char* model, const char* version);
+  static bool performUpdate(const char* version);
+
+  /**
+   * Lance l'OTA dans une tâche dédiée (pile 12 Ko).
+   * À utiliser depuis Serial ou PubNub pour éviter un stack overflow dans la tâche appelante.
+   * @param version Version cible (ex: "1.0.1", max 31 caractères)
+   * @return true si la tâche a été créée, false sinon (version invalide ou xTaskCreate échoué)
+   */
+  static bool startUpdateTask(const char* version);
+
+  /**
+   * Indique si une mise à jour OTA est en cours (ressources libérées, PubNub déconnecté).
+   * À utiliser pour éviter les reconnexions automatiques PubNub pendant l'OTA.
+   */
+  static bool isOtaInProgress();
+
+  /**
+   * Publie l'erreur OTA stockée en NVS au boot (après init PubNub).
+   * À appeler depuis InitManager après l'initialisation complète.
+   */
+  static void publishLastOtaErrorIfAny();
 };
 
 #endif // OTA_MANAGER_H

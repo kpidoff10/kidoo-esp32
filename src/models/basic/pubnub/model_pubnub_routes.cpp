@@ -5,6 +5,7 @@
 #include "../../common/managers/pubnub/pubnub_manager.h"
 #include "../../common/managers/sd/sd_manager.h"
 #include "../../common/managers/nfc/nfc_manager.h"
+#include "../../common/managers/ota/ota_manager.h"
 #include "../../common/utils/mac_utils.h"
 
 /**
@@ -42,6 +43,9 @@ bool ModelBasicPubNubRoutes::processMessage(const JsonObject& json) {
   }
   else if (strcmp(action, "led") == 0) {
     return handleLed(json);
+  }
+  else if (strcmp(action, "firmware-update") == 0) {
+    return handleFirmwareUpdate(json);
   }
   
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
@@ -326,6 +330,27 @@ bool ModelBasicPubNubRoutes::handleLed(const JsonObject& json) {
   return handled;
 }
 
+bool ModelBasicPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
+  const char* version = nullptr;
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["version"].is<const char*>()) version = params["version"].as<const char*>();
+  }
+  if (json["version"].is<const char*>()) version = json["version"].as<const char*>();
+  if (version == nullptr || strlen(version) == 0) {
+    Serial.println("[PUBNUB-ROUTE] firmware-update: version manquante");
+    return false;
+  }
+  Serial.print("[PUBNUB-ROUTE] firmware-update: version cible ");
+  Serial.println(version);
+#ifdef HAS_WIFI
+  return OTAManager::startUpdateTask(version);
+#else
+  Serial.println("[PUBNUB-ROUTE] firmware-update: WiFi non disponible sur ce build");
+  return false;
+#endif
+}
+
 void ModelBasicPubNubRoutes::printRoutes() {
   Serial.println("");
   Serial.println("========== Routes PubNub Basic ==========");
@@ -335,5 +360,6 @@ void ModelBasicPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"reboot\", \"params\": { \"delay\": ms } }");
   Serial.println("{ \"action\": \"led\", \"color\": \"#RRGGBB\" }");
   Serial.println("{ \"action\": \"led\", \"effect\": \"none|pulse|rotate|rainbow|glossy|off\" }");
+  Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
   Serial.println("==========================================");
 }

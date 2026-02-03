@@ -12,6 +12,7 @@
  * - sleep: Gérer le mode veille
  * - led: Contrôler les LEDs (couleur, effet)
  * - status: Demander le statut de l'appareil
+ * - firmware-update: Lancer une mise à jour OTA (version cible)
  */
 
 class ModelMiniPubNubRoutes {
@@ -33,6 +34,7 @@ private:
   static bool handleSleep(const JsonObject& json);
   static bool handleLed(const JsonObject& json);
   static bool handleStatus(const JsonObject& json);
+  static bool handleFirmwareUpdate(const JsonObject& json);
 };
 
 #endif // MODEL_MINI_PUBNUB_ROUTES_H

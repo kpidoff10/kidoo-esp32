@@ -13,6 +13,7 @@
 #include "../rtc/rtc_manager.h"
 #include "../potentiometer/potentiometer_manager.h"
 #include "../nfc/nfc_manager.h"
+#include "../ota/ota_manager.h"
 #ifdef HAS_AUDIO
 #include "../audio/audio_manager.h"
 #endif
@@ -22,6 +23,8 @@
 #endif
 #include "../../../model_config.h"
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Variables statiques
 bool SerialCommands::initialized = false;
@@ -149,6 +152,8 @@ void SerialCommands::processCommand(const String& command) {
     cmdConfigSet(args);
   } else if (cmd == "config-list" || cmd == "cfg-list" || cmd == "config") {
     cmdConfigList();
+  } else if (cmd == "ota" || cmd == "ota-update" || cmd == "update") {
+    cmdOta(args);
   #ifdef HAS_LED
   } else if (cmd == "led-test" || cmd == "test-led" || cmd == "testleds") {
     cmdLEDTest();
@@ -212,6 +217,7 @@ void SerialCommands::printHelp() {
     Serial.println("  wifi-set <ssid> [password] - Configurer le WiFi");
     Serial.println("  wifi-connect     - Se connecter au WiFi configure");
     Serial.println("  wifi-disconnect  - Se deconnecter du WiFi");
+    Serial.println("  ota <version>    - Mise a jour OTA vers la version (ex: ota 1.0.26)");
   }
   #endif
   
@@ -1636,5 +1642,35 @@ void SerialCommands::cmdLEDTest() {
   LEDManager::testLEDsSequential();
 #else
   Serial.println("[LED-TEST] LEDs non disponibles sur ce modele");
+#endif
+}
+
+void SerialCommands::cmdOta(const String& args) {
+#ifndef HAS_WIFI
+  Serial.println("[OTA] OTA necessite le WiFi (non disponible sur ce modele)");
+  return;
+#else
+  if (args.length() == 0) {
+    Serial.println("[OTA] Usage: ota <version>");
+    Serial.println("[OTA] Exemple: ota 1.0.26");
+    return;
+  }
+
+  if (!WiFiManager::isConnected()) {
+    Serial.println("[OTA] WiFi non connecte. Connectez-vous (wifi-connect) puis reessayez.");
+    return;
+  }
+
+  String version = args;
+  version.trim();
+
+  Serial.print("[OTA] Lancement mise a jour vers ");
+  Serial.print(version);
+  Serial.println("... (tache dediee)");
+
+  if (!OTAManager::startUpdateTask(version.c_str())) {
+    Serial.println("[OTA] Erreur: version invalide ou impossible de creer la tache OTA.");
+    return;
+  }
 #endif
 }

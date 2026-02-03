@@ -40,6 +40,12 @@ public:
    * Arrête l'advertising BLE
    */
   static void stopAdvertising();
+
+  /**
+   * Arrêt complet pour OTA : task, queue, BLEDevice::deinit, esp_bt_controller.
+   * Libère toute la RAM BLE. Appeler init() pour restaurer.
+   */
+  static void shutdownForOta();
   
   /**
    * Vérifier si un client BLE est connecté

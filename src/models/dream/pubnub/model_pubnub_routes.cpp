@@ -830,10 +830,8 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
     
     // Créer un JsonObject avec les paramètres pour le test
     // Utiliser les valeurs qui viennent d'être sauvegardées dans la config
-    StaticJsonDocument<512> testJson;
-    JsonObject testParams = testJson.createNestedObject("params");
-    
-    // Utiliser les valeurs sauvegardées dans la config (qui viennent d'être mises à jour)
+    JsonDocument testJson;
+    JsonObject testParams = testJson["params"].to<JsonObject>();
     testParams["colorR"] = config.bedtime_colorR;
     testParams["colorG"] = config.bedtime_colorG;
     testParams["colorB"] = config.bedtime_colorB;
@@ -1092,10 +1090,8 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     
     // Créer un JsonObject avec les paramètres pour le test
     // Utiliser les valeurs sauvegardées dans la config
-    StaticJsonDocument<512> testJson;
-    JsonObject testParams = testJson.createNestedObject("params");
-    
-    // Utiliser les valeurs sauvegardées dans la config
+    JsonDocument testJson;
+    JsonObject testParams = testJson["params"].to<JsonObject>();
     testParams["colorR"] = config.wakeup_colorR;
     testParams["colorG"] = config.wakeup_colorG;
     testParams["colorB"] = config.wakeup_colorB;
@@ -1116,8 +1112,13 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
 }
 
 bool ModelDreamPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
-  // Format: { "action": "firmware-update", "version": "1.0.1" }
-  const char* version = json["version"].as<const char*>();
+  // Format: { "action": "firmware-update", "params": { "version": "1.0.1" } }
+  const char* version = nullptr;
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["version"].is<const char*>()) version = params["version"].as<const char*>();
+  }
+  if (json["version"].is<const char*>()) version = json["version"].as<const char*>();
   if (version == nullptr || strlen(version) == 0) {
     Serial.println("[PUBNUB-ROUTE] firmware-update: version manquante");
     return false;
@@ -1127,22 +1128,11 @@ bool ModelDreamPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
   Serial.println(version);
 
 #ifdef HAS_WIFI
-  if (OtaManager::start("dream", version)) {
-    Serial.println("[PUBNUB-ROUTE] firmware-update: tâche OTA démarrée (LED arc-en-ciel pendant la mise à jour)");
-    return true;
-  }
-  // Premier essai échoué (souvent heap insuffisant) : attendre 2 s et réessayer une fois
-  Serial.println("[PUBNUB-ROUTE] firmware-update: 1er essai échoué, nouvel essai dans 2 s...");
-  delay(2000);
-  if (OtaManager::start("dream", version)) {
-    Serial.println("[PUBNUB-ROUTE] firmware-update: tâche OTA démarrée (2e essai)");
-    return true;
-  }
-  Serial.println("[PUBNUB-ROUTE] firmware-update: échec du démarrage OTA");
+  return OTAManager::startUpdateTask(version);
 #else
   Serial.println("[PUBNUB-ROUTE] firmware-update: WiFi non disponible sur ce build");
-#endif
   return false;
+#endif
 }
 
 void ModelDreamPubNubRoutes::printRoutes() {

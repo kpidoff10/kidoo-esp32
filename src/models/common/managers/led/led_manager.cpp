@@ -169,7 +169,7 @@ void LEDManager::stop() {
   
   initialized = false;
   hardwareInitialized = false;
-  Serial.println("[LED] Gestionnaire arrete (ne devrait pas arriver)");
+  Serial.println("[LED] Gestionnaire arrete");
 }
 
 bool LEDManager::sendCommand(const LEDCommand& cmd) {

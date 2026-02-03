@@ -2,6 +2,7 @@
 #include "models/common/managers/init/init_manager.h"
 #include "models/common/managers/serial/serial_commands.h"
 #include "models/common/managers/pubnub/pubnub_manager.h"
+#include "models/common/managers/ota/ota_manager.h"
 #include "models/common/managers/potentiometer/potentiometer_manager.h"
 #include "models/model_config.h"
 #include "models/common/config/core_config.h"
@@ -105,13 +106,24 @@ void loop() {
   // Note: PubNubManager::loop() ne fait plus rien - le thread gère tout
   // On garde l'appel pour compatibilité mais il est vide
   PubNubManager::loop();
+
+  // Retry périodique publication statut OTA (firmware-update-done/failed) pendant 60 s au boot
+  // Au cas où l'appel en init échoue (PubNub pas encore prêt), on réessaie
+  static unsigned long lastOtaPublishRetry = 0;
+  if (millis() < 60000 && (millis() - lastOtaPublishRetry > 3000)) {
+    lastOtaPublishRetry = millis();
+    OTAManager::publishLastOtaErrorIfAny();
+  }
   
   // Vérifier si PubNub doit se connecter automatiquement quand le WiFi devient disponible
   // (si PubNub est initialisé mais pas connecté, et que le WiFi est maintenant connecté)
-  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()) {
+  // Ne pas tenter pendant OTA : on a libéré PubNub volontairement, on le reconnecte nous-mêmes en cas d'échec
+  static unsigned long lastPubNubConnectAttempt = 0;
+  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+      && !OTAManager::isOtaInProgress()) {
     #ifdef HAS_WIFI
-    if (WiFiManager::isConnected()) {
-      // WiFi est connecté, tenter de connecter PubNub
+    if (WiFiManager::isConnected() && (millis() - lastPubNubConnectAttempt > 5000)) {
+      lastPubNubConnectAttempt = millis();
       PubNubManager::connect();
     }
     #endif

@@ -8,6 +8,7 @@
 #include "../ble_config/ble_config_manager.h"
 #include "../wifi/wifi_manager.h"
 #include "../pubnub/pubnub_manager.h"
+#include "../ota/ota_manager.h"
 #include "../rtc/rtc_manager.h"
 #include "../potentiometer/potentiometer_manager.h"
 #ifdef HAS_AUDIO
@@ -237,6 +238,10 @@ bool InitManager::init() {
   delay(100);
   
   initialized = true;
+
+#ifdef HAS_PUBNUB
+  OTAManager::publishLastOtaErrorIfAny();
+#endif
   
   if (allSuccess) {
     if (serialAvailable) {

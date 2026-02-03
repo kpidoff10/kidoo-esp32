@@ -35,6 +35,12 @@ public:
    * Se déconnecter de PubNub
    */
   static void disconnect();
+
+  /**
+   * Arrêt complet pour OTA : supprime la task et libère la queue.
+   * Réinitialise l'état (initialized=false). Appeler init() pour restaurer.
+   */
+  static void shutdownForOta();
   
   /**
    * Vérifier si le client est connecté

@@ -154,17 +154,38 @@ void PubNubManager::disconnect() {
     return;
   }
   
-  // Arrêter le thread
+  // Arrêter le thread : il s'auto-supprime via vTaskDelete(nullptr) quand il voit threadRunning=false.
+  // Ne PAS appeler vTaskDelete(taskHandle) ici : le handle devient invalide une fois le thread supprimé.
   if (taskHandle != nullptr) {
     threadRunning = false;
-    vTaskDelay(pdMS_TO_TICKS(100)); // Laisser le temps au thread de s'arrêter
-    vTaskDelete(taskHandle);
+    vTaskDelay(pdMS_TO_TICKS(150));  // Laisser le temps au thread de sortir et s'auto-supprimer
     taskHandle = nullptr;
   }
   
   connected = false;
   strcpy(timeToken, "0");
   Serial.println("[PUBNUB] Deconnecte");
+}
+
+void PubNubManager::shutdownForOta() {
+  if (!initialized) {
+    return;
+  }
+  // Arrêter le thread
+  if (taskHandle != nullptr) {
+    threadRunning = false;
+    vTaskDelay(pdMS_TO_TICKS(150));
+    taskHandle = nullptr;
+  }
+  // Libérer la queue (libère RAM)
+  if (publishQueue != nullptr) {
+    vQueueDelete(publishQueue);
+    publishQueue = nullptr;
+  }
+  connected = false;
+  initialized = false;
+  strcpy(timeToken, "0");
+  Serial.println("[PUBNUB] shutdownForOta: task+queue liberes");
 }
 
 bool PubNubManager::isConnected() {
@@ -587,6 +608,7 @@ const char* PubNubManager::getChannel() {
 bool PubNubManager::init() { return false; }
 bool PubNubManager::connect() { return false; }
 void PubNubManager::disconnect() {}
+void PubNubManager::shutdownForOta() {}
 bool PubNubManager::isConnected() { return false; }
 bool PubNubManager::isInitialized() { return false; }
 bool PubNubManager::isAvailable() { return false; }
