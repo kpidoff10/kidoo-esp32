@@ -34,11 +34,16 @@ public:
   static void drawPixel(int16_t x, int16_t y, uint16_t color);
   static void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
   static void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+  static void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
   static void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color);
+  static void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color);
 
   // Dimensions
   static int16_t width();
   static int16_t height();
+
+  // Rétroéclairage (si TFT_BLK_PIN défini dans la config du modèle)
+  static void setBacklight(bool on);
 
   // Utilitaires
   static void printInfo();

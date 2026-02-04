@@ -111,9 +111,16 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     strcpy(macStr, "00:00:00:00:00:00"); // Valeur par défaut en cas d'erreur
   }
   
+  // État courant du device (Dream: bedtime, wakeup, idle) pour get-info
+  const char* deviceState = "idle";
+  if (BedtimeManager::isBedtimeActive()) {
+    deviceState = "bedtime";
+  } else if (WakeupManager::isWakeupActive()) {
+    deviceState = "wakeup";
+  }
+
   // Construire le JSON de réponse
-  // Note: On utilise un buffer assez grand pour toutes les infos
-  char infoJson[560];
+  char infoJson[600];
   snprintf(infoJson, sizeof(infoJson),
     "{"
       "\"type\":\"info\","
@@ -137,22 +144,24 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
       "},"
       "\"nfc\":{"
         "\"available\":%s"
-      "}"
+      "},"
+      "\"deviceState\":\"%s\""
     "}",
     DEFAULT_DEVICE_NAME,
     macStr,
     WiFiManager::getLocalIP().c_str(),
     FIRMWARE_VERSION,
-    millis() / 1000,  // uptime en secondes
+    millis() / 1000,
     ESP.getFreeHeap(),
     config.wifi_ssid,
     WiFiManager::getRSSI(),
-    (config.led_brightness * 100 + 127) / 255,  // brightness en % avec arrondi correct
+    (config.led_brightness * 100 + 127) / 255,
     config.sleep_timeout_ms,
     totalBytes,
     freeBytes,
     usedBytes,
-    NFCManager::isAvailable() ? "true" : "false"
+    NFCManager::isAvailable() ? "true" : "false",
+    deviceState
   );
   
   if (PubNubManager::publish(infoJson)) {

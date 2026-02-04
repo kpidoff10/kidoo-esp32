@@ -57,19 +57,24 @@ bool BedtimeManager::init() {
     // Initialiser lastCheckTime pour démarrer avec le bon intervalle
     lastCheckTime = millis();
     
-    // Au démarrage : si on est un jour activé et que l'heure actuelle est entre coucher et lever, activer la routine bedtime
+    // Au démarrage : si on est dans la plage nuit, activer soit bedtime soit laisser WakeupManager démarrer le wakeup
+    // (dans la fenêtre 15 min avant lever → 35 min après = mode wakeup, sinon mode bedtime)
     if (checkingEnabled) {
       uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       bool hasWakeup = getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute);
       if (hasWakeup && isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
-        Serial.println("[BEDTIME] Demarrage: heure actuelle dans la plage coucher->lever, activation de la routine bedtime");
-        startBedtime();
-        fadeInActive = false;  // Pas de fade-in au boot, affichage direct
-        uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
-        LEDManager::setBrightness(brightnessValue);
-        lastTriggeredHour = config.schedules[dayIndex].hour;
-        lastTriggeredMinute = config.schedules[dayIndex].minute;
+        if (!isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
+          Serial.println("[BEDTIME] Demarrage: heure dans la plage coucher->lever (hors fenetre wakeup), activation routine bedtime");
+          startBedtime();
+          fadeInActive = false;  // Pas de fade-in au boot, affichage direct
+          uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+          LEDManager::setBrightness(brightnessValue);
+          lastTriggeredHour = config.schedules[dayIndex].hour;
+          lastTriggeredMinute = config.schedules[dayIndex].minute;
+        } else {
+          Serial.println("[BEDTIME] Demarrage: dans la fenetre wakeup (15 min avant lever -> 35 min apres), routine wakeup sera demarree");
+        }
       }
     }
     
@@ -284,6 +289,29 @@ bool BedtimeManager::isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int 
   return (currentMinutes >= bedtimeMinutes) && (currentMinutes < wakeupMinutes);
 }
 
+// Fenêtre wakeup = 15 min avant lever jusqu'à 35 min après (fade-in + durée + fade-out)
+static const int WAKEUP_WINDOW_MINUTES_BEFORE = 1;
+static const int WAKEUP_WINDOW_MINUTES_AFTER = 35;
+
+bool BedtimeManager::isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int wakeupHour, int wakeupMinute) {
+  int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
+  int currentMinutes = nowHour * 60 + nowMinute;
+  int wStart = wakeupMinutes - WAKEUP_WINDOW_MINUTES_BEFORE;
+  int wEnd = wakeupMinutes + WAKEUP_WINDOW_MINUTES_AFTER;
+  if (wStart < 0) {
+    wStart += 24 * 60;
+  }
+  if (wEnd > 24 * 60) {
+    wEnd -= 24 * 60;
+  }
+  // Fenêtre ne croisant pas minuit : [wStart, wEnd[
+  if (wStart < wEnd) {
+    return (currentMinutes >= wStart && currentMinutes < wEnd);
+  }
+  // Fenêtre à cheval sur minuit (ex: lever 00:10 → [0, 45) ou [1425, 1440))
+  return (currentMinutes >= wStart) || (currentMinutes < wEnd);
+}
+
 const char* BedtimeManager::indexToWeekday(uint8_t index) {
   const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   if (index < 7) {
@@ -337,13 +365,14 @@ void BedtimeManager::update() {
   
   if (elapsed >= nextCheckInterval) {
     lastCheckTime = currentTime;
-    // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init, ou passé la fenêtre 0-2 min), activer
+    // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init), activer bedtime sauf si dans fenêtre wakeup
     if (!bedtimeActive && !manuallyStarted && checkingEnabled) {
       DateTime now = RTCManager::getDateTime();
       uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       if (getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute) &&
-          isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
+          isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute) &&
+          !isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
         Serial.println("[BEDTIME] Heure dans la plage coucher->lever (rattrapage), activation de la routine bedtime");
         startBedtime();
         fadeInActive = false;
@@ -662,19 +691,21 @@ void BedtimeManager::updateFadeOut() {
   }
 }
 
-void BedtimeManager::stopBedtime() {
+void BedtimeManager::stopBedtime(bool clearDisplay) {
   Serial.println("[BEDTIME] Arrêt du bedtime");
   
   bedtimeActive = false;
   fadeInActive = false;
   fadeOutActive = false;
   manuallyStarted = false; // Réinitialiser le flag manuel
-  
+
   // Réautoriser le sleep mode
   LEDManager::allowSleep();
   
-  // Éteindre les LEDs
-  LEDManager::clear();
+  // Éteindre les LEDs sauf si transition vers wakeup (on garde l'affichage pour le fade progressif)
+  if (clearDisplay) {
+    LEDManager::clear();
+  }
 }
 
 bool BedtimeManager::isBedtimeEnabled() {

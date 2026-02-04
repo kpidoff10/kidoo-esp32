@@ -82,6 +82,7 @@ private:
   static bool initRTC();
   static bool initPotentiometer();
   static bool initAudio();
+  static bool initLCD();
   // Ajouter d'autres méthodes d'initialisation ici
   
   // Variables statiques

@@ -74,6 +74,33 @@ bool WakeupManager::init() {
       Serial.printf("[WAKEUP] Intervalle de verification initial: %lu ms (%.1f heures)\n",
                     interval, interval / 3600000.0f);
     }
+
+    // Au démarrage : si l'heure actuelle est dans la fenêtre wakeup (15 min avant lever → 35 min après),
+    // démarrer la routine wakeup (bedtime ne l'a pas fait pour ne pas écraser ce mode)
+    if (checkingEnabled) {
+      uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+      int wakeupHour = config.schedules[dayIndex].hour;
+      int wakeupMinute = config.schedules[dayIndex].minute;
+      int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
+      int currentMinutes = now.hour * 60 + now.minute;
+      int wStart = wakeupMinutes - WAKEUP_TRIGGER_MINUTES_BEFORE;
+      int wEnd = wakeupMinutes + 35;  // 35 min après = fade-out terminé
+      if (wStart < 0) {
+        wStart += 24 * 60;
+      }
+      if (wEnd > 24 * 60) {
+        wEnd -= 24 * 60;
+      }
+      bool inWakeupWindow = (wStart < wEnd)
+        ? (currentMinutes >= wStart && currentMinutes < wEnd)
+        : ((currentMinutes >= wStart) || (currentMinutes < wEnd));
+      if (inWakeupWindow) {
+        Serial.println("[WAKEUP] Demarrage: heure dans la fenetre wakeup, activation de la routine wakeup");
+        startWakeup();
+        lastTriggeredHour = now.hour;
+        lastTriggeredMinute = now.minute;
+      }
+    }
   } else {
     checkingEnabled = false;
     lastCheckedDay = 0;
@@ -123,23 +150,22 @@ bool WakeupManager::loadConfig() {
 }
 
 void WakeupManager::loadBedtimeColor() {
-  // Charger la couleur de départ pour le fade-in
-  // Si le bedtime est actif avec un effet (arc-en-ciel, pulse, etc.), utiliser la couleur
-  // actuellement affichée par les LEDs. Sinon, utiliser la couleur de la config bedtime.
+  // Couleur de départ pour le fade-in vers la couleur de réveil.
+  // Si le bedtime est actif : toujours prendre la couleur actuellement affichée (effet ou fixe)
+  // pour que la transition soit progressive depuis l'état réel des LEDs.
   BedtimeConfig bedtimeConfig = BedtimeManager::getConfig();
-  bool bedtimeHasEffect = (strlen(bedtimeConfig.effect) > 0 && strcmp(bedtimeConfig.effect, "none") != 0);
 
-  if (BedtimeManager::isBedtimeActive() && bedtimeHasEffect) {
-    // Bedtime en cours avec effet : récupérer la couleur réellement affichée
+  if (BedtimeManager::isBedtimeActive()) {
+    // Bedtime en cours : récupérer la couleur réellement affichée (effet ou couleur fixe)
     LEDManager::getCurrentColor(startColorR, startColorG, startColorB);
-    Serial.printf("[WAKEUP] Bedtime avec effet actif -> couleur actuelle LEDs: RGB(%d, %d, %d)\n",
+    Serial.printf("[WAKEUP] Transition depuis bedtime -> couleur actuelle LEDs: RGB(%d, %d, %d)\n",
                   startColorR, startColorG, startColorB);
   } else {
-    // Bedtime couleur fixe ou inactif : utiliser la couleur de la config
+    // Bedtime inactif (ex: boot dans fenêtre wakeup) : utiliser la couleur de la config
     startColorR = bedtimeConfig.colorR;
     startColorG = bedtimeConfig.colorG;
     startColorB = bedtimeConfig.colorB;
-    Serial.printf("[WAKEUP] Couleur bedtime config: RGB(%d, %d, %d)\n",
+    Serial.printf("[WAKEUP] Couleur de depart (config bedtime): RGB(%d, %d, %d)\n",
                   startColorR, startColorG, startColorB);
   }
 }
@@ -545,8 +571,15 @@ void WakeupManager::startWakeup() {
   fadeOutActive = false;
   fadeStartTime = millis();
   
-  // Recharger la couleur de coucher au cas où elle aurait changé
+  // 1) Capturer l'état actuel des LEDs (couleur + brightness) AVANT tout changement
+  //    pour transition progressive depuis l'effet/couleur du bedtime vers la couleur de réveil
   loadBedtimeColor();
+  startBrightness = LEDManager::getCurrentBrightness();
+  
+  // 2) Arrêter le bedtime sans éteindre les LEDs (évite un flash et garde l'affichage pour le fade)
+  if (BedtimeManager::isBedtimeActive()) {
+    BedtimeManager::stopBedtime(false);
+  }
   
   // Empêcher le sleep mode pendant le wake-up
   LEDManager::preventSleep();
@@ -554,25 +587,21 @@ void WakeupManager::startWakeup() {
   // Réveiller les LEDs
   LEDManager::wakeUp();
   
-  // Désactiver les effets animés
+  // 3) Figer l'affichage sur la couleur/brightness capturées puis lancer le fade progressif
   LEDManager::setEffect(LED_EFFECT_NONE);
-  
-  // Récupérer la brightness actuelle des LEDs (ne pas repartir de 0)
-  startBrightness = LEDManager::getCurrentBrightness();
-  
-  // Commencer avec la couleur de coucher (brightness sera gérée par le fade-in)
   LEDManager::setColor(startColorR, startColorG, startColorB);
+  LEDManager::setBrightness(startBrightness);
   
-  // Initialiser les dernières valeurs pour éviter les appels répétés
+  // Initialiser les dernières valeurs pour le fade-in
   lastColorR = startColorR;
   lastColorG = startColorG;
   lastColorB = startColorB;
   lastBrightness = startBrightness;
   
-  Serial.printf("[WAKEUP] Couleur de depart RGB(%d, %d, %d), Couleur cible RGB(%d, %d, %d)\n",
+  Serial.printf("[WAKEUP] Transition progressive: RGB(%d,%d,%d) -> RGB(%d,%d,%d)\n",
                 startColorR, startColorG, startColorB,
                 config.colorR, config.colorG, config.colorB);
-  Serial.printf("[WAKEUP] Brightness de depart: %d (0-255), Brightness cible: %d%% (%d)\n",
+  Serial.printf("[WAKEUP] Brightness: %d -> %d%% (%d)\n",
                 startBrightness, config.brightness, (config.brightness * 255 + 50) / 100);
 }
 
@@ -667,7 +696,7 @@ void WakeupManager::stopWakeup() {
   wakeupActive = false;
   fadeInActive = false;
   fadeOutActive = false;
-  
+
   // Réautoriser le sleep mode
   LEDManager::allowSleep();
   

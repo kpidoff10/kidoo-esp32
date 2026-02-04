@@ -31,8 +31,14 @@
 #elif defined(KIDOO_MODEL_DREAM)
   #include "dream/config_sync/model_config_sync_routes.h"
   typedef ModelDreamConfigSyncRoutes ModelConfigSyncRoutes;
+#elif defined(KIDOO_MODEL_GOTCHI)
+  class ModelGotchiConfigSyncRoutes {
+  public:
+    static void onWiFiConnected() {}
+  };
+  typedef ModelGotchiConfigSyncRoutes ModelConfigSyncRoutes;
 #else
-  #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_BASIC, KIDOO_MODEL_MINI ou KIDOO_MODEL_DREAM"
+  #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_BASIC, KIDOO_MODEL_MINI, KIDOO_MODEL_DREAM ou KIDOO_MODEL_GOTCHI"
 #endif
 
 #endif // MODEL_CONFIG_SYNC_ROUTES_H
