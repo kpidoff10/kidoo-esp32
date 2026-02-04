@@ -102,6 +102,12 @@ public:
    */
   static void stopBedtimeManually();
 
+  /**
+   * Réafficher les LEDs selon la config bedtime sans modifier l'état interne.
+   * Utile après la fin d'un test bedtime pour revenir au mode bedtime si on y était.
+   */
+  static void restoreDisplayFromConfig();
+
 private:
   // Variables statiques
   static bool initialized;
@@ -129,6 +135,10 @@ private:
   static void updateCheckingState();  // Vérifier si la routine est activée pour aujourd'hui et mettre à jour checkingEnabled
   static bool configChanged();  // Comparer la config actuelle avec lastConfig
   static unsigned long calculateNextCheckInterval();  // Calculer le prochain intervalle de vérification basé sur la distance jusqu'à l'heure de déclenchement
+  /** Parse le wakeup_weekdaySchedule (SD) et retourne l'heure de lever pour le jour donné. Retourne false si non trouvé. */
+  static bool getWakeupScheduleForDay(uint8_t dayIndex, int& outHour, int& outMinute);
+  /** Retourne true si l'heure actuelle (now) est dans la plage [heure coucher, heure lever[ (nuit). */
+  static bool isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int nowHour, int nowMinute, int wakeupHour, int wakeupMinute);
   static void startBedtime();
   static void updateFadeIn();
   static void updateFadeOut();

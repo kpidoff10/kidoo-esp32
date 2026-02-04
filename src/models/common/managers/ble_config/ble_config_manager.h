@@ -116,7 +116,8 @@ private:
   // Méthodes privées
   static void handleButtonPress();
   static void handleBLEActivation();
-  static void handleBLEDeactivation();
+  /** fullShutdown: true = purge complète (timeout, libère RAM). false = arrêt advertising seulement (WiFi connecté, évite crash). */
+  static void handleBLEDeactivation(bool fullShutdown = true);
   static void updateFeedback();
   static bool isButtonPressed();
 };

@@ -57,8 +57,24 @@ bool BedtimeManager::init() {
     // Initialiser lastCheckTime pour démarrer avec le bon intervalle
     lastCheckTime = millis();
     
-    // Afficher l'intervalle de vérification calculé
+    // Au démarrage : si on est un jour activé et que l'heure actuelle est entre coucher et lever, activer la routine bedtime
     if (checkingEnabled) {
+      uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+      int wakeupHour = 7, wakeupMinute = 0;
+      bool hasWakeup = getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute);
+      if (hasWakeup && isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
+        Serial.println("[BEDTIME] Demarrage: heure actuelle dans la plage coucher->lever, activation de la routine bedtime");
+        startBedtime();
+        fadeInActive = false;  // Pas de fade-in au boot, affichage direct
+        uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+        LEDManager::setBrightness(brightnessValue);
+        lastTriggeredHour = config.schedules[dayIndex].hour;
+        lastTriggeredMinute = config.schedules[dayIndex].minute;
+      }
+    }
+    
+    // Afficher l'intervalle de vérification calculé
+    if (checkingEnabled && !bedtimeActive) {
       unsigned long interval = calculateNextCheckInterval();
       Serial.printf("[BEDTIME] Intervalle de verification initial: %lu ms (%.1f heures)\n",
                     interval, interval / 3600000.0f);
@@ -190,26 +206,24 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
   // Mapping des jours de la semaine
   const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   
-  // Parser chaque jour
+  // Parser chaque jour (accepter hour/minute en int ou double pour compatibilité JSON)
   for (int i = 0; i < 7; i++) {
     if (doc[weekdays[i]].is<JsonObject>()) {
       JsonObject daySchedule = doc[weekdays[i]].as<JsonObject>();
-      
-      if (daySchedule["hour"].is<int>()) {
-        config.schedules[i].hour = daySchedule["hour"].as<int>();
-      }
-      if (daySchedule["minute"].is<int>()) {
-        config.schedules[i].minute = daySchedule["minute"].as<int>();
-      }
+      int h = -1, m = -1;
+      if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
+      else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
+      if (daySchedule["minute"].is<int>()) m = daySchedule["minute"].as<int>();
+      else if (daySchedule["minute"].is<double>()) m = (int)daySchedule["minute"].as<double>();
+      if (h >= 0 && h <= 23) config.schedules[i].hour = (uint8_t)h;
+      if (m >= 0 && m <= 59) config.schedules[i].minute = (uint8_t)m;
       if (daySchedule["activated"].is<bool>()) {
         config.schedules[i].activated = daySchedule["activated"].as<bool>();
       } else {
-        // Si activated n'est pas présent, considérer comme activé si hour/minute sont présents
-        config.schedules[i].activated = daySchedule["hour"].is<int>() && daySchedule["minute"].is<int>();
+        config.schedules[i].activated = (h >= 0 && m >= 0);
       }
-      
       if (config.schedules[i].activated) {
-        Serial.printf("[BEDTIME] %s: %02d:%02d (active)\n", weekdays[i], 
+        Serial.printf("[BEDTIME] %s: %02d:%02d (active)\n", weekdays[i],
                       config.schedules[i].hour, config.schedules[i].minute);
       }
     }
@@ -223,6 +237,51 @@ uint8_t BedtimeManager::weekdayToIndex(uint8_t dayOfWeek) {
     return dayOfWeek - 1;
   }
   return 0; // Par défaut, lundi
+}
+
+bool BedtimeManager::getWakeupScheduleForDay(uint8_t dayIndex, int& outHour, int& outMinute) {
+  if (dayIndex >= 7) {
+    return false;
+  }
+  SDConfig sdConfig = SDManager::getConfig();
+  if (!sdConfig.wakeup_weekdaySchedule || strlen(sdConfig.wakeup_weekdaySchedule) == 0) {
+    return false;
+  }
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  StaticJsonDocument<512> doc;
+  #pragma GCC diagnostic pop
+  DeserializationError error = deserializeJson(doc, sdConfig.wakeup_weekdaySchedule);
+  if (error) {
+    return false;
+  }
+  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
+  if (!doc[weekdays[dayIndex]].is<JsonObject>()) {
+    return false;
+  }
+  JsonObject daySchedule = doc[weekdays[dayIndex]].as<JsonObject>();
+  if (!daySchedule["hour"].is<int>() || !daySchedule["minute"].is<int>()) {
+    return false;
+  }
+  outHour = daySchedule["hour"].as<int>();
+  outMinute = daySchedule["minute"].as<int>();
+  return true;
+}
+
+bool BedtimeManager::isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int nowHour, int nowMinute, int wakeupHour, int wakeupMinute) {
+  if (dayIndex >= 7) {
+    return false;
+  }
+  int bedtimeMinutes = config.schedules[dayIndex].hour * 60 + config.schedules[dayIndex].minute;
+  int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
+  int currentMinutes = nowHour * 60 + nowMinute;
+  // Cas typique : coucher le soir (ex. 20:30), lever le matin (ex. 07:00) → bedtimeMinutes > wakeupMinutes
+  // Nuit = [bedtime, 24h[ U [0, wakeup[
+  if (bedtimeMinutes > wakeupMinutes) {
+    return (currentMinutes >= bedtimeMinutes) || (currentMinutes < wakeupMinutes);
+  }
+  // Cas rare : coucher et lever dans la même "journée" (ex. 01:00 -> 07:00)
+  return (currentMinutes >= bedtimeMinutes) && (currentMinutes < wakeupMinutes);
 }
 
 const char* BedtimeManager::indexToWeekday(uint8_t index) {
@@ -278,7 +337,26 @@ void BedtimeManager::update() {
   
   if (elapsed >= nextCheckInterval) {
     lastCheckTime = currentTime;
-    checkBedtimeTrigger();
+    // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init, ou passé la fenêtre 0-2 min), activer
+    if (!bedtimeActive && !manuallyStarted && checkingEnabled) {
+      DateTime now = RTCManager::getDateTime();
+      uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+      int wakeupHour = 7, wakeupMinute = 0;
+      if (getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute) &&
+          isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
+        Serial.println("[BEDTIME] Heure dans la plage coucher->lever (rattrapage), activation de la routine bedtime");
+        startBedtime();
+        fadeInActive = false;
+        uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+        LEDManager::setBrightness(brightnessValue);
+        lastTriggeredHour = config.schedules[dayIndex].hour;
+        lastTriggeredMinute = config.schedules[dayIndex].minute;
+      } else {
+        checkBedtimeTrigger();
+      }
+    } else {
+      checkBedtimeTrigger();
+    }
   }
   
   // Mettre à jour les animations de fade si actives
@@ -428,17 +506,20 @@ void BedtimeManager::checkBedtimeTrigger() {
     return;
   }
   
+  int targetHour = config.schedules[dayIndex].hour;
+  int targetMinute = config.schedules[dayIndex].minute;
+  int currentMinutes = now.hour * 60 + now.minute;
+  int targetMinutes = targetHour * 60 + targetMinute;
+
   // Vérifier si c'est l'heure de coucher exacte (dans la minute, secondes 0-59)
   // On vérifie toutes les minutes, donc on déclenche si on est dans la bonne minute
-  if (now.hour == config.schedules[dayIndex].hour && 
-      now.minute == config.schedules[dayIndex].minute) {
+  if (now.hour == targetHour && now.minute == targetMinute) {
     Serial.printf("[BEDTIME] Heure correspondante détectée! Bedtime actif: %s, Last triggered: %02d:%02d\n",
                   bedtimeActive ? "Oui" : "Non", lastTriggeredHour, lastTriggeredMinute);
-    
+
     // Déclencher le bedtime si pas déjà actif et qu'on n'a pas déjà déclenché cette minute
     // ET que le bedtime n'a pas été démarré manuellement
-    // Cela évite de déclencher plusieurs fois dans la même minute
-    if (!bedtimeActive && 
+    if (!bedtimeActive &&
         !manuallyStarted &&
         (lastTriggeredHour != now.hour || lastTriggeredMinute != now.minute)) {
       Serial.println("[BEDTIME] >>> DÉCLENCHEMENT DU BEDTIME <<<");
@@ -455,17 +536,27 @@ void BedtimeManager::checkBedtimeTrigger() {
       }
     }
   } else {
-    // Log pour comprendre pourquoi ça ne correspond pas
-    Serial.printf("[BEDTIME] Heure ne correspond pas: Actuelle %02d:%02d vs Config %02d:%02d\n",
-                  now.hour, now.minute, config.schedules[dayIndex].hour, config.schedules[dayIndex].minute);
-    
-    // Si on n'est plus dans la minute de coucher, réinitialiser les flags de déclenchement
-    if (lastTriggeredHour == config.schedules[dayIndex].hour && 
-        lastTriggeredMinute == config.schedules[dayIndex].minute) {
-      // On est sorti de la minute de déclenchement, réinitialiser pour permettre un nouveau déclenchement demain
-      Serial.println("[BEDTIME] Sortie de la minute de déclenchement, réinitialisation des flags");
-      lastTriggeredHour = 255;
-      lastTriggeredMinute = 255;
+    // Sécurité : si on a dépassé l'heure de coucher de 0 à 2 minutes et qu'on n'est pas en mode bedtime, déclencher
+    int minutesAfterTarget = currentMinutes - targetMinutes;
+    if (minutesAfterTarget >= 0 && minutesAfterTarget <= 2 &&
+        !bedtimeActive && !manuallyStarted &&
+        (lastTriggeredHour != (uint8_t)targetHour || lastTriggeredMinute != (uint8_t)targetMinute)) {
+      Serial.println("[BEDTIME] >>> DÉCLENCHEMENT SÉCURITÉ (dépassement 0-2 min) <<<");
+      startBedtime();
+      lastTriggeredHour = targetHour;
+      lastTriggeredMinute = targetMinute;
+    } else {
+      // Log pour comprendre pourquoi ça ne correspond pas
+      Serial.printf("[BEDTIME] Heure ne correspond pas: Actuelle %02d:%02d vs Config %02d:%02d\n",
+                    now.hour, now.minute, targetHour, targetMinute);
+
+      // Si on n'est plus dans la minute de déclenchement, réinitialiser les flags
+      if (lastTriggeredHour == config.schedules[dayIndex].hour &&
+          lastTriggeredMinute == config.schedules[dayIndex].minute) {
+        Serial.println("[BEDTIME] Sortie de la minute de déclenchement, réinitialisation des flags");
+        lastTriggeredHour = 255;
+        lastTriggeredMinute = 255;
+      }
     }
   }
 }
@@ -606,12 +697,18 @@ bool BedtimeManager::isBedtimeActive() {
 }
 
 void BedtimeManager::startBedtimeManually() {
-  Serial.println("[BEDTIME] Démarrage manuel du bedtime");
+  Serial.println("[BEDTIME] Démarrage manuel du bedtime (force remise en route selon la config)");
+  
+  // Si le bedtime est déjà marqué actif (même si les LEDs ne le reflètent pas), arrêter proprement
+  // pour repartir sur une base saine et réappliquer la config
+  if (bedtimeActive || fadeInActive || fadeOutActive) {
+    stopBedtime();
+  }
   
   // Marquer comme démarré manuellement pour empêcher le déclenchement automatique
   manuallyStarted = true;
   
-  // Démarrer le bedtime normalement
+  // Démarrer le bedtime selon la config (LEDs, effet, fade-in, etc.)
   startBedtime();
 }
 
@@ -620,4 +717,46 @@ void BedtimeManager::stopBedtimeManually() {
   
   // Arrêter le bedtime (qui réinitialisera aussi manuallyStarted)
   stopBedtime();
+}
+
+void BedtimeManager::restoreDisplayFromConfig() {
+  if (!initialized) {
+    return;
+  }
+  // Ne pas écraser si on est en extinction progressive (allNight = false, fade-out en cours)
+  if (fadeOutActive) {
+    return;
+  }
+  // Réafficher effet, couleur et luminosité selon la config (sans toucher à bedtimeActive/fade)
+  LEDManager::preventSleep();
+  LEDManager::wakeUp();
+
+  uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+  LEDEffect effect = LED_EFFECT_NONE;
+  bool useEffect = false;
+
+  if (strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0) {
+    useEffect = true;
+    if (strcmp(config.effect, "pulse") == 0) {
+      effect = LED_EFFECT_PULSE;
+    } else if (strcmp(config.effect, "rainbow-soft") == 0) {
+      effect = LED_EFFECT_RAINBOW_SOFT;
+    } else if (strcmp(config.effect, "breathe") == 0) {
+      effect = LED_EFFECT_BREATHE;
+    } else if (strcmp(config.effect, "nightlight") == 0) {
+      effect = LED_EFFECT_NIGHTLIGHT;
+    } else {
+      useEffect = false;
+    }
+  }
+
+  if (useEffect) {
+    LEDManager::setEffect(effect);
+    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
+  } else {
+    LEDManager::setEffect(LED_EFFECT_NONE);
+    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
+  }
+  LEDManager::setBrightness(brightnessValue);
+  Serial.println("[BEDTIME] Affichage restaure selon la config (retour mode bedtime)");
 }

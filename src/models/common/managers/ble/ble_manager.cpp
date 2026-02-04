@@ -167,8 +167,12 @@ class MyServerCallbacks: public BLEServerCallbacks {
 bool BLEManager::initialized = false;
 bool BLEManager::available = false;
 char* BLEManager::deviceName = nullptr;
+const char* BLEManager::deviceNameForReinit = nullptr;
 
 bool BLEManager::init(const char* deviceName) {
+  // Conserver le pointeur pour ré-init après shutdown (ne pas libérer, ex: DEFAULT_DEVICE_NAME)
+  deviceNameForReinit = deviceName;
+
   // Si déjà initialisé, nettoyer d'abord les ressources existantes
   if (initialized) {
     // Arrêter la tâche de traitement des commandes si elle existe
@@ -381,6 +385,10 @@ void BLEManager::shutdownForOta() {
   available = false;
   Serial.println("[BLE] shutdownForOta: BLE completement desactive, mem liberee");
 #endif
+}
+
+const char* BLEManager::getDeviceNameForReinit() {
+  return deviceNameForReinit;
 }
 
 bool BLEManager::isConnected() {

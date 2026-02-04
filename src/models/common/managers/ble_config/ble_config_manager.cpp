@@ -73,24 +73,15 @@ void BLEConfigManager::update() {
     }
     
     if (elapsed >= bleDuration) {
-      // Timeout atteint, désactiver le BLE
-      handleBLEDeactivation();
+      // Timeout atteint : purge complète pour libérer la RAM
+      handleBLEDeactivation(true);
     } else {
       // Vérifier si un client BLE est connecté
       #ifdef HAS_BLE
       bool connected = BLEManager::isConnected();
       
-      if (connected && feedbackActive) {
-        // Un client s'est connecté, arrêter le feedback lumineux (PULSE bleu)
-        #ifdef HAS_LED
-        if (HAS_LED) {
-          LEDManager::setColor(0, 0, 0);  // Éteindre
-          LEDManager::setEffect(LED_EFFECT_NONE);
-        }
-        #endif
-        feedbackActive = false;
-        Serial.println("[BLE-CONFIG] Client connecte - Feedback lumineux desactive");
-      } else if (!connected && !feedbackActive && bleEnabled && feedbackEnabled) {
+      // BLE activé = respiration bleue en permanence (connecté ou non). On ne coupe jamais le feedback.
+      if (!connected && !feedbackActive && bleEnabled && feedbackEnabled) {
         // Le client s'est déconnecté, réactiver le feedback lumineux (PULSE bleu)
         // Seulement si le feedback était activé au départ
         // IMPORTANT: Faire un clear() d'abord pour éliminer toute couleur résiduelle
@@ -136,19 +127,29 @@ bool BLEConfigManager::enableBLE(uint32_t durationMs, bool enableFeedback) {
   feedbackActive = enableFeedback;  // Contrôler le feedback selon le paramètre
   lastFeedbackTime = millis();
   
-  // Activer le BLE si disponible
+  // Activer le BLE si disponible (ré-init si purge précédente après timeout)
   #ifdef HAS_BLE
-  if (HAS_BLE && BLEManager::isInitialized() && BLEManager::isAvailable()) {
-    BLEManager::startAdvertising();
-    if (enableFeedback) {
-      Serial.println("[BLE-CONFIG] BLE active via bouton");
-    } else {
-      Serial.println("[BLE-CONFIG] BLE active automatiquement (sans feedback lumineux)");
+  if (HAS_BLE) {
+    if (!BLEManager::isInitialized() && BLEManager::getDeviceNameForReinit() != nullptr) {
+      if (!BLEManager::init(BLEManager::getDeviceNameForReinit())) {
+        Serial.println("[BLE-CONFIG] WARNING: re-init BLE apres purge a echoue");
+        bleEnabled = false;
+        return false;
+      }
+      Serial.println("[BLE-CONFIG] BLE re-initialise apres purge");
     }
-  } else {
-    Serial.println("[BLE-CONFIG] WARNING: BLE non disponible, activation impossible");
-    bleEnabled = false;
-    return false;
+    if (BLEManager::isInitialized() && BLEManager::isAvailable()) {
+      BLEManager::startAdvertising();
+      if (enableFeedback) {
+        Serial.println("[BLE-CONFIG] BLE active via bouton");
+      } else {
+        Serial.println("[BLE-CONFIG] BLE active automatiquement (sans feedback lumineux)");
+      }
+    } else {
+      Serial.println("[BLE-CONFIG] WARNING: BLE non disponible, activation impossible");
+      bleEnabled = false;
+      return false;
+    }
   }
   #else
   Serial.println("[BLE-CONFIG] WARNING: BLE non disponible sur ce modele");
@@ -160,27 +161,16 @@ bool BLEConfigManager::enableBLE(uint32_t durationMs, bool enableFeedback) {
   Serial.print(durationMs / 1000);
   Serial.println(" secondes");
   
-  // Feedback lumineux uniquement si demandé et uniquement quand le BLE est actif (en mode appairage)
-  // Le bleu avec effet de respiration indique que le BLE est en mode appairage
-  // IMPORTANT: Ne pas activer le feedback si un client est déjà connecté
+  // Feedback lumineux : BLE activé = respiration bleue en permanence (connecté ou non)
+  // Les LEDs sont allumées dès l'activation du BLE et restent en respiration bleue tout le temps
   if (enableFeedback) {
-    #ifdef HAS_BLE
-    bool connected = BLEManager::isConnected();
-    if (!connected) {
-      // Pas de connexion, activer le PULSE bleu pour indiquer le mode appairage
-      // IMPORTANT: Faire un clear() d'abord pour éliminer toute couleur résiduelle (ex: orange de l'init)
-      #ifdef HAS_LED
-      if (HAS_LED) {
-        LEDManager::clear();  // Éteindre d'abord pour éliminer les couleurs résiduelles
-        delay(150);  // Attendre que clear() soit traité par le thread LED
-        LEDManager::setColor(0, 0, 255);  // Bleu
-        delay(150);  // Attendre que la couleur bleue soit bien définie avant d'activer PULSE
-        LEDManager::setEffect(LED_EFFECT_PULSE);  // Effet de respiration
-      }
-      #endif
-    } else {
-      // Déjà connecté, ne pas activer le feedback
-      feedbackActive = false;
+    #ifdef HAS_LED
+    if (HAS_LED) {
+      LEDManager::clear();  // Éteindre d'abord pour éliminer les couleurs résiduelles (ex: orange de l'init)
+      delay(150);  // Attendre que clear() soit traité par le thread LED
+      LEDManager::setColor(0, 0, 255);  // Bleu
+      delay(150);  // Attendre que la couleur bleue soit bien définie avant d'activer PULSE
+      LEDManager::setEffect(LED_EFFECT_PULSE);  // Respiration bleue tant que BLE actif
     }
     #endif
   } else {
@@ -207,8 +197,8 @@ void BLEConfigManager::disableBLE() {
   if (!initialized || !bleEnabled) {
     return;
   }
-  
-  handleBLEDeactivation();
+  // Désactivation douce (WiFi connecté) : pas de purge pour éviter crash avec la tâche BLE
+  handleBLEDeactivation(false);
 }
 
 uint32_t BLEConfigManager::getRemainingTime() {
@@ -366,7 +356,7 @@ void BLEConfigManager::handleBLEActivation() {
   }
 }
 
-void BLEConfigManager::handleBLEDeactivation() {
+void BLEConfigManager::handleBLEDeactivation(bool fullShutdown) {
   if (!bleEnabled) {
     return;
   }
@@ -377,26 +367,28 @@ void BLEConfigManager::handleBLEDeactivation() {
   
   Serial.println("");
   Serial.println("[BLE-CONFIG] ========================================");
-  Serial.println("[BLE-CONFIG] Desactivation BLE (timeout)");
+  Serial.println(fullShutdown ? "[BLE-CONFIG] Desactivation BLE (timeout)" : "[BLE-CONFIG] Desactivation BLE (WiFi connecte)");
   Serial.println("[BLE-CONFIG] ========================================");
   
-  // Arrêter l'advertising BLE
   #ifdef HAS_BLE
-  if (HAS_BLE && BLEManager::isInitialized() && BLEManager::isAvailable()) {
-    BLEManager::stopAdvertising();
+  if (HAS_BLE && BLEManager::isInitialized()) {
+    if (fullShutdown) {
+      // Timeout : purge complète pour libérer la RAM (task, queue, deinit)
+      BLEManager::shutdownForOta();
+      Serial.println("[BLE-CONFIG] BLE purge (mem liberee)");
+    } else {
+      // WiFi connecté : arrêt advertising seulement (évite crash si tâche BLE encore active)
+      BLEManager::stopAdvertising();
+    }
   }
   #endif
   
   // Feedback visuel : LED éteinte
-  // IMPORTANT: Arrêter l'effet PULSE avant de clear pour éviter que les LEDs restent allumées
   #ifdef HAS_LED
   if (HAS_LED) {
-    // D'abord arrêter l'effet pour éviter que PULSE continue à tourner
     LEDManager::setEffect(LED_EFFECT_NONE);
-    // Ensuite éteindre toutes les LEDs
-    LEDManager::setColor(0, 0, 0);  // Noir
-    // Enfin, clear pour s'assurer que tout est bien éteint
-    LEDManager::clear();  // Éteindre complètement toutes les LEDs
+    LEDManager::setColor(0, 0, 0);
+    LEDManager::clear();
   }
   #endif
 }

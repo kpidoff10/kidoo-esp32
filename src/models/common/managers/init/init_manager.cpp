@@ -17,6 +17,9 @@
 #include "../../../model_config.h"
 #include "../../../../../color/colors.h"
 #include "../../../model_init.h"
+#ifdef KIDOO_MODEL_DREAM
+#include "../../../dream/managers/bedtime/bedtime_manager.h"
+#endif
 
 // Variables statiques
 SystemStatus InitManager::systemStatus = {
@@ -247,15 +250,22 @@ bool InitManager::init() {
     if (serialAvailable) {
       Serial.println("[INIT] OK");
     }
-    // Mettre les LEDs en orange qui tourne pour indiquer que tout est OK (prêt)
+    // Mettre les LEDs en vert qui tourne pour indiquer que tout est OK (prêt)
     // SAUF si BLE auto (pas de WiFi) : pas de retour lumineux, LEDs restent éteintes
+    // Sur Dream : ne pas écraser l'affichage si le mode bedtime est déjà actif (plage coucher→lever au boot)
     #ifdef HAS_LED
     if (HAS_LED && systemStatus.led == INIT_SUCCESS && !bleAutoActivated) {
       // Ne pas réveiller les LEDs si elles sont déjà en sleep mode
       // (par exemple si le timeout de sleep est très court)
       if (!LEDManager::getSleepState()) {
-        LEDManager::setColor(COLOR_GREEN);
-        LEDManager::setEffect(LED_EFFECT_ROTATE);
+#ifdef KIDOO_MODEL_DREAM
+        if (!BedtimeManager::isBedtimeActive()) {
+#endif
+          LEDManager::setColor(COLOR_GREEN);
+          LEDManager::setEffect(LED_EFFECT_ROTATE);
+#ifdef KIDOO_MODEL_DREAM
+        }
+#endif
       } else {
         if (serialAvailable) {
           Serial.println("[INIT] LEDs en sleep mode - pas d'affichage");

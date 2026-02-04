@@ -218,26 +218,24 @@ void WakeupManager::parseWeekdaySchedule(const char* jsonStr) {
   // Mapping des jours de la semaine
   const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   
-  // Parser chaque jour
+  // Parser chaque jour (accepter hour/minute en int, long ou double pour compatibilité JSON)
   for (int i = 0; i < 7; i++) {
     if (doc[weekdays[i]].is<JsonObject>()) {
       JsonObject daySchedule = doc[weekdays[i]].as<JsonObject>();
-      
-      if (daySchedule["hour"].is<int>()) {
-        config.schedules[i].hour = daySchedule["hour"].as<int>();
-      }
-      if (daySchedule["minute"].is<int>()) {
-        config.schedules[i].minute = daySchedule["minute"].as<int>();
-      }
+      int h = -1, m = -1;
+      if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
+      else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
+      if (daySchedule["minute"].is<int>()) m = daySchedule["minute"].as<int>();
+      else if (daySchedule["minute"].is<double>()) m = (int)daySchedule["minute"].as<double>();
+      if (h >= 0 && h <= 23) config.schedules[i].hour = (uint8_t)h;
+      if (m >= 0 && m <= 59) config.schedules[i].minute = (uint8_t)m;
       if (daySchedule["activated"].is<bool>()) {
         config.schedules[i].activated = daySchedule["activated"].as<bool>();
       } else {
-        // Si activated n'est pas présent, considérer comme activé si hour/minute sont présents
-        config.schedules[i].activated = daySchedule["hour"].is<int>() && daySchedule["minute"].is<int>();
+        config.schedules[i].activated = (h >= 0 && m >= 0);
       }
-      
       if (config.schedules[i].activated) {
-        Serial.printf("[WAKEUP] %s: %02d:%02d (active)\n", weekdays[i], 
+        Serial.printf("[WAKEUP] %s: %02d:%02d (active)\n", weekdays[i],
                       config.schedules[i].hour, config.schedules[i].minute);
       }
     }

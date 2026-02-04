@@ -367,6 +367,7 @@ bool ModelDreamPubNubRoutes::handleLed(const JsonObject& json) {
 // Variables statiques pour gérer l'état du test de bedtime
 static bool testBedtimeActive = false;
 static unsigned long testBedtimeStartTime = 0;
+static bool bedtimeWasActiveBeforeTest = false;  // Pour restaurer le mode bedtime à la sortie du test
 static bool testWakeupActive = false;
 static unsigned long testWakeupStartTime = 0;
 static const unsigned long TEST_BEDTIME_TIMEOUT_MS = 15000; // 15 secondes
@@ -377,6 +378,10 @@ bool ModelDreamPubNubRoutes::handleStartTestBedtime(const JsonObject& json) {
   
   Serial.println("[PUBNUB-ROUTE] start-test-bedtime: Démarrage/mise à jour du test...");
   
+  // Si c'est un nouveau test (pas une mise à jour), mémoriser si le bedtime était actif pour restaurer à la sortie
+  if (!testBedtimeActive) {
+    bedtimeWasActiveBeforeTest = BedtimeManager::isBedtimeActive();
+  }
   // Sauvegarder l'état actif pour savoir si c'est une mise à jour ou un nouveau test
   bool wasAlreadyActive = testBedtimeActive;
   
@@ -522,13 +527,7 @@ bool ModelDreamPubNubRoutes::handleStartBedtime(const JsonObject& json) {
     return false;
   }
   
-  // Vérifier si le bedtime est déjà actif
-  if (BedtimeManager::isBedtimeActive()) {
-    Serial.println("[PUBNUB-ROUTE] start-bedtime: Bedtime déjà actif");
-    return true; // Pas une erreur, juste déjà actif
-  }
-  
-  // Démarrer le bedtime manuellement
+  // Démarrer (ou forcer le redémarrage) du bedtime selon la config
   BedtimeManager::startBedtimeManually();
   
   Serial.println("[PUBNUB-ROUTE] start-bedtime: Routine de coucher démarrée manuellement");
@@ -596,12 +595,17 @@ bool ModelDreamPubNubRoutes::handleStopTestBedtime(const JsonObject& json) {
   
   Serial.println("[PUBNUB-ROUTE] stop-test-bedtime: Arrêt du test");
   
-  // Éteindre les LEDs
-  LEDManager::clear();
-  
-  // Désactiver le test
+  // Désactiver le test avant de restaurer (pour que restoreDisplayFromConfig voie l'état cohérent)
   testBedtimeActive = false;
   testBedtimeStartTime = 0;
+  
+  // Si on était en horaire bedtime avant le test, revenir au mode bedtime (config)
+  if (bedtimeWasActiveBeforeTest) {
+    bedtimeWasActiveBeforeTest = false;
+    BedtimeManager::restoreDisplayFromConfig();
+  } else {
+    LEDManager::clear();
+  }
   
   return true;
 }
@@ -685,7 +689,7 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
     return false;
   }
   
-  // Récupérer les paramètres
+  // Récupérer les paramètres (le serveur envoie à la racine: action, colorR, weekdaySchedule, etc. — pas de wrapper "params")
   int colorR = -1;
   int colorG = -1;
   int colorB = -1;
@@ -694,51 +698,30 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
   const char* effectStr = nullptr;
   bool hasEffect = false;
   JsonObject weekdayScheduleObj;
+  String weekdayScheduleStr;
   bool hasWeekdaySchedule = false;
-  
-  // Nouvelle syntaxe avec params
-  if (json["params"].is<JsonObject>()) {
-    JsonObject params = json["params"].as<JsonObject>();
-    Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Utilisation de la syntaxe avec params");
-    
-    if (params["colorR"].is<int>()) colorR = params["colorR"].as<int>();
-    if (params["colorG"].is<int>()) colorG = params["colorG"].as<int>();
-    if (params["colorB"].is<int>()) colorB = params["colorB"].as<int>();
-    if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
-    if (params["allNight"].is<bool>()) allNight = params["allNight"].as<bool>();
-    
-    // Récupérer l'effet si présent
-    if (params["effect"].is<const char*>()) {
-      effectStr = params["effect"].as<const char*>();
-      hasEffect = true;
-    }
-    
-    // Récupérer weekdaySchedule si présent
-    if (params["weekdaySchedule"].is<JsonObject>()) {
-      weekdayScheduleObj = params["weekdaySchedule"].as<JsonObject>();
-      hasWeekdaySchedule = true;
-    }
+  JsonObject params = json["params"].is<JsonObject>() ? json["params"].as<JsonObject>() : json;
+
+  if (params["colorR"].is<int>()) colorR = params["colorR"].as<int>();
+  else if (params["colorR"].is<double>()) colorR = (int)params["colorR"].as<double>();
+  if (params["colorG"].is<int>()) colorG = params["colorG"].as<int>();
+  else if (params["colorG"].is<double>()) colorG = (int)params["colorG"].as<double>();
+  if (params["colorB"].is<int>()) colorB = params["colorB"].as<int>();
+  else if (params["colorB"].is<double>()) colorB = (int)params["colorB"].as<double>();
+  if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
+  else if (params["brightness"].is<double>()) brightness = (int)params["brightness"].as<double>();
+  if (params["allNight"].is<bool>()) allNight = params["allNight"].as<bool>();
+
+  if (params["effect"].is<const char*>()) {
+    effectStr = params["effect"].as<const char*>();
+    hasEffect = true;
   }
-  // Syntaxe directe (legacy)
-  else {
-    Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Utilisation de la syntaxe directe (legacy)");
-    if (json["colorR"].is<int>()) colorR = json["colorR"].as<int>();
-    if (json["colorG"].is<int>()) colorG = json["colorG"].as<int>();
-    if (json["colorB"].is<int>()) colorB = json["colorB"].as<int>();
-    if (json["brightness"].is<int>()) brightness = json["brightness"].as<int>();
-    if (json["allNight"].is<bool>()) allNight = json["allNight"].as<bool>();
-    
-    // Récupérer l'effet si présent
-    if (json["effect"].is<const char*>()) {
-      effectStr = json["effect"].as<const char*>();
-      hasEffect = true;
-    }
-    
-    // Récupérer weekdaySchedule si présent
-    if (json["weekdaySchedule"].is<JsonObject>()) {
-      weekdayScheduleObj = json["weekdaySchedule"].as<JsonObject>();
-      hasWeekdaySchedule = true;
-    }
+  if (params["weekdaySchedule"].is<JsonObject>()) {
+    weekdayScheduleObj = params["weekdaySchedule"].as<JsonObject>();
+    hasWeekdaySchedule = true;
+  } else if (params["weekdaySchedule"].is<const char*>()) {
+    weekdayScheduleStr = params["weekdaySchedule"].as<const char*>();
+    hasWeekdaySchedule = true;
   }
   
   // Valider les paramètres
@@ -779,23 +762,21 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
   
   // Sauvegarder weekdaySchedule si présent
   if (hasWeekdaySchedule) {
-    // Sérialiser le weekdaySchedule en JSON string
-    String scheduleStr;
-    serializeJson(weekdayScheduleObj, scheduleStr);
-    
-    // Vérifier que la taille ne dépasse pas la limite
+    String scheduleStr = weekdayScheduleStr.length() > 0 ? weekdayScheduleStr : String();
+    if (scheduleStr.length() == 0) {
+      serializeJson(weekdayScheduleObj, scheduleStr);
+    }
     if (scheduleStr.length() < sizeof(config.bedtime_weekdaySchedule)) {
       strncpy(config.bedtime_weekdaySchedule, scheduleStr.c_str(), sizeof(config.bedtime_weekdaySchedule) - 1);
       config.bedtime_weekdaySchedule[sizeof(config.bedtime_weekdaySchedule) - 1] = '\0';
       Serial.print("[PUBNUB-ROUTE] set-bedtime-config: weekdaySchedule sauvegardé: ");
-      Serial.println(scheduleStr);
+      Serial.println(config.bedtime_weekdaySchedule);
     } else {
       Serial.println("[PUBNUB-ROUTE] set-bedtime-config: weekdaySchedule trop grand, tronqué");
       strncpy(config.bedtime_weekdaySchedule, scheduleStr.c_str(), sizeof(config.bedtime_weekdaySchedule) - 1);
       config.bedtime_weekdaySchedule[sizeof(config.bedtime_weekdaySchedule) - 1] = '\0';
     }
   } else {
-    // Pas de weekdaySchedule, garder la valeur existante ou mettre un objet vide
     if (strlen(config.bedtime_weekdaySchedule) == 0) {
       strcpy(config.bedtime_weekdaySchedule, "{}");
     }
@@ -981,43 +962,31 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     return false;
   }
   
-  // Récupérer les paramètres
+  // Récupérer les paramètres (le serveur envoie à la racine: action, colorR, weekdaySchedule, timestamp — pas de wrapper "params")
   int colorR = -1;
   int colorG = -1;
   int colorB = -1;
   int brightness = -1;
   JsonObject weekdayScheduleObj;
+  String weekdayScheduleStr;  // Si reçu comme chaîne JSON
   bool hasWeekdaySchedule = false;
-  
-  // Nouvelle syntaxe avec params
-  if (json["params"].is<JsonObject>()) {
-    JsonObject params = json["params"].as<JsonObject>();
-    Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Utilisation de la syntaxe avec params");
-    
-    if (params["colorR"].is<int>()) colorR = params["colorR"].as<int>();
-    if (params["colorG"].is<int>()) colorG = params["colorG"].as<int>();
-    if (params["colorB"].is<int>()) colorB = params["colorB"].as<int>();
-    if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
-    
-    // Récupérer weekdaySchedule si présent
-    if (params["weekdaySchedule"].is<JsonObject>()) {
-      weekdayScheduleObj = params["weekdaySchedule"].as<JsonObject>();
-      hasWeekdaySchedule = true;
-    }
-  }
-  // Syntaxe directe (legacy)
-  else {
-    Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Utilisation de la syntaxe directe (legacy)");
-    if (json["colorR"].is<int>()) colorR = json["colorR"].as<int>();
-    if (json["colorG"].is<int>()) colorG = json["colorG"].as<int>();
-    if (json["colorB"].is<int>()) colorB = json["colorB"].as<int>();
-    if (json["brightness"].is<int>()) brightness = json["brightness"].as<int>();
-    
-    // Récupérer weekdaySchedule si présent
-    if (json["weekdaySchedule"].is<JsonObject>()) {
-      weekdayScheduleObj = json["weekdaySchedule"].as<JsonObject>();
-      hasWeekdaySchedule = true;
-    }
+  JsonObject params = json["params"].is<JsonObject>() ? json["params"].as<JsonObject>() : json;
+
+  if (params["colorR"].is<int>()) colorR = params["colorR"].as<int>();
+  else if (params["colorR"].is<double>()) colorR = (int)params["colorR"].as<double>();
+  if (params["colorG"].is<int>()) colorG = params["colorG"].as<int>();
+  else if (params["colorG"].is<double>()) colorG = (int)params["colorG"].as<double>();
+  if (params["colorB"].is<int>()) colorB = params["colorB"].as<int>();
+  else if (params["colorB"].is<double>()) colorB = (int)params["colorB"].as<double>();
+  if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
+  else if (params["brightness"].is<double>()) brightness = (int)params["brightness"].as<double>();
+
+  if (params["weekdaySchedule"].is<JsonObject>()) {
+    weekdayScheduleObj = params["weekdaySchedule"].as<JsonObject>();
+    hasWeekdaySchedule = true;
+  } else if (params["weekdaySchedule"].is<const char*>()) {
+    weekdayScheduleStr = params["weekdaySchedule"].as<const char*>();
+    hasWeekdaySchedule = true;
   }
   
   // Valider les paramètres
@@ -1042,23 +1011,22 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
   
   // Sauvegarder weekdaySchedule si présent
   if (hasWeekdaySchedule) {
-    // Sérialiser le weekdaySchedule en JSON string
-    String scheduleStr;
-    serializeJson(weekdayScheduleObj, scheduleStr);
-    
-    // Vérifier que la taille ne dépasse pas la limite
+    String scheduleStr = weekdayScheduleStr.length() > 0 ? weekdayScheduleStr : String();
+    if (scheduleStr.length() == 0) {
+      serializeJson(weekdayScheduleObj, scheduleStr);
+    }
     if (scheduleStr.length() < sizeof(config.wakeup_weekdaySchedule)) {
       strncpy(config.wakeup_weekdaySchedule, scheduleStr.c_str(), sizeof(config.wakeup_weekdaySchedule) - 1);
       config.wakeup_weekdaySchedule[sizeof(config.wakeup_weekdaySchedule) - 1] = '\0';
       Serial.print("[PUBNUB-ROUTE] set-wakeup-config: weekdaySchedule sauvegardé: ");
-      Serial.println(scheduleStr);
+      Serial.println(config.wakeup_weekdaySchedule);
     } else {
       Serial.println("[PUBNUB-ROUTE] set-wakeup-config: weekdaySchedule trop grand, tronqué");
       strncpy(config.wakeup_weekdaySchedule, scheduleStr.c_str(), sizeof(config.wakeup_weekdaySchedule) - 1);
       config.wakeup_weekdaySchedule[sizeof(config.wakeup_weekdaySchedule) - 1] = '\0';
     }
   } else {
-    // Pas de weekdaySchedule, garder la valeur existante ou mettre un objet vide
+    // Pas de weekdaySchedule reçu, garder la valeur existante ou mettre un objet vide
     if (strlen(config.wakeup_weekdaySchedule) == 0) {
       strcpy(config.wakeup_weekdaySchedule, "{}");
     }
@@ -1085,23 +1053,26 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     // Recharger la configuration dans le WakeupManager
     WakeupManager::reloadConfig();
     
-    // Déclencher automatiquement le test avec la nouvelle configuration
-    Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Déclenchement automatique du test...");
-    
-    // Créer un JsonObject avec les paramètres pour le test
-    // Utiliser les valeurs sauvegardées dans la config
-    JsonDocument testJson;
-    JsonObject testParams = testJson["params"].to<JsonObject>();
-    testParams["colorR"] = config.wakeup_colorR;
-    testParams["colorG"] = config.wakeup_colorG;
-    testParams["colorB"] = config.wakeup_colorB;
-    testParams["brightness"] = config.wakeup_brightness;
-    
-    // Appeler handleStartTestWakeup avec les paramètres
-    if (handleStartTestWakeup(testJson.as<JsonObject>())) {
-      Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Test automatique démarré avec succès");
+    // Si on est en mode bedtime, reprendre la config bedtime pour l'afficher (ne pas lancer le test wakeup)
+    if (BedtimeManager::isBedtimeActive()) {
+      Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Mode bedtime actif, réapplication de la config bedtime");
+      BedtimeManager::restoreDisplayFromConfig();
     } else {
-      Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Erreur lors du démarrage du test automatique");
+      // Déclencher automatiquement le test avec la nouvelle configuration
+      Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Déclenchement automatique du test...");
+      
+      JsonDocument testJson;
+      JsonObject testParams = testJson["params"].to<JsonObject>();
+      testParams["colorR"] = config.wakeup_colorR;
+      testParams["colorG"] = config.wakeup_colorG;
+      testParams["colorB"] = config.wakeup_colorB;
+      testParams["brightness"] = config.wakeup_brightness;
+      
+      if (handleStartTestWakeup(testJson.as<JsonObject>())) {
+        Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Test automatique démarré avec succès");
+      } else {
+        Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Erreur lors du démarrage du test automatique");
+      }
     }
     
     return true;

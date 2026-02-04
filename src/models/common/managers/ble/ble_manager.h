@@ -42,10 +42,17 @@ public:
   static void stopAdvertising();
 
   /**
-   * Arrêt complet pour OTA : task, queue, BLEDevice::deinit, esp_bt_controller.
-   * Libère toute la RAM BLE. Appeler init() pour restaurer.
+   * Arrêt complet : task, queue, BLEDevice::deinit.
+   * Libère toute la RAM BLE. Utilisé par OTA et à la désactivation BLE (timeout).
+   * Appeler init(getDeviceNameForReinit()) pour réactiver le BLE.
    */
   static void shutdownForOta();
+
+  /**
+   * Nom du device enregistré à l'init (pointeur stable, pour ré-init après shutdown).
+   * @return Pointeur vers le nom, ou nullptr si jamais initialisé
+   */
+  static const char* getDeviceNameForReinit();
   
   /**
    * Vérifier si un client BLE est connecté
@@ -64,6 +71,8 @@ private:
   static bool initialized;
   static bool available;
   static char* deviceName;
+  /** Nom du device (pointeur passé à init(), non libéré) pour ré-init après shutdown */
+  static const char* deviceNameForReinit;
 };
 
 #endif // BLE_MANAGER_H
