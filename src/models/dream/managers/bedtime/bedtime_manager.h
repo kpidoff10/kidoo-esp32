@@ -103,6 +103,12 @@ public:
   static void stopBedtimeManually();
 
   /**
+   * Arrêter le bedtime. Si clearDisplay est false, ne pas éteindre les LEDs (pour transition vers wakeup).
+   * Utilisé par WakeupManager pour un passage progressif depuis l'affichage bedtime.
+   */
+  static void stopBedtime(bool clearDisplay = true);
+
+  /**
    * Réafficher les LEDs selon la config bedtime sans modifier l'état interne.
    * Utile après la fin d'un test bedtime pour revenir au mode bedtime si on y était.
    */
@@ -139,10 +145,11 @@ private:
   static bool getWakeupScheduleForDay(uint8_t dayIndex, int& outHour, int& outMinute);
   /** Retourne true si l'heure actuelle (now) est dans la plage [heure coucher, heure lever[ (nuit). */
   static bool isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int nowHour, int nowMinute, int wakeupHour, int wakeupMinute);
+  /** Retourne true si l'heure actuelle est dans la fenêtre wakeup (15 min avant lever → 35 min après). Au boot on met en wakeup et pas en bedtime. */
+  static bool isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int wakeupHour, int wakeupMinute);
   static void startBedtime();
   static void updateFadeIn();
   static void updateFadeOut();
-  static void stopBedtime();
 };
 
 #endif // BEDTIME_MANAGER_H

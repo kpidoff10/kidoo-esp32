@@ -5,8 +5,7 @@
 #include "../../../model_config.h"
 
 #ifdef HAS_LCD
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
+class LGFX_Kidoo;
 #endif
 
 /**
@@ -34,14 +33,31 @@ public:
   static void drawPixel(int16_t x, int16_t y, uint16_t color);
   static void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
   static void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+  static void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
   static void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color);
+  static void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color);
+
+  /** Affiche un buffer RGB565 (ex: frame vidéo .bin) */
+  static void pushImage(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data);
 
   // Dimensions
   static int16_t width();
   static int16_t height();
 
+  // Rétroéclairage (si TFT_BLK_PIN défini dans la config du modèle)
+  static void setBacklight(bool on);
+
   // Utilitaires
   static void printInfo();
+
+  /** Test LCD : affiche rouge, puis bleu, puis vert (uniquement si HAS_LCD et LCD disponible) */
+  static void testLCD();
+
+  /** Test FPS : animation frame par frame (rectangle rebondissant) pendant ~3 s, affiche les FPS */
+  static void testFPS();
+
+  /** Joue un .mjpeg vidéo depuis la SD (format serveur: 240x280, 60 frames, 10 fps, MJPEG) */
+  static void playMjpegFromSD(const char* path);
 
   // Couleurs courantes (format RGB565)
   static const uint16_t COLOR_BLACK = 0x0000;
@@ -52,7 +68,7 @@ public:
 
 private:
 #ifdef HAS_LCD
-  static Adafruit_ST7789* _tft;
+  static LGFX_Kidoo* _tft;
 #endif
   static bool _initialized;
   static bool _available;

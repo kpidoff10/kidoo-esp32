@@ -64,6 +64,9 @@ private:
   static void cmdConfigSet(const String& args);
   static void cmdConfigList();
   static void cmdLEDTest();
+  static void cmdLCDTest();
+  static void cmdLCDFps();
+  static void cmdLCDPlayMjpeg(const String& args);
   static void cmdOta(const String& args);
   
   // Commandes audio

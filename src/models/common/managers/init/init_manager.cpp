@@ -19,6 +19,7 @@
 #include "../../../model_init.h"
 #ifdef KIDOO_MODEL_DREAM
 #include "../../../dream/managers/bedtime/bedtime_manager.h"
+#include "../../../dream/managers/wakeup/wakeup_manager.h"
 #endif
 
 // Variables statiques
@@ -110,6 +111,18 @@ bool InitManager::init() {
         Serial.println("[INIT] ERREUR: Echec LED");
       }
       allSuccess = false;
+    }
+    delay(100);
+  }
+  #endif
+  
+  // ÉTAPE 2b : Initialiser le LCD (modèle Gotchi avec HAS_LCD)
+  #ifdef HAS_LCD
+  if (HAS_LCD) {
+    if (!initLCD()) {
+      if (serialAvailable) {
+        Serial.println("[INIT] WARNING: LCD non disponible");
+      }
     }
     delay(100);
   }
@@ -252,14 +265,14 @@ bool InitManager::init() {
     }
     // Mettre les LEDs en vert qui tourne pour indiquer que tout est OK (prêt)
     // SAUF si BLE auto (pas de WiFi) : pas de retour lumineux, LEDs restent éteintes
-    // Sur Dream : ne pas écraser l'affichage si le mode bedtime est déjà actif (plage coucher→lever au boot)
+    // Sur Dream : ne pas écraser l'affichage si bedtime ou wakeup est déjà actif au boot (plage coucher→lever ou fenêtre wakeup)
     #ifdef HAS_LED
     if (HAS_LED && systemStatus.led == INIT_SUCCESS && !bleAutoActivated) {
       // Ne pas réveiller les LEDs si elles sont déjà en sleep mode
       // (par exemple si le timeout de sleep est très court)
       if (!LEDManager::getSleepState()) {
 #ifdef KIDOO_MODEL_DREAM
-        if (!BedtimeManager::isBedtimeActive()) {
+        if (!BedtimeManager::isBedtimeActive() && !WakeupManager::isWakeupActive()) {
 #endif
           LEDManager::setColor(COLOR_GREEN);
           LEDManager::setEffect(LED_EFFECT_ROTATE);

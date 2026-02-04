@@ -17,7 +17,7 @@ public:
    * Cette fonction récupère la configuration depuis l'API serveur via l'adresse MAC
    */
   static void onWiFiConnected();
-  
+
 private:
   /**
    * Récupérer la configuration depuis l'API serveur via l'adresse MAC
