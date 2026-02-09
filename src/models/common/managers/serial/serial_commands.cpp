@@ -17,6 +17,9 @@
 #ifdef HAS_AUDIO
 #include "../audio/audio_manager.h"
 #endif
+#ifdef HAS_LCD
+#include "../lcd/lcd_manager.h"
+#endif
 #include "../../../model_serial_commands.h"
 #ifdef HAS_PUBNUB
 #include "../../../model_pubnub_routes.h"
@@ -158,6 +161,14 @@ void SerialCommands::processCommand(const String& command) {
   } else if (cmd == "led-test" || cmd == "test-led" || cmd == "testleds") {
     cmdLEDTest();
   #endif
+  #ifdef HAS_LCD
+  } else if (cmd == "lcd-test" || cmd == "test-lcd" || cmd == "testlcd") {
+    cmdLCDTest();
+  } else if (cmd == "lcd-fps" || cmd == "fps" || cmd == "lcd-fps-test") {
+    cmdLCDFps();
+  } else if (cmd == "lcd-play-mjpeg" || cmd == "lcd-play-ffmpeg" || cmd == "video-play" || cmd == "play-mjpeg") {
+    cmdLCDPlayMjpeg(args);
+  #endif
   #ifdef HAS_AUDIO
   } else if (cmd == "audio" || cmd == "audio-status") {
     cmdAudio();
@@ -202,6 +213,13 @@ void SerialCommands::printHelp() {
     Serial.println("  brightness [%]   - Afficher ou definir la luminosite (0-100%)");
     Serial.println("  sleep [timeout]  - Afficher ou definir le timeout sleep mode (ms, min: 5000, 0=desactive)");
     Serial.println("  led-test         - Tester les LEDs une par une puis toutes en rouge");
+  }
+  #endif
+  #ifdef HAS_LCD
+  if (HAS_LCD) {
+    Serial.println("  lcd-test         - Tester l'ecran LCD (rouge, bleu, vert)");
+    Serial.println("  lcd-fps          - Animation frame par frame, mesurer les FPS");
+    Serial.println("  lcd-play-mjpeg [p] - Jouer un .mjpeg video depuis la SD (defaut: /video.mjpeg)");
   }
   #endif
   
@@ -1642,6 +1660,32 @@ void SerialCommands::cmdLEDTest() {
   LEDManager::testLEDsSequential();
 #else
   Serial.println("[LED-TEST] LEDs non disponibles sur ce modele");
+#endif
+}
+
+void SerialCommands::cmdLCDTest() {
+#ifdef HAS_LCD
+  LCDManager::testLCD();
+#else
+  Serial.println("[LCD-TEST] LCD non disponible sur ce modele");
+#endif
+}
+
+void SerialCommands::cmdLCDFps() {
+#ifdef HAS_LCD
+  LCDManager::testFPS();
+#else
+  Serial.println("[LCD-FPS] LCD non disponible sur ce modele");
+#endif
+}
+
+void SerialCommands::cmdLCDPlayMjpeg(const String& args) {
+#ifdef HAS_LCD
+  const char* path = args.length() > 0 ? args.c_str() : "/video.mjpeg";
+  LCDManager::playMjpegFromSD(path);
+#else
+  (void)args;
+  Serial.println("[LCD-PLAY] LCD non disponible sur ce modele");
 #endif
 }
 
