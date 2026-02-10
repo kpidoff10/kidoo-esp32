@@ -437,17 +437,24 @@ bool LCDManager::displayJpegFrame(const uint8_t* jpegData, size_t jpegSize) {
   // Décoder le JPEG avec JPEGDEC
   int result = _jpeg.openRAM((uint8_t*)jpegData, (int)jpegSize, jpegDrawCallback);
   if (result != 1) {
+    Serial.printf("[LCD] ERREUR: openRAM failed (result=%d, size=%d)\n", result, jpegSize);
     return false;
   }
 
-  // Configurer le format de pixel en Little Endian pour LovyanGFX
-  _jpeg.setPixelType(1);
+  // Configurer le format de pixel APRÈS openRAM (important!)
+  // 0=RGB565_BE, 1=RGB565_LE, 2=RGB888
+  _jpeg.setPixelType(1);  // Little Endian
 
   // Décoder et afficher
   result = _jpeg.decode(0, 0, 0);
   _jpeg.close();
 
-  return (result == 1);
+  if (result != 1) {
+    Serial.printf("[LCD] ERREUR: decode failed (result=%d)\n", result);
+    return false;
+  }
+
+  return true;
 #else
   (void)jpegData;
   (void)jpegSize;

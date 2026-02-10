@@ -115,6 +115,14 @@ public:
    */
   static bool writeBlock(uint8_t blockNumber, uint8_t* data, uint8_t* uid, uint8_t uidLength);
 
+  /**
+   * Écrire une clé sur un tag NFC (wrapper simplifié)
+   * Détecte automatiquement le tag et écrit la clé sur le bloc 4
+   * @param key Clé à écrire (sera tronquée à 16 caractères)
+   * @return true si l'écriture a réussi, false sinon
+   */
+  static bool writeTag(const String& key);
+
 private:
   /**
    * Tester le hardware NFC

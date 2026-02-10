@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <SD.h>
 
 /**
  * Gestionnaire d'émotions basé sur des vidéos MJPEG et configuration JSON
@@ -14,7 +15,27 @@
  *
  * Chaque émotion a 3 phases: intro, loop, exit
  * Chaque phase a une timeline de sourceFrameIndex
+ *
+ * SYSTÈME ASYNCHRONE (non-bloquant):
+ * - update() appelé dans loop() avance d'une frame par cycle
+ * - Queue d'animations avec priorités (NORMAL, HIGH)
+ * - Interruption possible des animations en cours (HIGH priority)
+ * - Buffer PSRAM persistant (128KB) alloué une seule fois
  */
+
+/** État de lecture de l'animation */
+enum EmotionPlayState {
+  EMOTION_STATE_IDLE,           // Aucune animation en cours
+  EMOTION_STATE_PLAYING_INTRO,  // Lecture phase intro
+  EMOTION_STATE_PLAYING_LOOP,   // Lecture phase loop
+  EMOTION_STATE_PLAYING_EXIT,   // Lecture phase exit
+};
+
+/** Priorité de requête d'animation */
+enum EmotionPriority {
+  EMOTION_PRIORITY_NORMAL = 0,  // Mise en queue, attend fin de boucle courante
+  EMOTION_PRIORITY_HIGH = 1,    // Interrompt l'animation courante (saute vers exit)
+};
 
 /** Structure d'une frame dans la timeline */
 struct TimelineFrame {
@@ -38,6 +59,8 @@ struct EmotionPhase {
 struct EmotionData {
   String key;            // Clé de l'émotion (OK, SLEEP, COLD, etc.)
   String emotionId;      // UUID de l'émotion
+  String trigger;        // Trigger automatique (manual, hunger_low, eating_finished, etc.)
+  int variant;           // Variant (1-4) pour plusieurs animations par trigger
   int fps;               // FPS de l'animation
   int width;             // Largeur de la vidéo
   int height;            // Hauteur de la vidéo
@@ -50,36 +73,93 @@ struct EmotionData {
   std::vector<FrameIndex> frameOffsets;  // Index des frames pour accès direct
 };
 
+/** Requête d'émotion pour la queue */
+struct EmotionRequest {
+  String emotionKey;       // Clé de l'émotion à charger
+  int loopCount;           // Nombre de boucles à effectuer
+  EmotionPriority priority; // Priorité de la requête
+};
+
+/** Contexte de lecture (état interne de la state machine) */
+struct PlaybackContext {
+  EmotionPlayState state;       // État courant de la state machine
+  int currentFrameIndex;        // Index dans la timeline de la phase courante
+  int currentLoopIteration;     // Itération de loop courante (0-based)
+  int totalLoopIterations;      // Nombre total d'itérations de loop demandées
+  unsigned long lastFrameTime;  // Timestamp (millis) de la dernière frame affichée
+  uint32_t frameDurationMs;     // Durée par frame en ms (1000/fps)
+  bool interruptRequested;      // Flag d'interruption (HIGH priority)
+  File mjpegFile;               // Handle du fichier MJPEG ouvert
+  bool fileOpen;                // true si mjpegFile est ouvert
+};
+
 class EmotionManager {
 public:
-  /** Initialiser le gestionnaire */
+  //================================================================
+  // API ASYNCHRONE (Nouveau système non-bloquant)
+  //================================================================
+
+  /** Initialiser le gestionnaire (alloue buffer PSRAM) */
   static bool init();
 
-  /** Charger une émotion depuis la SD (par sa clé, ex: "OK", "SLEEP") */
+  /** Mettre à jour la state machine (à appeler dans loop()). Non-bloquant. */
+  static void update();
+
+  /** Demander la lecture d'une émotion (mise en queue). Non-bloquant. */
+  static bool requestEmotion(const String& emotionKey, int loopCount = 1,
+                             EmotionPriority priority = EMOTION_PRIORITY_NORMAL);
+
+  /** Annuler toutes les animations (vide queue, interruption immédiate → IDLE) */
+  static void cancelAll();
+
+  /** Vérifier si une animation est en cours de lecture */
+  static bool isPlaying();
+
+  /** Obtenir l'état courant de la state machine */
+  static EmotionPlayState getState();
+
+  /** Obtenir la clé de l'émotion en cours de lecture (vide si IDLE) */
+  static String getCurrentPlayingKey();
+
+  //================================================================
+  // API LEGACY (Compatibilité debug/serial)
+  //================================================================
+
+  /** Charger une émotion pour inspection (métadonnées uniquement, ne joue pas) */
   static bool loadEmotion(const String& emotionKey);
 
   /** Obtenir l'émotion actuellement chargée */
   static const EmotionData* getCurrentEmotion();
 
-  /** Jouer la phase intro uniquement */
-  static void playIntro();
-
-  /** Jouer la phase loop uniquement */
-  static void playLoop();
-
-  /** Jouer la phase exit uniquement */
-  static void playExit();
-
-  /** Jouer toute l'émotion (intro → loop x loopCount → exit) */
-  static void playAll(int loopCount = 1);
-
   /** Vérifier si une émotion est chargée */
   static bool isLoaded();
 
 private:
+  //================================================================
+  // Membres statiques (état interne)
+  //================================================================
+
   static String _characterId;         // ID du personnage (depuis /config.json)
   static EmotionData _currentEmotion; // Émotion actuellement chargée
   static bool _loaded;                // true si une émotion est chargée
+
+  // Nouveau : buffer PSRAM persistant pour frames JPEG
+  static uint8_t* _frameBuffer;
+  static const size_t FRAME_BUFFER_SIZE = 131072;  // 128 KB
+
+  // Nouveau : contexte de lecture (state machine)
+  static PlaybackContext _playback;
+
+  // Nouveau : queue d'animations (circular buffer fixe)
+  static const int EMOTION_QUEUE_MAX_SIZE = 4;
+  static EmotionRequest _queue[EMOTION_QUEUE_MAX_SIZE];
+  static int _queueHead;   // Index du prochain élément à dequeue
+  static int _queueTail;   // Index du prochain slot libre
+  static int _queueCount;  // Nombre d'éléments dans la queue
+
+  //================================================================
+  // Méthodes privées
+  //================================================================
 
   /** Charger le characterId depuis /config.json */
   static bool loadCharacterId();
@@ -90,8 +170,29 @@ private:
   /** Construire l'index des frames du MJPEG pour accès direct */
   static bool buildFrameIndex();
 
-  /** Jouer une phase donnée */
-  static void playPhase(const EmotionPhase& phase);
+  /** Afficher la frame courante si le timing est respecté. Retourne true si affichée. */
+  static bool displayCurrentFrame(const EmotionPhase& phase);
+
+  /** Ouvrir le fichier MJPEG de l'émotion actuellement chargée */
+  static bool openMjpegFile();
+
+  /** Fermer le fichier MJPEG s'il est ouvert */
+  static void closeMjpegFile();
+
+  /** Ajouter une requête dans la queue. Retourne false si pleine. */
+  static bool enqueue(const EmotionRequest& request);
+
+  /** Retirer une requête de la queue. Retourne false si vide. */
+  static bool dequeue(EmotionRequest& request);
+
+  /** Vider la queue */
+  static void clearQueue();
+
+  /** Obtenir un pointeur vers la phase courante selon l'état */
+  static const EmotionPhase* getCurrentPhase();
+
+  /** Transition vers un nouvel état (gère entry/exit logic) */
+  static void transitionTo(EmotionPlayState newState);
 };
 
 #endif // EMOTION_MANAGER_H

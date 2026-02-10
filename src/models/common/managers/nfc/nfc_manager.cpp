@@ -247,33 +247,42 @@ bool NFCManager::getLastTagUID(uint8_t* uid, uint8_t* uidLength) {
 bool NFCManager::testHardware() {
 #ifdef HAS_NFC
   Serial.println("[NFC] Test hardware...");
-  
+  Serial.println("[NFC] Mode: I2C");
+
   // Initialiser le bus I2C
   Wire.begin(NFC_SDA_PIN, NFC_SCL_PIN);
   Wire.setTimeout(500);
   delay(100);
-  
+
   Serial.printf("[NFC] Pins I2C: SDA=%d, SCL=%d\n", NFC_SDA_PIN, NFC_SCL_PIN);
-  
-  // Créer une instance temporaire du PN532 pour le test
-  Adafruit_PN532 nfc(NFC_SDA_PIN, NFC_SCL_PIN);
-  
+  Serial.printf("[NFC] Adresse I2C: 0x%02X\n", NFC_I2C_ADDRESS);
+
+  // Créer une instance temporaire du PN532 pour le test (I2C mode)
+  // Constructor I2C: Adafruit_PN532(irq, reset, &Wire)
+  // -1 = pas de pin IRQ/RST
+  Adafruit_PN532 nfc(-1, -1, &Wire);
+
   // Initialiser le module PN532
   nfc.begin();
   delay(200);
-  
+
   // Tenter de lire la version du firmware
+  Serial.println("[NFC] Lecture version firmware...");
   uint32_t versiondata = nfc.getFirmwareVersion();
-  
+
   if (!versiondata) {
     Serial.println("[NFC] Module PN532 non detecte");
+    Serial.println("[NFC] Verifiez:");
+    Serial.println("[NFC]   - Branchement SDA/SCL (GPIO 8/9)");
+    Serial.println("[NFC]   - Alimentation 3.3V");
+    Serial.println("[NFC]   - Adresse I2C 0x24");
     firmwareVersion = 0;
     return false;
   }
-  
+
   // Le module est détecté
   firmwareVersion = versiondata;
-  
+
   // Afficher les infos du firmware
   Serial.print("[NFC] Chip PN5");
   Serial.println((versiondata >> 24) & 0xFF, HEX);
@@ -281,18 +290,18 @@ bool NFCManager::testHardware() {
   Serial.print((versiondata >> 16) & 0xFF, DEC);
   Serial.print(".");
   Serial.println((versiondata >> 8) & 0xFF, DEC);
-  
+
   // Configurer le PN532
   nfc.SAMConfig();
-  
+
   // Créer l'instance statique pour les opérations futures
   if (nfcInstance == nullptr) {
-    nfcInstance = new Adafruit_PN532(NFC_SDA_PIN, NFC_SCL_PIN);
+    nfcInstance = new Adafruit_PN532(-1, -1, &Wire);
     nfcInstance->begin();
     delay(100);
     nfcInstance->SAMConfig();
   }
-  
+
   Serial.println("[NFC] Hardware OK");
   return true;
 #else
@@ -379,30 +388,86 @@ bool NFCManager::writeBlock(uint8_t blockNumber, uint8_t* data, uint8_t* uid, ui
   if (!isAvailable() || nfcInstance == nullptr) {
     return false;
   }
-  
+
   if (blockNumber > 63) {
     return false;
   }
-  
+
   bool result = false;
-  
+
   if (xSemaphoreTake(nfcMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
     // Authentifier avec la clé par défaut
     uint8_t keyA[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-    
+
     uint8_t success = nfcInstance->mifareclassic_AuthenticateBlock(uid, uidLength, blockNumber, 0, keyA);
-    
+
     if (success) {
       // Écrire le bloc
       success = nfcInstance->mifareclassic_WriteDataBlock(blockNumber, data);
       result = (success > 0);
     }
-    
+
     xSemaphoreGive(nfcMutex);
   }
-  
+
   return result;
 #else
+  return false;
+#endif // HAS_NFC
+}
+
+bool NFCManager::writeTag(const String& key) {
+#ifdef HAS_NFC
+  if (!isAvailable()) {
+    Serial.println("[NFC] NFC non disponible");
+    return false;
+  }
+
+  Serial.println("[NFC] Veuillez placer un tag NFC...");
+
+  // Lire l'UID du tag
+  uint8_t uid[10];
+  uint8_t uidLength;
+
+  if (!readTagUID(uid, &uidLength, 5000)) {
+    Serial.println("[NFC] Aucun tag detecte");
+    return false;
+  }
+
+  // Afficher l'UID du tag
+  Serial.print("[NFC] Tag detecte - UID: ");
+  for (uint8_t i = 0; i < uidLength; i++) {
+    if (uid[i] < 0x10) Serial.print("0");
+    Serial.print(uid[i], HEX);
+    if (i < uidLength - 1) Serial.print(":");
+  }
+  Serial.println();
+
+  // Préparer les données (16 bytes pour un bloc MIFARE)
+  uint8_t data[16];
+  memset(data, 0, 16);
+
+  // Copier la clé dans le buffer (tronquer à 16 caractères)
+  int len = key.length();
+  if (len > 16) len = 16;
+  memcpy(data, key.c_str(), len);
+
+  // Écrire sur le bloc 4 (premier bloc de données utilisable)
+  Serial.print("[NFC] Ecriture de la cle '");
+  Serial.print(key);
+  Serial.println("' sur le bloc 4...");
+
+  bool success = writeBlock(4, data, uid, uidLength);
+
+  if (success) {
+    Serial.println("[NFC] Ecriture reussie!");
+    return true;
+  } else {
+    Serial.println("[NFC] Erreur lors de l'ecriture");
+    return false;
+  }
+#else
+  Serial.println("[NFC] NFC non disponible sur ce modele");
   return false;
 #endif // HAS_NFC
 }
