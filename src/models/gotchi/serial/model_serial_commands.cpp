@@ -10,30 +10,99 @@
  */
 
 #ifdef HAS_LCD
-static bool cmdEmotion(const String& args) {
+static bool cmdEmotionLoad(const String& args) {
   if (args.length() == 0) {
-    Emotion e = EmotionManager::getEmotion();
-    Serial.println("[GOTCHI] Emotion actuelle: " + String((uint8_t)e));
-    Serial.println("[GOTCHI] Liste: happy(0), sad(1), hungry(2), sleepy(3), sick(4), angry(5), neutral(6)");
+    Serial.println("[GOTCHI] Usage: emotion-load <key>");
+    Serial.println("[GOTCHI] Exemple: emotion-load OK");
+    Serial.println("[GOTCHI] Cles disponibles: OK, SLEEP, COLD, etc.");
     return true;
   }
-  String a = args;
-  a.toLowerCase();
-  a.trim();
-  Emotion e;
-  if (a == "happy" || a == "0")   e = Emotion::Happy;
-  else if (a == "sad" || a == "1") e = Emotion::Sad;
-  else if (a == "hungry" || a == "2") e = Emotion::Hungry;
-  else if (a == "sleepy" || a == "3") e = Emotion::Sleepy;
-  else if (a == "sick" || a == "4")  e = Emotion::Sick;
-  else if (a == "angry" || a == "5") e = Emotion::Angry;
-  else if (a == "neutral" || a == "6") e = Emotion::Neutral;
-  else {
-    Serial.println("[GOTCHI] Emotion inconnue. Utilise: happy, sad, hungry, sleepy, sick, angry, neutral (ou 0-6)");
+
+  String key = args;
+  key.trim();
+  key.toUpperCase();
+
+  Serial.printf("[GOTCHI] Chargement de l'emotion '%s'...\n", key.c_str());
+
+  if (EmotionManager::loadEmotion(key)) {
+    Serial.printf("[GOTCHI] Emotion '%s' chargee avec succes!\n", key.c_str());
+
+    const EmotionData* emotion = EmotionManager::getCurrentEmotion();
+    if (emotion) {
+      Serial.printf("[GOTCHI]   FPS: %d\n", emotion->fps);
+      Serial.printf("[GOTCHI]   Taille: %dx%d\n", emotion->width, emotion->height);
+      Serial.printf("[GOTCHI]   Total frames: %d\n", emotion->totalFrames);
+      Serial.printf("[GOTCHI]   Duree: %.2f s\n", emotion->durationS);
+      Serial.printf("[GOTCHI]   Intro: %d frames\n", emotion->intro.frames);
+      Serial.printf("[GOTCHI]   Loop: %d frames\n", emotion->loop.frames);
+      Serial.printf("[GOTCHI]   Exit: %d frames\n", emotion->exit.frames);
+    }
+    return true;
+  } else {
+    Serial.printf("[GOTCHI] Erreur: Impossible de charger l'emotion '%s'\n", key.c_str());
     return true;
   }
-  EmotionManager::setEmotion(e);
-  Serial.println("[GOTCHI] Emotion definie: " + String((uint8_t)e));
+}
+
+static bool cmdEmotionIntro(const String& args) {
+  if (!EmotionManager::isLoaded()) {
+    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
+    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
+    return true;
+  }
+
+  Serial.println("[GOTCHI] Lecture de la phase intro...");
+  EmotionManager::playIntro();
+  Serial.println("[GOTCHI] Phase intro terminee");
+  return true;
+}
+
+static bool cmdEmotionLoop(const String& args) {
+  if (!EmotionManager::isLoaded()) {
+    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
+    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
+    return true;
+  }
+
+  Serial.println("[GOTCHI] Lecture de la phase loop...");
+  EmotionManager::playLoop();
+  Serial.println("[GOTCHI] Phase loop terminee");
+  return true;
+}
+
+static bool cmdEmotionExit(const String& args) {
+  if (!EmotionManager::isLoaded()) {
+    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
+    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
+    return true;
+  }
+
+  Serial.println("[GOTCHI] Lecture de la phase exit...");
+  EmotionManager::playExit();
+  Serial.println("[GOTCHI] Phase exit terminee");
+  return true;
+}
+
+static bool cmdEmotionPlay(const String& args) {
+  if (!EmotionManager::isLoaded()) {
+    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
+    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
+    return true;
+  }
+
+  // Parser le nombre de loops (défaut: 1)
+  int loopCount = 1;
+  if (args.length() > 0) {
+    loopCount = args.toInt();
+    if (loopCount < 1) {
+      Serial.println("[GOTCHI] Erreur: Le nombre de loops doit etre >= 1");
+      return true;
+    }
+  }
+
+  Serial.printf("[GOTCHI] Lecture de l'emotion complete (intro -> loop x%d -> exit)...\n", loopCount);
+  EmotionManager::playAll(loopCount);
+  Serial.println("[GOTCHI] Emotion complete terminee");
   return true;
 }
 #endif
@@ -60,8 +129,16 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
   }
 
 #ifdef HAS_LCD
-  if (cmd == "emotion") {
-    return cmdEmotion(args);
+  if (cmd == "emotion-load") {
+    return cmdEmotionLoad(args);
+  } else if (cmd == "emotion-intro") {
+    return cmdEmotionIntro(args);
+  } else if (cmd == "emotion-loop") {
+    return cmdEmotionLoop(args);
+  } else if (cmd == "emotion-exit") {
+    return cmdEmotionExit(args);
+  } else if (cmd == "emotion-play" || cmd == "emotion-all") {
+    return cmdEmotionPlay(args);
   }
 #endif
 
@@ -73,11 +150,15 @@ void ModelGotchiSerialCommands::printHelp() {
   Serial.println("========================================");
   Serial.println("  COMMANDES SPECIFIQUES GOTCHI");
   Serial.println("========================================");
-  Serial.println("  gotchi-info    - Afficher les infos du modele Gotchi");
+  Serial.println("  gotchi-info      - Afficher les infos du modele Gotchi");
 #ifdef HAS_LCD
-  Serial.println("  emotion        - Afficher l'emotion actuelle et la liste");
-  Serial.println("  emotion <nom>  - Definir l'emotion (happy,sad,hungry,sleepy,sick,angry,neutral)");
-  Serial.println("  emotion <0-6>  - Definir par index (0=happy, 6=neutral)");
+  Serial.println("");
+  Serial.println("--- Commandes Emotions ---");
+  Serial.println("  emotion-load <key>     - Charger une emotion (ex: emotion-load OK)");
+  Serial.println("  emotion-intro          - Jouer la phase intro de l'emotion");
+  Serial.println("  emotion-loop           - Jouer la phase loop de l'emotion");
+  Serial.println("  emotion-exit           - Jouer la phase exit de l'emotion");
+  Serial.println("  emotion-play [loops]   - Jouer l'emotion complete (intro->loop x N->exit)");
 #endif
   Serial.println("========================================");
   Serial.println("");

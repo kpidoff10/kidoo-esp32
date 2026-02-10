@@ -8,12 +8,16 @@
 
 #ifdef HAS_LCD
 #include "lcd_lovyangfx_config.hpp"
+#include <JPEGDEC.h>
 
 static LGFX_Kidoo _display;
+static JPEGDEC _jpeg;
 #endif
 
 #ifdef HAS_LCD
 LGFX_Kidoo* LCDManager::_tft = nullptr;
+int16_t LCDManager::_mjpegOffsetX = -15;  // Offset horizontal pour centrer
+int16_t LCDManager::_mjpegOffsetY = 20;  // Offset vertical pour centrer
 #endif
 bool LCDManager::_initialized = false;
 bool LCDManager::_available = false;
@@ -36,9 +40,10 @@ bool LCDManager::init() {
   int16_t h = TFT_HEIGHT;
   uint8_t r = (TFT_ROTATION & 3);
 #else
-  int16_t w = 240;
-  int16_t h = 280;
-  uint8_t r = 2;
+  // Mode landscape (280x240) avec rotation 90° - vidéos pivotées côté serveur
+  int16_t w = 280;
+  int16_t h = 240;
+  uint8_t r = 1;  // rotation 1 = landscape 90° (280x240)
 #endif
   Serial.printf("[LCD] Initialisation ecran ST7789 %dx%d rotation=%d (LovyanGFX)...\n", w, h, r);
   Serial.printf("[LCD] Pins: CS=%d, DC=%d, RST=%d, MOSI(SDA)=%d, SCK(SCL)=%d\n",
@@ -79,6 +84,9 @@ bool LCDManager::init() {
   _available = true;
   Serial.println("[LCD] Ecran initialise (LovyanGFX)");
 
+  // JPEGDEC s'initialise à la volée pour chaque frame
+  Serial.println("[LCD] JPEGDEC pret");
+
   return _available;
 #endif
 }
@@ -92,6 +100,26 @@ bool LCDManager::isInitialized() {
 }
 
 #ifdef HAS_LCD
+// Callback JPEGDEC : dessine un bloc de pixels décodés sur l'écran
+int LCDManager::jpegDrawCallback(JPEGDRAW *pDraw) {
+  if (!_tft || !pDraw) {
+    Serial.println("[JPEG-CB] Callback appelé avec _tft ou pDraw null");
+    return 0;
+  }
+
+  // Debug première fois
+  static bool firstCall = true;
+  if (firstCall) {
+    Serial.printf("[JPEG-CB] Premier appel: x=%d y=%d w=%d h=%d, offsetX=%d offsetY=%d\n",
+                  pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, _mjpegOffsetX, _mjpegOffsetY);
+    firstCall = false;
+  }
+
+  // Appliquer les offsets horizontal et vertical pour centrer l'image
+  _tft->pushImage(pDraw->x + _mjpegOffsetX, pDraw->y + _mjpegOffsetY, pDraw->iWidth, pDraw->iHeight, (uint16_t*)pDraw->pPixels);
+  return 1;  // 1 = continuer le décodage
+}
+
 void LCDManager::fillScreen(uint16_t color) {
   if (_tft) _tft->fillScreen(color);
 }
@@ -265,11 +293,11 @@ void LCDManager::playMjpegFromSD(const char* path) {
     return;
   }
 
-  const int TARGET_FPS = 10;
+  const int TARGET_FPS = 15;  // Augmenté de 10 à 15 FPS pour plus de fluidité
   const uint32_t FRAME_MS = 1000 / TARGET_FPS;
-  const size_t FRAME_BUF_SIZE = 131072;  // 128 KB - marge pour JPEG qualité élevée (q:v 3)
+  const size_t FRAME_BUF_SIZE = 131072;  // 128 KB - marge pour JPEG qualité 5 (yuv420p)
 
-  char filePath[64];
+  char filePath[256];  // Augmenté de 64 à 256 pour supporter les chemins longs avec UUIDs
   if (path[0] != '/') {
     filePath[0] = '/';
     strncpy(filePath + 1, path, sizeof(filePath) - 2);
@@ -346,7 +374,38 @@ void LCDManager::playMjpegFromSD(const char* path) {
 
     size_t frameLen = eoiPos - soiPos;
     uint32_t frameStart = millis();
-    _tft->drawJpg(frameBuf + soiPos, (uint32_t)frameLen, 0, 0, 240, 280, 0, 0, 1.0f, 1.0f);
+
+    // Afficher les infos de la première frame pour debug
+    if (frameCount == 0) {
+      Serial.printf("[LCD-PLAY] Premiere frame: %u bytes (SOI@%u, EOI@%u)\n",
+                    (unsigned)frameLen, (unsigned)soiPos, (unsigned)eoiPos);
+      Serial.printf("[LCD-PLAY] Header JPEG: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                    frameBuf[soiPos], frameBuf[soiPos+1], frameBuf[soiPos+2], frameBuf[soiPos+3],
+                    frameBuf[soiPos+4], frameBuf[soiPos+5], frameBuf[soiPos+6], frameBuf[soiPos+7]);
+    }
+
+    // Décoder avec JPEGDEC (supporte tous les formats JPEG standards)
+    int result = _jpeg.openRAM(frameBuf + soiPos, (int)frameLen, jpegDrawCallback);
+    bool success = (result == 1);  // 1 = succès
+
+    int w = 0, h = 0;
+    if (success) {
+      w = _jpeg.getWidth();
+      h = _jpeg.getHeight();
+      // Configurer le format de pixel en Little Endian pour LovyanGFX pushImage()
+      // RGB565_LITTLE_ENDIAN = 1 (par défaut JPEGDEC sort en Big Endian)
+      _jpeg.setPixelType(1);
+      // 0 = pas de scaling (1:1), pas de flags spéciaux
+      result = _jpeg.decode(0, 0, 0);
+      success = (result == 1);
+      _jpeg.close();
+    }
+
+    if (frameCount == 0 || !success) {
+      Serial.printf("[LCD-PLAY] Frame %u: %s (taille=%u bytes, dim=%dx%d, code=%d)\n",
+                    (unsigned)frameCount, success ? "OK" : "ECHEC", (unsigned)frameLen, w, h, result);
+    }
+
     frameCount++;
 
     memmove(frameBuf, frameBuf + eoiPos, bufLen - eoiPos);
@@ -366,5 +425,32 @@ void LCDManager::playMjpegFromSD(const char* path) {
 #else
   (void)path;
   Serial.println("[LCD-PLAY] LCD ou SD non disponible");
+#endif
+}
+
+bool LCDManager::displayJpegFrame(const uint8_t* jpegData, size_t jpegSize) {
+#if defined(HAS_LCD)
+  if (!_available || !_tft) {
+    return false;
+  }
+
+  // Décoder le JPEG avec JPEGDEC
+  int result = _jpeg.openRAM((uint8_t*)jpegData, (int)jpegSize, jpegDrawCallback);
+  if (result != 1) {
+    return false;
+  }
+
+  // Configurer le format de pixel en Little Endian pour LovyanGFX
+  _jpeg.setPixelType(1);
+
+  // Décoder et afficher
+  result = _jpeg.decode(0, 0, 0);
+  _jpeg.close();
+
+  return (result == 1);
+#else
+  (void)jpegData;
+  (void)jpegSize;
+  return false;
 #endif
 }

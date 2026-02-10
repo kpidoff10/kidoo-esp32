@@ -6,6 +6,7 @@
 
 #ifdef HAS_LCD
 class LGFX_Kidoo;
+#include <JPEGDEC.h>
 #endif
 
 /**
@@ -56,8 +57,16 @@ public:
   /** Test FPS : animation frame par frame (rectangle rebondissant) pendant ~3 s, affiche les FPS */
   static void testFPS();
 
-  /** Joue un .mjpeg vidéo depuis la SD (format serveur: 240x280, 60 frames, 10 fps, MJPEG) */
+  /** Joue un .mjpeg vidéo depuis la SD (format serveur: landscape 280x240, 10 fps, MJPEG, pivoté avec transpose=1) */
   static void playMjpegFromSD(const char* path);
+
+  /** Affiche une frame JPEG individuelle depuis un buffer mémoire */
+  static bool displayJpegFrame(const uint8_t* jpegData, size_t jpegSize);
+
+#ifdef HAS_LCD
+  /** Callback JPEGDEC pour dessiner les pixels décodés sur l'écran */
+  static int jpegDrawCallback(JPEGDRAW *pDraw);
+#endif
 
   // Couleurs courantes (format RGB565)
   static const uint16_t COLOR_BLACK = 0x0000;
@@ -69,6 +78,8 @@ public:
 private:
 #ifdef HAS_LCD
   static LGFX_Kidoo* _tft;
+  static int16_t _mjpegOffsetX;  // Offset horizontal pour centrer le MJPEG
+  static int16_t _mjpegOffsetY;  // Offset vertical pour centrer le MJPEG
 #endif
   static bool _initialized;
   static bool _available;

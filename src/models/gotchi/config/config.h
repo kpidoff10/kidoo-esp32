@@ -65,12 +65,12 @@
 #define TFT_SCK_PIN  12   // Pin 3 - SCL (SPI clock)
 #define TFT_BLK_PIN  7    // Pin 8 - Rétroéclairage (optionnel)
 
-// Panel physique ST7789 : 240x280. Rotation 1 = paysage (280x240 logique)
+// Panel physique ST7789 : 240x280. Rotation 1 = landscape (280x240 logique)
+// Les vidéos sont pivotées côté serveur (transpose=1) pour s'afficher en landscape
 #define TFT_WIDTH    240
 #define TFT_HEIGHT   280
-#define TFT_ROTATION 1  // Paysage
-// Offset écran : si l'image semble décalée ou avec des bandes noires, ajuste ces valeurs.
-// Exemples courants pour ST7789 240x280 : (0,0), (0,20), (20,0), (20,20)
+#define TFT_ROTATION 1  // Landscape 90° (280x240)
+// Offset écran : en landscape, l'offset Y=20 du portrait devient X=20
 #define TFT_OFFSET_X 0
 #define TFT_OFFSET_Y 20
 

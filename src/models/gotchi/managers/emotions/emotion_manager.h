@@ -2,57 +2,96 @@
 #define EMOTION_MANAGER_H
 
 #include <Arduino.h>
+#include <vector>
 
 /**
- * Gestionnaire d'émotions pour le Gotchi (Tamagotchi)
+ * Gestionnaire d'émotions basé sur des vidéos MJPEG et configuration JSON
  *
- * Affiche un visage type Tamagotchi sur le LCD avec une émotion courante.
- * Chaque émotion a sa propre fonction de dessin (yeux + bouche).
+ * Structure des fichiers:
+ * - /config.json : contient characterId
+ * - /characters/[characterId]/emotions/config.json : config des émotions
+ * - /characters/[characterId]/emotions/[emotionKey]/video.mjpeg : vidéo MJPEG
+ *
+ * Chaque émotion a 3 phases: intro, loop, exit
+ * Chaque phase a une timeline de sourceFrameIndex
  */
 
-enum class Emotion : uint8_t {
-  Happy = 0,   // Sourire
-  Sad,         // Triste
-  Hungry,      // Faim
-  Sleepy,      // Endormi
-  Sick,        // Malade
-  Angry,       // En colère
-  Neutral,     // Neutre
-  Count
+/** Structure d'une frame dans la timeline */
+struct TimelineFrame {
+  int sourceFrameIndex;  // Index de la frame source dans le MJPEG
+  // Note: actions ignorées pour le moment
+};
+
+/** Structure pour l'index d'une frame JPEG dans le fichier MJPEG */
+struct FrameIndex {
+  size_t fileOffset;  // Position dans le fichier (début SOI)
+  size_t frameSize;   // Taille de la frame (SOI à EOI inclus)
+};
+
+/** Structure d'une phase (intro, loop, ou exit) */
+struct EmotionPhase {
+  int frames;                            // Nombre de frames
+  std::vector<TimelineFrame> timeline;   // Timeline des frames
+};
+
+/** Structure d'une émotion chargée */
+struct EmotionData {
+  String key;            // Clé de l'émotion (OK, SLEEP, COLD, etc.)
+  String emotionId;      // UUID de l'émotion
+  int fps;               // FPS de l'animation
+  int width;             // Largeur de la vidéo
+  int height;            // Hauteur de la vidéo
+  int totalFrames;       // Nombre total de frames
+  float durationS;       // Durée totale en secondes
+  EmotionPhase intro;    // Phase d'intro
+  EmotionPhase loop;     // Phase de loop
+  EmotionPhase exit;     // Phase d'exit
+  String mjpegPath;      // Chemin vers le fichier video.mjpeg
+  std::vector<FrameIndex> frameOffsets;  // Index des frames pour accès direct
 };
 
 class EmotionManager {
 public:
-  /** Initialiser le gestionnaire (optionnel, garde l'émotion courante) */
+  /** Initialiser le gestionnaire */
   static bool init();
 
-  /** Définir l'émotion courante et redessiner le visage */
-  static void setEmotion(Emotion e);
+  /** Charger une émotion depuis la SD (par sa clé, ex: "OK", "SLEEP") */
+  static bool loadEmotion(const String& emotionKey);
 
-  /** Obtenir l'émotion courante */
-  static Emotion getEmotion();
+  /** Obtenir l'émotion actuellement chargée */
+  static const EmotionData* getCurrentEmotion();
 
-  /** Dessiner le visage complet pour l'émotion courante (fond noir + visage) */
-  static void drawFace();
+  /** Jouer la phase intro uniquement */
+  static void playIntro();
 
-  /** Dessiner le visage pour une émotion donnée (sans changer l'état) */
-  static void drawFace(Emotion e);
+  /** Jouer la phase loop uniquement */
+  static void playLoop();
 
-  // --- Fonctions par émotion (dessin yeux + bouche) ---
-  static void drawHappy();    // Sourire
-  static void drawSad();      // Triste
-  static void drawHungry();   // Faim
-  static void drawSleepy();   // Endormi (yeux fermés / demi)
-  static void drawSick();    // Malade
-  static void drawAngry();   // En colère
-  static void drawNeutral(); // Neutre
+  /** Jouer la phase exit uniquement */
+  static void playExit();
+
+  /** Jouer toute l'émotion (intro → loop x loopCount → exit) */
+  static void playAll(int loopCount = 1);
+
+  /** Vérifier si une émotion est chargée */
+  static bool isLoaded();
 
 private:
-  static Emotion _current;
-  static void drawEyes(int16_t cx, int16_t cy, int16_t eyeRadius, uint16_t color);
-  static void drawSmile(int16_t cx, int16_t mouthY, int16_t radius, uint16_t color);
-  static void drawFrown(int16_t cx, int16_t mouthY, int16_t radius, uint16_t color);
-  static void drawLineMouth(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
+  static String _characterId;         // ID du personnage (depuis /config.json)
+  static EmotionData _currentEmotion; // Émotion actuellement chargée
+  static bool _loaded;                // true si une émotion est chargée
+
+  /** Charger le characterId depuis /config.json */
+  static bool loadCharacterId();
+
+  /** Parser le JSON de config d'une émotion */
+  static bool parseEmotionConfig(const String& jsonPath, const String& emotionKey);
+
+  /** Construire l'index des frames du MJPEG pour accès direct */
+  static bool buildFrameIndex();
+
+  /** Jouer une phase donnée */
+  static void playPhase(const EmotionPhase& phase);
 };
 
 #endif // EMOTION_MANAGER_H

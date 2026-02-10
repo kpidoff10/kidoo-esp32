@@ -1,0 +1,309 @@
+[
+  {
+    "key": "OK",
+    "emotionId": "27787956-f07e-4449-8b99-d4b690a60f96",
+    "emotion_videos": [
+      {
+        "emotion_videoId": "27787956-f07e-4449-8b99-d4b690a60f96",
+        "fps": 14,
+        "width": 280,
+        "height": 240,
+        "totalFrames": 60,
+        "durationS": 6,
+        "phases": {
+          "intro": {
+            "frames": 24,
+            "timeline": [
+              {
+                "sourceFrameIndex": 0
+              },
+              {
+                "sourceFrameIndex": 1
+              },
+              {
+                "sourceFrameIndex": 2
+              },
+              {
+                "sourceFrameIndex": 3
+              },
+              {
+                "sourceFrameIndex": 4
+              },
+              {
+                "sourceFrameIndex": 5
+              },
+              {
+                "sourceFrameIndex": 6,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 7
+              },
+              {
+                "sourceFrameIndex": 8
+              },
+              {
+                "sourceFrameIndex": 9
+              },
+              {
+                "sourceFrameIndex": 10
+              },
+              {
+                "sourceFrameIndex": 11,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 12
+              },
+              {
+                "sourceFrameIndex": 13
+              },
+              {
+                "sourceFrameIndex": 14
+              },
+              {
+                "sourceFrameIndex": 15
+              },
+              {
+                "sourceFrameIndex": 16,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 17
+              },
+              {
+                "sourceFrameIndex": 18
+              },
+              {
+                "sourceFrameIndex": 19,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 20
+              },
+              {
+                "sourceFrameIndex": 21
+              },
+              {
+                "sourceFrameIndex": 22
+              },
+              {
+                "sourceFrameIndex": 23
+              }
+            ]
+          },
+          "loop": {
+            "frames": 26,
+            "timeline": [
+              {
+                "sourceFrameIndex": 24,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 25
+              },
+              {
+                "sourceFrameIndex": 26
+              },
+              {
+                "sourceFrameIndex": 27
+              },
+              {
+                "sourceFrameIndex": 28
+              },
+              {
+                "sourceFrameIndex": 29,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 30
+              },
+              {
+                "sourceFrameIndex": 31
+              },
+              {
+                "sourceFrameIndex": 32
+              },
+              {
+                "sourceFrameIndex": 33,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 34
+              },
+              {
+                "sourceFrameIndex": 35
+              },
+              {
+                "sourceFrameIndex": 36
+              },
+              {
+                "sourceFrameIndex": 37
+              },
+              {
+                "sourceFrameIndex": 38,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 39
+              },
+              {
+                "sourceFrameIndex": 40
+              },
+              {
+                "sourceFrameIndex": 41
+              },
+              {
+                "sourceFrameIndex": 42
+              },
+              {
+                "sourceFrameIndex": 43
+              },
+              {
+                "sourceFrameIndex": 44,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "short"
+                  },
+                  {
+                    "type": "led",
+                    "color": "#ff0000"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 45
+              },
+              {
+                "sourceFrameIndex": 46
+              },
+              {
+                "sourceFrameIndex": 47
+              },
+              {
+                "sourceFrameIndex": 48
+              },
+              {
+                "sourceFrameIndex": 49
+              }
+            ]
+          },
+          "exit": {
+            "frames": 10,
+            "timeline": [
+              {
+                "sourceFrameIndex": 50,
+                "actions": [
+                  {
+                    "type": "vibration",
+                    "effect": "saccade"
+                  }
+                ]
+              },
+              {
+                "sourceFrameIndex": 51
+              },
+              {
+                "sourceFrameIndex": 52
+              },
+              {
+                "sourceFrameIndex": 53
+              },
+              {
+                "sourceFrameIndex": 54
+              },
+              {
+                "sourceFrameIndex": 55
+              },
+              {
+                "sourceFrameIndex": 56
+              },
+              {
+                "sourceFrameIndex": 57
+              },
+              {
+                "sourceFrameIndex": 58
+              },
+              {
+                "sourceFrameIndex": 59
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

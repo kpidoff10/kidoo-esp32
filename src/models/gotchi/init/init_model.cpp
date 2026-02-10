@@ -40,8 +40,12 @@ bool InitModelGotchi::init() {
     LCDManager::setCursor(30, 200);
     LCDManager::println("Demarrage...");
     delay(1500);
-    EmotionManager::init();
-    EmotionManager::setEmotion(Emotion::Happy);  // Visage Tamagotchi qui sourit
+
+    // Initialiser le gestionnaire d'émotions
+    if (!EmotionManager::init()) {
+      Serial.println("[INIT-GOTCHI] Erreur: Impossible d'initialiser EmotionManager");
+      Serial.println("[INIT-GOTCHI] Verifiez que config.json existe sur la SD");
+    }
   }
 #endif
 
