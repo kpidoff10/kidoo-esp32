@@ -27,6 +27,14 @@
 #include "models/dream/managers/wakeup/wakeup_manager.h"
 #endif
 
+// Gestionnaire de vie (modèle Gotchi uniquement)
+#ifdef KIDOO_MODEL_GOTCHI
+#include "models/gotchi/managers/life/life_manager.h"
+#ifdef HAS_LCD
+#include "models/gotchi/managers/emotions/trigger_manager.h"
+#endif
+#endif
+
 // RTC pour synchronisation automatique lors de la connexion WiFi
 #ifdef HAS_RTC
 #include "models/common/managers/rtc/rtc_manager.h"
@@ -199,12 +207,22 @@ void loop() {
   #ifdef KIDOO_MODEL_DREAM
   ModelPubNubRoutes::checkTestBedtimeTimeout();
   ModelPubNubRoutes::checkTestWakeupTimeout();
-  
+
   // Mettre à jour le gestionnaire bedtime automatique
   BedtimeManager::update();
-  
+
   // Mettre à jour le gestionnaire wake-up automatique
   WakeupManager::update();
+  #endif
+
+  // Mettre à jour le gestionnaire de vie (modèle Gotchi uniquement)
+  #ifdef KIDOO_MODEL_GOTCHI
+  LifeManager::update();
+
+  // Mettre à jour le gestionnaire de triggers automatiques
+  #ifdef HAS_LCD
+  TriggerManager::update();
+  #endif
   #endif
   
   // ====================================================================

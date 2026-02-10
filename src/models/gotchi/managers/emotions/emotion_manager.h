@@ -38,6 +38,7 @@ struct EmotionPhase {
 struct EmotionData {
   String key;            // Clé de l'émotion (OK, SLEEP, COLD, etc.)
   String emotionId;      // UUID de l'émotion
+  String trigger;        // Trigger automatique (manual, hunger_low, eating_finished, etc.)
   int fps;               // FPS de l'animation
   int width;             // Largeur de la vidéo
   int height;            // Hauteur de la vidéo

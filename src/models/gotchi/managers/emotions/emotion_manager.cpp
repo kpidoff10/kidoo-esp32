@@ -136,6 +136,12 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
   // Extraire les données de l'émotion
   _currentEmotion.key = emotionKey;
   _currentEmotion.emotionId = emotionObj["emotionId"].as<String>();
+  _currentEmotion.trigger = emotionObj["trigger"].as<String>();
+
+  // Si trigger est vide, mettre "manual" par défaut
+  if (_currentEmotion.trigger.isEmpty()) {
+    _currentEmotion.trigger = "manual";
+  }
 
   // Les données de la vidéo sont dans emotion_videos[0]
   if (!emotionObj.containsKey("emotion_videos") || !emotionObj["emotion_videos"].is<JsonArray>()) {

@@ -42,6 +42,20 @@
 #define RTC_I2C_ADDRESS 0x68
 
 // ============================================
+// Configuration NFC (PN532 via I2C)
+// ============================================
+
+// I2C pins for NFC PN532 module (ESP32-S3)
+// Module 4 pins: SDA, SCL, VCC (3.3V), GND
+// NFC shares the I2C bus with RTC (same pins)
+
+#define NFC_SDA_PIN 8       // GPIO 8 (I2C SDA - shared with RTC)
+#define NFC_SCL_PIN 9       // GPIO 9 (I2C SCL - shared with RTC)
+
+// I2C address of PN532 (usually 0x24 in I2C mode)
+#define NFC_I2C_ADDRESS 0x24
+
+// ============================================
 // Configuration Bouton BLE (Activation BLE)
 // ============================================
 
@@ -83,7 +97,57 @@
 #define HAS_LED true
 #define HAS_LCD true
 #define HAS_BLE true
+#define HAS_NFC true
 #define HAS_PUBNUB true
 #define HAS_RTC true
+
+// ============================================
+// Configuration du système de vie (Tamagotchi)
+// ============================================
+
+// --- Limites des stats ---
+#define STATS_MIN 0
+#define STATS_MAX 100
+
+// --- Initial stats ---
+#define STATS_HUNGER_INITIAL 100      // Hunger initial value (100 = not hungry)
+#define STATS_HAPPINESS_INITIAL 100   // Happiness initial value
+#define STATS_HEALTH_INITIAL 100      // Health initial value
+#define STATS_FATIGUE_INITIAL 0       // Fatigue initial value (0 = not tired)
+#define STATS_HYGIENE_INITIAL 100     // Hygiene initial value
+
+// --- Stats decline rates (points lost every 30 minutes) ---
+#define STATS_HUNGER_DECLINE_RATE 2     // -2 every 30min
+#define STATS_HAPPINESS_DECLINE_RATE 1  // -1 every 30min
+#define STATS_HEALTH_DECLINE_RATE 0     // Health doesn't decline automatically (affected by other stats)
+#define STATS_FATIGUE_INCREASE_RATE 2   // +2 every 30min (fatigue increases)
+#define STATS_HYGIENE_DECLINE_RATE 1    // -1 every 30min
+
+// --- Intervalle de mise à jour des stats ---
+#define STATS_UPDATE_INTERVAL_MS 1800000  // 30 minutes en millisecondes
+
+// ============================================
+// Configuration des actions NFC (objets)
+// ============================================
+
+// --- IDs des objets NFC ---
+#define NFC_ITEM_BOTTLE "bottle"      // Biberon
+#define NFC_ITEM_SNACK "snack"        // Snack
+#define NFC_ITEM_WATER "water"        // Eau
+
+// --- Bottle effects ---
+#define NFC_BOTTLE_HUNGER_BONUS 40      // +40 hunger
+#define NFC_BOTTLE_HAPPINESS_BONUS 5    // +5 happiness
+#define NFC_BOTTLE_COOLDOWN_MS 14400000  // 4 hours in milliseconds
+
+// --- Snack effects ---
+#define NFC_SNACK_HUNGER_BONUS 15       // +15 hunger
+#define NFC_SNACK_HAPPINESS_BONUS 10    // +10 happiness
+#define NFC_SNACK_COOLDOWN_MS 7200000    // 2 hours in milliseconds
+
+// --- Water effects ---
+#define NFC_WATER_HUNGER_BONUS 10       // +10 hunger (hydration)
+#define NFC_WATER_HEALTH_BONUS 5        // +5 health
+#define NFC_WATER_COOLDOWN_MS 7200000    // 2 hours in milliseconds
 
 #endif // MODEL_GOTCHI_CONFIG_H
