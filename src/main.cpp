@@ -30,6 +30,10 @@
 // Gestionnaire de vie (modèle Gotchi uniquement)
 #ifdef KIDOO_MODEL_GOTCHI
 #include "models/gotchi/managers/life/life_manager.h"
+#include "models/gotchi/managers/nfc/gotchi_nfc_handler.h"
+#ifdef HAS_NFC
+#include "models/common/managers/nfc/nfc_manager.h"
+#endif
 #ifdef HAS_LCD
 #include "models/gotchi/managers/emotions/emotion_manager.h"
 #include "models/gotchi/managers/emotions/trigger_manager.h"
@@ -218,6 +222,12 @@ void loop() {
 
   // Mettre à jour le gestionnaire de vie (modèle Gotchi uniquement)
   #ifdef KIDOO_MODEL_GOTCHI
+  // Traiter les événements NFC dans la loop principale (évite accès SD concurrent → corruption carte / écran figé)
+  #ifdef HAS_NFC
+  NFCManager::processTagEvents();
+  #endif
+  // Avant LifeManager : détecter le retrait du tag NFC pour arrêter l'effet biberon tout de suite
+  GotchiNFCHandler::update();
   LifeManager::update();
 
   // Mettre à jour le gestionnaire d'émotions (système asynchrone)

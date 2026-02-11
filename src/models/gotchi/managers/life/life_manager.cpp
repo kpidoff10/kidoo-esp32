@@ -2,11 +2,15 @@
 #include "../../config/config.h"
 #include "../../config/constants.h"
 #include "../../../common/managers/sd/sd_manager.h"
+#if defined(HAS_NFC) && HAS_NFC
+#include "../../../common/managers/nfc/nfc_manager.h"
+#endif
 #ifdef HAS_LCD
 #include "../emotions/trigger_manager.h"
 #endif
 #include <ArduinoJson.h>
 #include <SD.h>
+#include <cstring>
 
 // Static variables initialization
 bool LifeManager::initialized = false;
@@ -17,7 +21,7 @@ GotchiStats LifeManager::stats = {
   STATS_FATIGUE_INITIAL,
   STATS_HYGIENE_INITIAL
 };
-ActionCooldowns LifeManager::cooldowns = {0, 0, 0, 0, 0, 0};
+ActionCooldowns LifeManager::cooldowns = {0, 0, 0, 0, 0, 0, 0};
 unsigned long LifeManager::lastUpdateTime = 0;
 ActiveProgressiveEffect LifeManager::progressiveEffect = {"", 0, 0, 0, 0, 0, 0, false};
 
@@ -28,19 +32,31 @@ ActiveProgressiveEffect LifeManager::progressiveEffect = {"", 0, 0, 0, 0, 0, 0, 
 bool LifeManager::init() {
   Serial.println("[LifeManager] Initialisation...");
 
-  // Charger l'état depuis la SD si disponible
-  if (!loadState()) {
-    Serial.println("[LifeManager] Aucun état sauvegardé trouvé, utilisation des valeurs par défaut");
-    resetStats();
+  // Charger l'état depuis la SD (retry une fois si la SD a pu être occupée par EmotionManager juste avant)
+  bool loaded = loadState();
+  if (!loaded && SDManager::isAvailable()) {
+    delay(400);
+    loaded = loadState();
+  }
+
+  if (!loaded) {
+    if (!SDManager::isAvailable()) {
+      Serial.println("[LifeManager] SD non disponible - valeurs par défaut");
+    } else if (!SD.exists("/gotchi/life_state.json")) {
+      Serial.println("[LifeManager] Aucun fichier life_state.json - création avec valeurs par défaut");
+      resetStats(true);
+    } else {
+      Serial.println("[LifeManager] Lecture du fichier échouée - valeurs par défaut en mémoire (fichier non écrasé)");
+      resetStats(false);
+    }
+  } else {
+    Serial.printf("[LifeManager] État restauré depuis /gotchi/life_state.json - Faim: %d, Bonheur: %d, Santé: %d, Fatigue: %d, Propreté: %d\n",
+                  stats.hunger, stats.happiness, stats.health, stats.fatigue, stats.hygiene);
   }
 
   lastUpdateTime = millis();
   initialized = true;
-
   Serial.println("[LifeManager] Initialisation réussie");
-  Serial.printf("[LifeManager] Stats initiales - Faim: %d, Bonheur: %d, Santé: %d, Fatigue: %d, Propreté: %d\n",
-                stats.hunger, stats.happiness, stats.health, stats.fatigue, stats.hygiene);
-
   return true;
 }
 
@@ -87,21 +103,25 @@ bool LifeManager::applyAction(const String& actionId) {
     return false;
   }
 
+  // 4 variants = 4 itemIds (snack = alias serial → cake)
+  String effectId = (actionId == "snack") ? "cake" : actionId;
+
   // Démarrer l'effet progressif
-  bool applied = startProgressiveEffect(actionId);
+  bool applied = startProgressiveEffect(effectId);
 
   if (!applied) {
     Serial.printf("[LifeManager] Action inconnue: %s\n", actionId.c_str());
     return false;
   }
 
-  // Enregistrer le timestamp du cooldown
   if (actionId == NFC_ITEM_BOTTLE) {
     cooldowns.lastBottle = millis();
-  } else if (actionId == NFC_ITEM_SNACK) {
-    cooldowns.lastSnack = millis();
-  } else if (actionId == NFC_ITEM_WATER) {
-    cooldowns.lastWater = millis();
+  } else if (actionId == NFC_ITEM_CAKE || actionId == "snack") {
+    cooldowns.lastCake = millis();
+  } else if (actionId == NFC_ITEM_CANDY) {
+    cooldowns.lastCandy = millis();
+  } else if (actionId == NFC_ITEM_APPLE) {
+    cooldowns.lastApple = millis();
   }
 
   // Sauvegarder l'état après le démarrage de l'action
@@ -112,13 +132,10 @@ bool LifeManager::applyAction(const String& actionId) {
 }
 
 unsigned long LifeManager::getLastActionTime(const String& actionId) {
-  if (actionId == NFC_ITEM_BOTTLE) {
-    return cooldowns.lastBottle;
-  } else if (actionId == NFC_ITEM_SNACK) {
-    return cooldowns.lastSnack;
-  } else if (actionId == NFC_ITEM_WATER) {
-    return cooldowns.lastWater;
-  }
+  if (actionId == NFC_ITEM_BOTTLE) return cooldowns.lastBottle;
+  if (actionId == NFC_ITEM_CAKE || actionId == "snack") return cooldowns.lastCake;
+  if (actionId == NFC_ITEM_CANDY) return cooldowns.lastCandy;
+  if (actionId == NFC_ITEM_APPLE) return cooldowns.lastApple;
   return 0;
 }
 
@@ -168,7 +185,14 @@ bool LifeManager::saveState() {
 
   // Créer le dossier /gotchi s'il n'existe pas
   if (!SD.exists("/gotchi")) {
-    SD.mkdir("/gotchi");
+    if (!SD.mkdir("/gotchi")) {
+      Serial.println("[LifeManager] Erreur: Impossible de creer le dossier /gotchi sur la SD");
+      return false;
+    }
+  }
+  if (!SD.exists("/gotchi")) {
+    Serial.println("[LifeManager] Erreur: Dossier /gotchi absent apres mkdir (carte en lecture seule?)");
+    return false;
   }
 
   // Créer un document JSON
@@ -183,8 +207,9 @@ bool LifeManager::saveState() {
 
   // Ajouter les cooldowns
   doc["lastBottle"] = (unsigned long long)cooldowns.lastBottle;
-  doc["lastSnack"] = (unsigned long long)cooldowns.lastSnack;
-  doc["lastWater"] = (unsigned long long)cooldowns.lastWater;
+  doc["lastCake"] = (unsigned long long)cooldowns.lastCake;
+  doc["lastCandy"] = (unsigned long long)cooldowns.lastCandy;
+  doc["lastApple"] = (unsigned long long)cooldowns.lastApple;
 
   // Ajouter le timestamp de dernière mise à jour
   doc["lastUpdateTime"] = (unsigned long long)lastUpdateTime;
@@ -204,7 +229,7 @@ bool LifeManager::saveState() {
   // Ouvrir le fichier en écriture
   File file = SD.open("/gotchi/life_state.json", FILE_WRITE);
   if (!file) {
-    Serial.println("[LifeManager] Erreur: Impossible d'ouvrir le fichier pour écriture");
+    Serial.println("[LifeManager] Erreur: Impossible d'ouvrir /gotchi/life_state.json en ecriture (carte pleine ou en lecture seule?)");
     return false;
   }
 
@@ -258,8 +283,9 @@ bool LifeManager::loadState() {
 
   // Charger les cooldowns
   cooldowns.lastBottle = doc["lastBottle"] | 0;
-  cooldowns.lastSnack = doc["lastSnack"] | 0;
-  cooldowns.lastWater = doc["lastWater"] | 0;
+  cooldowns.lastCake = doc["lastCake"] | 0;
+  cooldowns.lastCandy = doc["lastCandy"] | 0;
+  cooldowns.lastApple = doc["lastApple"] | doc["lastWater"] | 0;  // lastWater = rétrocompat
 
   // Charger le timestamp de dernière mise à jour
   lastUpdateTime = doc["lastUpdateTime"] | millis();
@@ -281,11 +307,10 @@ bool LifeManager::loadState() {
                   progressiveEffect.itemId, progressiveEffect.remainingTicks);
   }
 
-  Serial.println("[LifeManager] État chargé avec succès");
   return true;
 }
 
-void LifeManager::resetStats() {
+void LifeManager::resetStats(bool saveToFile) {
   Serial.println("[LifeManager] Réinitialisation des stats");
 
   stats.hunger = STATS_HUNGER_INITIAL;
@@ -295,8 +320,9 @@ void LifeManager::resetStats() {
   stats.hygiene = STATS_HYGIENE_INITIAL;
 
   cooldowns.lastBottle = 0;
-  cooldowns.lastSnack = 0;
-  cooldowns.lastWater = 0;
+  cooldowns.lastCake = 0;
+  cooldowns.lastCandy = 0;
+  cooldowns.lastApple = 0;
   cooldowns.lastToothbrush = 0;
   cooldowns.lastSoap = 0;
   cooldowns.lastBed = 0;
@@ -308,8 +334,9 @@ void LifeManager::resetStats() {
 
   lastUpdateTime = millis();
 
-  // Sauvegarder l'état réinitialisé
-  saveState();
+  if (saveToFile) {
+    saveState();
+  }
 }
 
 bool LifeManager::adjustStat(const String& statName, int delta) {
@@ -357,79 +384,49 @@ bool LifeManager::adjustStat(const String& statName, int delta) {
 // ============================================
 
 void LifeManager::declineStats() {
-  // Phase 1 : Uniquement le déclin de la faim
+  // Faim : déclin de base
   int newFaim = (int)stats.hunger - STATS_HUNGER_DECLINE_RATE;
   stats.hunger = clampStat(newFaim);
 
-  // TODO Phase 2+ : Ajouter le déclin des autres stats
-  // int newBonheur = (int)stats.happiness - STATS_BONHEUR_DECLINE_RATE;
-  // stats.happiness = clampStat(newBonheur);
+  // Humeur (bonheur) : déclin de base + bonus si reste longtemps sans manger (faim basse)
+  int happinessDecay = STATS_HAPPINESS_DECLINE_RATE;
+  if (stats.hunger < STATS_HUNGER_THRESHOLD_CRITICAL) {
+    happinessDecay += STATS_HAPPINESS_DECLINE_BONUS_CRITICAL;
+  } else if (stats.hunger < STATS_HUNGER_THRESHOLD_LOW) {
+    happinessDecay += STATS_HAPPINESS_DECLINE_BONUS_LOW;
+  }
+  int newBonheur = (int)stats.happiness - happinessDecay;
+  stats.happiness = clampStat(newBonheur);
 
-  // int newFatigue = (int)stats.fatigue + STATS_FATIGUE_INCREASE_RATE;
-  // stats.fatigue = clampStat(newFatigue);
-
-  // int newProprete = (int)stats.hygiene - STATS_PROPRETE_DECLINE_RATE;
-  // stats.hygiene = clampStat(newProprete);
+  // Propreté (hygiène) : déclin de base + bonus si reste longtemps sans manger
+  int hygieneDecay = STATS_HYGIENE_DECLINE_RATE;
+  if (stats.hunger < STATS_HUNGER_THRESHOLD_CRITICAL) {
+    hygieneDecay += STATS_HYGIENE_DECLINE_BONUS_CRITICAL;
+  } else if (stats.hunger < STATS_HUNGER_THRESHOLD_LOW) {
+    hygieneDecay += STATS_HYGIENE_DECLINE_BONUS_LOW;
+  }
+  int newProprete = (int)stats.hygiene - hygieneDecay;
+  stats.hygiene = clampStat(newProprete);
 }
 
 bool LifeManager::applyBottle() {
-  Serial.println("[LifeManager] Application du biberon");
-
-  // Augmenter la faim
-  int newFaim = (int)stats.hunger + NFC_BOTTLE_HUNGER_BONUS;
-  stats.hunger = clampStat(newFaim);
-
-  // Augmenter le bonheur
-  int newBonheur = (int)stats.happiness + NFC_BOTTLE_HAPPINESS_BONUS;
-  stats.happiness = clampStat(newBonheur);
-
-  // Enregistrer le timestamp
-  cooldowns.lastBottle = millis();
-
-  Serial.printf("[LifeManager] Biberon appliqué - Faim: +%d, Bonheur: +%d\n",
-                NFC_BOTTLE_HUNGER_BONUS, NFC_BOTTLE_HAPPINESS_BONUS);
-
-  return true;
+  return applyAction(NFC_ITEM_BOTTLE);
 }
 
 bool LifeManager::applySnack() {
-  Serial.println("[LifeManager] Application du snack");
-
-  // Augmenter la faim
-  int newFaim = (int)stats.hunger + NFC_SNACK_HUNGER_BONUS;
-  stats.hunger = clampStat(newFaim);
-
-  // Augmenter le bonheur
-  int newBonheur = (int)stats.happiness + NFC_SNACK_HAPPINESS_BONUS;
-  stats.happiness = clampStat(newBonheur);
-
-  // Enregistrer le timestamp
-  cooldowns.lastSnack = millis();
-
-  Serial.printf("[LifeManager] Snack appliqué - Faim: +%d, Bonheur: +%d\n",
-                NFC_SNACK_HUNGER_BONUS, NFC_SNACK_HAPPINESS_BONUS);
-
-  return true;
+  return applyAction(NFC_ITEM_CAKE);  // snack serial = gâteau
 }
 
-bool LifeManager::applyWater() {
-  Serial.println("[LifeManager] Application de l'eau");
+bool LifeManager::applyApple() {
+  return applyAction(NFC_ITEM_APPLE);
+}
 
-  // Augmenter la faim (hydratation)
-  int newFaim = (int)stats.hunger + NFC_WATER_HUNGER_BONUS;
-  stats.hunger = clampStat(newFaim);
-
-  // Augmenter la santé
-  int newSante = (int)stats.health + NFC_WATER_HEALTH_BONUS;
-  stats.health = clampStat(newSante);
-
-  // Enregistrer le timestamp
-  cooldowns.lastWater = millis();
-
-  Serial.printf("[LifeManager] Eau appliquée - Faim: +%d, Santé: +%d\n",
-                NFC_WATER_HUNGER_BONUS, NFC_WATER_HEALTH_BONUS);
-
-  return true;
+bool LifeManager::applyFirstAvailableFood() {
+  if (applyBottle()) return true;
+  if (applySnack()) return true;   // cake
+  if (applyApple()) return true;
+  if (applyAction(NFC_ITEM_CANDY)) return true;
+  return false;
 }
 
 uint8_t LifeManager::clampStat(int value) {
@@ -442,13 +439,10 @@ uint8_t LifeManager::clampStat(int value) {
 }
 
 unsigned long LifeManager::getCooldownDuration(const String& actionId) {
-  if (actionId == NFC_ITEM_BOTTLE) {
-    return NFC_BOTTLE_COOLDOWN_MS;
-  } else if (actionId == NFC_ITEM_SNACK) {
-    return NFC_SNACK_COOLDOWN_MS;
-  } else if (actionId == NFC_ITEM_WATER) {
-    return NFC_WATER_COOLDOWN_MS;
-  }
+  if (actionId == NFC_ITEM_BOTTLE) return NFC_BOTTLE_COOLDOWN_MS;
+  if (actionId == NFC_ITEM_CAKE || actionId == "snack") return NFC_CAKE_COOLDOWN_MS;
+  if (actionId == NFC_ITEM_CANDY) return NFC_CANDY_COOLDOWN_MS;
+  if (actionId == NFC_ITEM_APPLE) return NFC_APPLE_COOLDOWN_MS;
   return 0;
 }
 
@@ -473,16 +467,28 @@ bool LifeManager::startProgressiveEffect(const String& actionId) {
   progressiveEffect.tickHappiness = effect->tickHappiness;
   progressiveEffect.tickHealth = effect->tickHealth;
   progressiveEffect.tickInterval = effect->tickInterval;
-  progressiveEffect.remainingTicks = effect->totalTicks;
+  // totalTicks == 0 (biberon) = illimité : on utilise 255 comme sentinelle, arrêt à faim 100% ou stopProgressiveEffect()
+  progressiveEffect.remainingTicks = (effect->totalTicks == 0) ? 255 : effect->totalTicks;
   progressiveEffect.lastTickTime = millis();
   progressiveEffect.active = true;
 
-  Serial.printf("[LifeManager] Effet progressif démarré: %s (%d ticks, intervalle %lu ms)\n",
-                progressiveEffect.itemId, progressiveEffect.remainingTicks, progressiveEffect.tickInterval);
+  if (effect->totalTicks == 0) {
+    Serial.printf("[LifeManager] Effet progressif démarré: %s (illimité, intervalle %lu ms)\n",
+                  progressiveEffect.itemId, progressiveEffect.tickInterval);
+  } else {
+    Serial.printf("[LifeManager] Effet progressif démarré: %s (%d ticks, intervalle %lu ms)\n",
+                  progressiveEffect.itemId, progressiveEffect.remainingTicks, progressiveEffect.tickInterval);
+  }
 
-  // Déclencher le trigger "eating_started"
+  // Déclencher le trigger "eating" avec le variant correspondant à l'aliment (bottle=1, cake=2, apple=3, candy=4)
 #ifdef HAS_LCD
-  TriggerManager::checkTrigger("eating_started");
+  int variant = 1;
+  if (actionId == "bottle") variant = 1;
+  else if (actionId == "cake" || actionId == "snack") variant = 2;
+  else if (actionId == "apple") variant = 3;
+  else if (actionId == "candy") variant = 4;
+  TriggerManager::setRequestedVariant(variant);
+  TriggerManager::checkTrigger("eating");
 #endif
 
   // Appliquer le premier tick immédiatement
@@ -496,6 +502,14 @@ void LifeManager::updateProgressiveEffect() {
     return;
   }
 
+#if defined(HAS_NFC) && HAS_NFC
+  // Biberon : arrêter tout de suite si le tag NFC a été retiré (ne pas attendre GotchiNFCHandler::update)
+  if (strcmp(progressiveEffect.itemId, "bottle") == 0 && NFCManager::isAvailable() && !NFCManager::isTagPresent()) {
+    stopProgressiveEffect("bottle");
+    return;
+  }
+#endif
+
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - progressiveEffect.lastTickTime;
 
@@ -505,8 +519,25 @@ void LifeManager::updateProgressiveEffect() {
   }
 }
 
+void LifeManager::stopProgressiveEffect(const String& actionId) {
+  if (!progressiveEffect.active) {
+    return;
+  }
+  if (strcmp(progressiveEffect.itemId, actionId.c_str()) != 0) {
+    return;
+  }
+  Serial.printf("[LifeManager] Effet progressif '%s' arrêté (ex. tag retiré)\n", progressiveEffect.itemId);
+  progressiveEffect.active = false;
+  progressiveEffect.remainingTicks = 0;
+  saveState();
+}
+
 void LifeManager::applyProgressiveTick() {
-  if (!progressiveEffect.active || progressiveEffect.remainingTicks == 0) {
+  if (!progressiveEffect.active) {
+    return;
+  }
+  // remainingTicks == 0 avec effet actif = fin normale (ou déjà arrêté)
+  if (progressiveEffect.remainingTicks == 0) {
     return;
   }
 
@@ -520,26 +551,34 @@ void LifeManager::applyProgressiveTick() {
   int newHealth = (int)stats.health + progressiveEffect.tickHealth;
   stats.health = clampStat(newHealth);
 
-  progressiveEffect.remainingTicks--;
+  // Biberon (illimité) : remainingTicks == 255, on ne décrémente pas ; arrêt à faim 100%
+  bool unlimitedBottle = (strcmp(progressiveEffect.itemId, "bottle") == 0 && progressiveEffect.remainingTicks == 255);
+  if (!unlimitedBottle) {
+    progressiveEffect.remainingTicks--;
+  }
 
-  Serial.printf("[LifeManager] Tick progressif appliqué: +%d hunger, +%d happiness, +%d health (ticks restants: %d)\n",
-                progressiveEffect.tickHunger, progressiveEffect.tickHappiness, progressiveEffect.tickHealth,
-                progressiveEffect.remainingTicks);
+  if (unlimitedBottle) {
+    Serial.printf("[LifeManager] Tick progressif appliqué: +%d hunger, +%d happiness, +%d health (biberon illimité)\n",
+                  progressiveEffect.tickHunger, progressiveEffect.tickHappiness, progressiveEffect.tickHealth);
+  } else {
+    Serial.printf("[LifeManager] Tick progressif appliqué: +%d hunger, +%d happiness, +%d health (ticks restants: %d)\n",
+                  progressiveEffect.tickHunger, progressiveEffect.tickHappiness, progressiveEffect.tickHealth,
+                  progressiveEffect.remainingTicks);
+  }
 
-  // Si tous les ticks sont terminés, désactiver l'effet
-  if (progressiveEffect.remainingTicks == 0) {
+  // Fin : ticks épuisés OU biberon et faim à 100%
+  bool finished = (progressiveEffect.remainingTicks == 0) ||
+                  (unlimitedBottle && stats.hunger >= 100);
+
+  if (finished) {
+    if (unlimitedBottle && stats.hunger >= 100) {
+      progressiveEffect.remainingTicks = 0;
+    }
     Serial.printf("[LifeManager] Effet progressif '%s' terminé\n", progressiveEffect.itemId);
 
-    // Déclencher le trigger "eating_finished" si le hunger est proche de 100%
-    if (stats.hunger >= 90) {
-#ifdef HAS_LCD
-      TriggerManager::checkTrigger("eating_finished");
-#endif
-    }
+    // Fin de manger : pas de second trigger, une seule animation "Mange" au début
 
     progressiveEffect.active = false;
-
-    // Sauvegarder l'état final
     saveState();
   }
 }

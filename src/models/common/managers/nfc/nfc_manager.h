@@ -68,6 +68,13 @@ public:
   static bool isAutoDetectEnabled();
   
   /**
+   * Traiter les événements tag en attente (à appeler depuis la boucle principale).
+   * Exécute le callback pour chaque tag détecté dans le contexte du thread appelant,
+   * évitant ainsi les accès SD/écran concurrents (corruption carte SD, écran figé).
+   */
+  static void processTagEvents();
+
+  /**
    * Vérifier si un tag a été détecté récemment
    * @return true si un tag est présent
    */
@@ -117,11 +124,13 @@ public:
 
   /**
    * Écrire une clé sur un tag NFC (wrapper simplifié)
-   * Détecte automatiquement le tag et écrit la clé sur le bloc 4
-   * @param key Clé à écrire (sera tronquée à 16 caractères)
+   * Si variantCode est 1-4, écrit uniquement cet octet en bloc 4 (reconnaissance fiable).
+   * Sinon écrit la chaîne key (tronquée à 16 caractères).
+   * @param key Clé pour affichage / fallback texte
+   * @param variantCode 1=Biberon, 2=Gâteau, 3=Pomme, 4=Bonbon (0 ou <0 = écrire le texte key)
    * @return true si l'écriture a réussi, false sinon
    */
-  static bool writeTag(const String& key);
+  static bool writeTag(const String& key, int variantCode = 0);
 
 private:
   /**
@@ -154,6 +163,14 @@ private:
   
   // Callback
   static NFCTagCallback tagCallback;
+
+  // File d'attente pour reporter le callback dans la loop principale (éviter accès SD concurrent)
+  struct TagEvent {
+    uint8_t uid[10];
+    uint8_t uidLength;
+  };
+  static QueueHandle_t tagEventQueue;
+  static const size_t TAG_EVENT_QUEUE_LEN = 2;
 };
 
 #endif // NFC_MANAGER_H

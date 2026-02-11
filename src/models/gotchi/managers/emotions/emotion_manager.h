@@ -78,6 +78,8 @@ struct EmotionRequest {
   String emotionKey;       // Clé de l'émotion à charger
   int loopCount;           // Nombre de boucles à effectuer
   EmotionPriority priority; // Priorité de la requête
+  int variant;             // Variant (1-4) pour key+variant ; 0 = premier qui matche la key
+  String requestedTrigger; // Trigger qui a déclenché la requête (ex. hunger_medium) ; vide si manuel/NFC
 };
 
 /** Contexte de lecture (état interne de la state machine) */
@@ -89,6 +91,7 @@ struct PlaybackContext {
   unsigned long lastFrameTime;  // Timestamp (millis) de la dernière frame affichée
   uint32_t frameDurationMs;     // Durée par frame en ms (1000/fps)
   bool interruptRequested;      // Flag d'interruption (HIGH priority)
+  bool frameErrorOccurred;      // Première erreur seek/read frame → log une fois, puis EXIT
   File mjpegFile;               // Handle du fichier MJPEG ouvert
   bool fileOpen;                // true si mjpegFile est ouvert
 };
@@ -105,9 +108,12 @@ public:
   /** Mettre à jour la state machine (à appeler dans loop()). Non-bloquant. */
   static void update();
 
-  /** Demander la lecture d'une émotion (mise en queue). Non-bloquant. */
+  /** Demander la lecture d'une émotion (mise en queue). Non-bloquant.
+   * @param variant Variant (1-4) pour sélectionner l'animation key+variant ; 0 = premier qui matche la key
+   * @param requestedTrigger Trigger qui a déclenché (ex. hunger_medium) ; utilisé pour le log, vide si manuel/NFC */
   static bool requestEmotion(const String& emotionKey, int loopCount = 1,
-                             EmotionPriority priority = EMOTION_PRIORITY_NORMAL);
+                             EmotionPriority priority = EMOTION_PRIORITY_NORMAL, int variant = 0,
+                             const String& requestedTrigger = "");
 
   /** Annuler toutes les animations (vide queue, interruption immédiate → IDLE) */
   static void cancelAll();
@@ -121,12 +127,21 @@ public:
   /** Obtenir la clé de l'émotion en cours de lecture (vide si IDLE) */
   static String getCurrentPlayingKey();
 
+  /** Callback appelé à chaque fin d'itération de loop : retourne true pour continuer, false pour passer en EXIT.
+   *  Utilisé ex. pour le biberon : boucle tant que (faim OU tag NFC présent). */
+  typedef bool (*LoopContinueConditionFn)();
+  static void setLoopContinueCondition(LoopContinueConditionFn fn);
+
+  /** Forcer la loop en cours à passer en EXIT au prochain update() (ex. tag NFC retiré → jouer la phase exit). */
+  static void requestExitLoop();
+
   //================================================================
   // API LEGACY (Compatibilité debug/serial)
   //================================================================
 
-  /** Charger une émotion pour inspection (métadonnées uniquement, ne joue pas) */
-  static bool loadEmotion(const String& emotionKey);
+  /** Charger une émotion pour inspection (métadonnées uniquement, ne joue pas).
+   * @param variant Variant (1-4) pour key+variant ; 0 = premier qui matche la key */
+  static bool loadEmotion(const String& emotionKey, int variant = 0);
 
   /** Obtenir l'émotion actuellement chargée */
   static const EmotionData* getCurrentEmotion();
@@ -157,6 +172,9 @@ private:
   static int _queueTail;   // Index du prochain slot libre
   static int _queueCount;  // Nombre d'éléments dans la queue
 
+  /** Si non null, appelé à chaque fin d'itération de loop ; si retourne false → EXIT. */
+  static LoopContinueConditionFn _loopContinueCondition;
+
   //================================================================
   // Méthodes privées
   //================================================================
@@ -164,8 +182,9 @@ private:
   /** Charger le characterId depuis /config.json */
   static bool loadCharacterId();
 
-  /** Parser le JSON de config d'une émotion */
-  static bool parseEmotionConfig(const String& jsonPath, const String& emotionKey);
+  /** Parser le JSON de config d'une émotion (key + variant optionnel).
+   * @param silentIfNotFound Si true, ne pas imprimer en Serial quand la clé est absente (pour fallback eating→FOOD). */
+  static bool parseEmotionConfig(const String& jsonPath, const String& emotionKey, int requestedVariant = 0, bool silentIfNotFound = false);
 
   /** Construire l'index des frames du MJPEG pour accès direct */
   static bool buildFrameIndex();

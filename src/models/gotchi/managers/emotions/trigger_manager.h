@@ -74,13 +74,27 @@ public:
    */
   static int getRequestedVariant();
 
+  /**
+   * Définir le variant pour le prochain trigger "eating" (ex. depuis LifeManager : bottle=1, cake=2, apple=3, candy=4)
+   */
+  static void setRequestedVariant(int variant);
+
+  /**
+   * true si le dernier trigger était faim (hunger_critical, hunger_low, hunger_medium) :
+   * la NFC doit accepter n'importe quel badge aliment.
+   */
+  static bool isAcceptAnyFoodTrigger();
+
 private:
   static bool _initialized;
   static bool _enabled;
   static unsigned long _lastCheckTime;
   static unsigned long _lastTriggerTime;
+  static unsigned long _lastIdleOkTime;   // Dernière fois qu'on a joué une émotion OK (attente)
+  static unsigned long _nextIdleOkDelayMs; // Délai aléatoire (ms) avant la prochaine OK
   static String _lastActiveTrigger;
   static int _requestedVariant;  // Variant demandé par le dernier trigger (1-4)
+  static int _idleOkCountSinceLastDemand;  // Nombre d'OK jouées depuis la dernière "demande" (faim, etc.)
 
   // Map: trigger name → list of emotions
   static std::map<String, std::vector<IndexedEmotion>> _triggerIndex;
@@ -101,8 +115,9 @@ private:
   /**
    * Activer un trigger : sélectionner une émotion aléatoire et la jouer
    * @param triggerName Nom du trigger
+   * @return true si une émotion a été demandée, false si skip (ex: cooldown)
    */
-  static void activateTrigger(const String& triggerName);
+  static bool activateTrigger(const String& triggerName);
 
   /**
    * Sélectionner aléatoirement une émotion parmi celles avec un trigger donné
@@ -116,6 +131,9 @@ private:
    * @return true si on peut déclencher une nouvelle animation, false sinon
    */
   static bool isCooldownElapsed();
+
+  /** true si le trigger est une "demande" (faim, santé, etc.) qui doit être espacée par des OK */
+  static bool isDemandTrigger(const String& triggerName);
 };
 
 #endif // TRIGGER_MANAGER_H

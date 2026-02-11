@@ -118,10 +118,19 @@
 
 // --- Stats decline rates (points lost every 30 minutes) ---
 #define STATS_HUNGER_DECLINE_RATE 2     // -2 every 30min
-#define STATS_HAPPINESS_DECLINE_RATE 1  // -1 every 30min
+#define STATS_HAPPINESS_DECLINE_RATE 1  // -1 every 30min (base)
 #define STATS_HEALTH_DECLINE_RATE 0     // Health doesn't decline automatically (affected by other stats)
 #define STATS_FATIGUE_INCREASE_RATE 2   // +2 every 30min (fatigue increases)
-#define STATS_HYGIENE_DECLINE_RATE 1    // -1 every 30min
+#define STATS_HYGIENE_DECLINE_RATE 1    // -1 every 30min (base)
+
+// --- Bonus de déclin quand il reste longtemps sans manger (faim basse) ---
+// Plus la faim est basse, plus l'humeur et la propreté baissent en plus du déclin de base
+#define STATS_HUNGER_THRESHOLD_LOW 60       // Faim < 60 : bonus -1 humeur, -1 propreté
+#define STATS_HUNGER_THRESHOLD_CRITICAL 30  // Faim < 30 : bonus -2 humeur, -2 propreté
+#define STATS_HAPPINESS_DECLINE_BONUS_LOW 1       // En plus quand faim < 60
+#define STATS_HAPPINESS_DECLINE_BONUS_CRITICAL 2  // En plus quand faim < 30 (total = base + 2)
+#define STATS_HYGIENE_DECLINE_BONUS_LOW 1
+#define STATS_HYGIENE_DECLINE_BONUS_CRITICAL 2
 
 // --- Intervalle de mise à jour des stats ---
 #define STATS_UPDATE_INTERVAL_MS 1800000  // 30 minutes en millisecondes
@@ -131,23 +140,16 @@
 // ============================================
 
 // --- IDs des objets NFC ---
-#define NFC_ITEM_BOTTLE "bottle"      // Biberon
-#define NFC_ITEM_SNACK "snack"        // Snack
-#define NFC_ITEM_WATER "water"        // Eau
+#define NFC_ITEM_BOTTLE "bottle"
+#define NFC_ITEM_CAKE "cake"            // Gâteau
+#define NFC_ITEM_CANDY "candy"         // Bonbon
+#define NFC_ITEM_APPLE "apple"            // Pomme (fruit), variant 3
 
-// --- Bottle effects ---
-#define NFC_BOTTLE_HUNGER_BONUS 40      // +40 hunger
-#define NFC_BOTTLE_HAPPINESS_BONUS 5    // +5 happiness
-#define NFC_BOTTLE_COOLDOWN_MS 14400000  // 4 hours in milliseconds
-
-// --- Snack effects ---
-#define NFC_SNACK_HUNGER_BONUS 15       // +15 hunger
-#define NFC_SNACK_HAPPINESS_BONUS 10    // +10 happiness
-#define NFC_SNACK_COOLDOWN_MS 7200000    // 2 hours in milliseconds
-
-// --- Water effects ---
-#define NFC_WATER_HUNGER_BONUS 10       // +10 hunger (hydration)
-#define NFC_WATER_HEALTH_BONUS 5        // +5 health
-#define NFC_WATER_COOLDOWN_MS 7200000    // 2 hours in milliseconds
+// --- Cooldowns (ms) ---
+// Pas de cooldown sur la nourriture : quand il demande (faim), on peut lui donner tout de suite
+#define NFC_BOTTLE_COOLDOWN_MS 0
+#define NFC_CAKE_COOLDOWN_MS 0
+#define NFC_CANDY_COOLDOWN_MS 0
+#define NFC_APPLE_COOLDOWN_MS 0
 
 #endif // MODEL_GOTCHI_CONFIG_H

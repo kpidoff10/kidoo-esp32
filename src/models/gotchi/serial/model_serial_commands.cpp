@@ -10,6 +10,15 @@
 #ifdef HAS_NFC
 #include "../../common/managers/nfc/nfc_manager.h"
 #endif
+#if defined(HAS_SD) && defined(HAS_WIFI)
+#include <SD.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include "../../common/managers/wifi/wifi_manager.h"
+#include "../../common/managers/sd/sd_manager.h"
+#include "../../common/managers/download/download_manager.h"
+#include "../../common/config/default_config.h"
+#endif
 
 /**
  * Commandes Serial spécifiques au modèle Kidoo Gotchi
@@ -210,23 +219,30 @@ static bool cmdEmotionStatus(const String& args) {
 // ============================================
 
 static bool cmdGotchiFeed(const String& args) {
-  if (args.length() == 0) {
-    Serial.println("[GOTCHI] Usage: gotchi-feed <type>");
-    Serial.println("[GOTCHI] Types disponibles:");
-    Serial.println("[GOTCHI]   bottle - Bottle (+40 hunger, +5 happiness, cooldown 4h)");
-    Serial.println("[GOTCHI]   snack  - Snack (+15 hunger, +10 happiness, cooldown 2h)");
-    Serial.println("[GOTCHI]   water  - Water (+10 hunger, +5 health, cooldown 2h)");
-    return true;
-  }
-
   String type = args;
   type.trim();
   type.toLowerCase();
 
-  // Valider le type
-  if (type != "bottle" && type != "snack" && type != "water") {
-    Serial.printf("[GOTCHI] Erreur: Type '%s' invalide\n", type.c_str());
-    Serial.println("[GOTCHI] Types valides: bottle, snack, water");
+  // Sans type ou "any" = premier aliment disponible (pour le web : donner n'importe quoi à manger)
+  const bool anyFood = (type.length() == 0 || type == "any");
+
+  if (!anyFood &&
+      type != "bottle" && type != "snack" && type != "cake" && type != "candy" && type != "apple") {
+    Serial.println("[GOTCHI] Usage: gotchi-feed [type]");
+    Serial.println("[GOTCHI] Sans type ou 'any' = premier aliment disponible.");
+    Serial.println("[GOTCHI] Types: bottle, snack, cake, candy, apple");
+    return true;
+  }
+
+  if (anyFood) {
+    Serial.println("[GOTCHI] Nourriture (n'importe lequel)...");
+    if (LifeManager::applyFirstAvailableFood()) {
+      GotchiStats stats = LifeManager::getStats();
+      Serial.println("[GOTCHI] Action appliquee avec succes!");
+      Serial.printf("[GOTCHI]   Hunger: %3d/100\n", stats.hunger);
+    } else {
+      Serial.println("[GOTCHI] Tous les aliments sont en cooldown.");
+    }
     return true;
   }
 
@@ -299,7 +315,7 @@ static bool cmdGotchiStatus(const String& args) {
   Serial.println("[GOTCHI]        COOLDOWNS ACTIFS");
   Serial.println("[GOTCHI] ========================================");
 
-  const char* actions[] = {"bottle", "snack", "water"};
+  const char* actions[] = {"bottle", "cake", "candy", "apple"};
   bool anyCooldown = false;
 
   for (const char* action : actions) {
@@ -491,12 +507,13 @@ static bool cmdGotchiNfcWrite(const String& args) {
 #ifdef HAS_NFC
   if (args.length() == 0) {
     Serial.println("[GOTCHI] Usage: gotchi-nfc-write <key>");
-    Serial.println("[GOTCHI] Ecrit une cle sur un tag NFC physique");
-    Serial.println("[GOTCHI] Cles disponibles:");
+    Serial.println("[GOTCHI] Ecrit un code (1 octet) sur le tag pour reconnaissance fiable");
+    Serial.println("[GOTCHI] Cles disponibles (ecriture code 1-4):");
     for (size_t i = 0; i < NFC_KEY_TABLE_SIZE; i++) {
-      Serial.printf("[GOTCHI]   %s - %s\n",
+      Serial.printf("[GOTCHI]   %s - %s (code %d)\n",
                     NFC_KEY_TABLE[i].key,
-                    NFC_KEY_TABLE[i].name);
+                    NFC_KEY_TABLE[i].name,
+                    NFC_KEY_TABLE[i].variant);
     }
     return true;
   }
@@ -532,11 +549,11 @@ static bool cmdGotchiNfcWrite(const String& args) {
   Serial.printf("[GOTCHI] Ecriture de la cle: %s (%s)\n", mapping->key, mapping->name);
   Serial.println("[GOTCHI] ========================================");
 
-  // Écrire la clé sur le tag
-  if (NFCManager::writeTag(String(mapping->key))) {
+  // Écrire le code variant (1 octet) sur le tag pour reconnaissance fiable
+  if (NFCManager::writeTag(String(mapping->key), mapping->variant)) {
     Serial.println("[GOTCHI] ========================================");
     Serial.println("[GOTCHI] Ecriture reussie!");
-    Serial.printf("[GOTCHI] Le tag contient maintenant la cle: %s\n", mapping->key);
+    Serial.printf("[GOTCHI] Le tag contient le code: %d (%s)\n", mapping->variant, mapping->key);
     Serial.println("[GOTCHI] ========================================");
   } else {
     Serial.println("[GOTCHI] ========================================");
@@ -554,6 +571,231 @@ static bool cmdGotchiNfcWrite(const String& args) {
   return true;
 #endif
 }
+
+#if defined(HAS_SD) && defined(HAS_WIFI)
+/**
+ * sync-emotions
+ * Récupère la liste des émotions et la config depuis le serveur (API_BASE_URL).
+ * GET /api/kidoos/emotions-sync?characterId=xxx[&since=ISO8601]
+ * Le serveur renvoie toujours la config complète ; si since est envoyé, seul le champ "files"
+ * contient les medias a telecharger (delta). On ecrit toujours la config reçue (pas de fusion).
+ * Après succès, met à jour emotionsSyncLastAt avec syncedAt.
+ */
+static void syncEmotionsProgress(int current, int total, const char* localPath, bool success) {
+  Serial.printf("[SYNC-EMOTIONS] [%d/%d] %s\n", current, total, localPath ? localPath : "");
+  Serial.println(success ? "[SYNC-EMOTIONS]   OK" : "[SYNC-EMOTIONS]   Echec");
+}
+
+/** Encode une chaîne pour un paramètre de requête (pour since ISO8601). */
+static void urlEncodeQueryParam(String& out, const char* s) {
+  if (!s) return;
+  for (; *s; s++) {
+    char c = *s;
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~')
+      out += c;
+    else if (c == ' ')
+      out += F("%20");
+    else if (c == ':')
+      out += F("%3A");
+    else if (c == '+')
+      out += F("%2B");
+    else if (c == '%')
+      out += F("%25");
+    else {
+      char hex[4];
+      snprintf(hex, sizeof(hex), "%%%02X", (unsigned char)c);
+      out += hex;
+    }
+  }
+}
+
+static bool cmdSyncEmotions(const String& args) {
+  (void)args;
+
+  if (!SDManager::isAvailable()) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: SD non disponible");
+    return true;
+  }
+
+  // Lire characterId depuis /config.json
+  if (!SD.exists("/config.json")) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: /config.json introuvable sur la SD");
+    Serial.println("[SYNC-EMOTIONS] Creez /config.json avec {\"characterId\": \"<uuid>\"}");
+    return true;
+  }
+
+  File configFile = SD.open("/config.json", FILE_READ);
+  if (!configFile) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: impossible d'ouvrir /config.json");
+    return true;
+  }
+
+  JsonDocument configDoc;
+  DeserializationError err = deserializeJson(configDoc, configFile);
+  configFile.close();
+  if (err || configDoc["characterId"].isNull()) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: characterId manquant dans /config.json");
+    return true;
+  }
+
+  String characterId = configDoc["characterId"].as<String>();
+  if (characterId.isEmpty()) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: characterId vide");
+    return true;
+  }
+
+  String emotionsSyncLastAt;
+  if (!configDoc["emotionsSyncLastAt"].isNull() && configDoc["emotionsSyncLastAt"].is<const char*>()) {
+    emotionsSyncLastAt = configDoc["emotionsSyncLastAt"].as<String>();
+    emotionsSyncLastAt.trim();
+  }
+
+  if (!WiFiManager::isConnected()) {
+    Serial.println("[SYNC-EMOTIONS] Erreur: WiFi non connecte. Connectez le WiFi puis reessayez.");
+    return true;
+  }
+
+  String url = String(API_BASE_URL);
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += "/api/kidoos/emotions-sync?characterId=";
+  url += characterId;
+  if (!emotionsSyncLastAt.isEmpty()) {
+    url += "&since=";
+    urlEncodeQueryParam(url, emotionsSyncLastAt.c_str());
+    Serial.printf("[SYNC-EMOTIONS] Sync incrémental depuis %s\n", emotionsSyncLastAt.c_str());
+  } else {
+    Serial.println("[SYNC-EMOTIONS] Pas de date since: telechargement complet (ajoutez emotionsSyncLastAt dans config.json apres ce sync).");
+  }
+
+  Serial.println("[SYNC-EMOTIONS] Recuperation depuis le serveur...");
+  Serial.println(url);
+
+  HTTPClient http;
+  http.begin(url);
+  http.setConnectTimeout(10000);
+  http.setTimeout(30000);
+
+  int httpCode = http.GET();
+
+  if (httpCode != 200) {
+    Serial.printf("[SYNC-EMOTIONS] Erreur HTTP: %d\n", httpCode);
+    http.end();
+    return true;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  if (payload.length() == 0) {
+    Serial.println("[SYNC-EMOTIONS] Reponse vide");
+    return true;
+  }
+
+  JsonDocument doc;
+  err = deserializeJson(doc, payload, DeserializationOption::NestingLimit(24));
+  if (err) {
+    Serial.printf("[SYNC-EMOTIONS] Erreur JSON: %s\n", err.c_str());
+    return true;
+  }
+
+  if (!doc["success"].as<bool>() || !doc["data"].is<JsonObject>()) {
+    Serial.println("[SYNC-EMOTIONS] Reponse invalide (success/data)");
+    return true;
+  }
+
+  JsonObject data = doc["data"];
+  JsonArray config = data["config"].as<JsonArray>();
+  JsonArray files = data["files"].as<JsonArray>();
+  const char* syncedAtStr = data["syncedAt"] | "";
+
+  // Créer /characters/<id>/emotions/ si besoin
+  String dirPath = "/characters/" + characterId + "/emotions";
+  if (!SD.exists("/characters")) SD.mkdir("/characters");
+  String charDir = "/characters/" + characterId;
+  if (!SD.exists(charDir.c_str())) SD.mkdir(charDir.c_str());
+  if (!SD.exists(dirPath.c_str())) SD.mkdir(dirPath.c_str());
+
+  String configPath = dirPath + "/config.json";
+
+  // Toujours écrire la config reçue (complète côté serveur). Pas de fusion, pas de lecture du fichier existant.
+  if (config.size() == 0 && SD.exists(configPath.c_str())) {
+    Serial.println("[SYNC-EMOTIONS] Aucune donnee config dans la reponse: fichier actuel conserve (pas d'ecrasement par vide).");
+  } else if (config.size() > 0) {
+    File outFile = SD.open(configPath.c_str(), FILE_WRITE);
+    if (!outFile) {
+      Serial.printf("[SYNC-EMOTIONS] Erreur: impossible d'ecrire %s\n", configPath.c_str());
+      return true;
+    }
+    size_t written = serializeJson(config, outFile);
+    outFile.close();
+    Serial.printf("[SYNC-EMOTIONS] Config sauvegardee: %s (%u octets, %u entrees)\n",
+                  configPath.c_str(), (unsigned)written, (unsigned)config.size());
+  }
+
+  const size_t totalFiles = files.size() * 2;
+  if (totalFiles == 0) {
+    Serial.println("[SYNC-EMOTIONS] Aucun fichier a telecharger.");
+  } else {
+    const size_t maxFiles = 128;
+    if (totalFiles > maxFiles) {
+      Serial.printf("[SYNC-EMOTIONS] Trop de fichiers (%u), limite %u\n", (unsigned)totalFiles, (unsigned)maxFiles);
+    } else {
+      const char* urls[maxFiles];
+      const char* paths[maxFiles];
+      size_t idx = 0;
+      for (size_t i = 0; i < files.size(); i++) {
+        JsonObject f = files[i];
+        urls[idx] = f["mjpegUrl"] | "";
+        paths[idx] = f["localPathMjpeg"].as<const char*>();
+        idx++;
+        urls[idx] = f["idxUrl"] | "";
+        paths[idx] = f["localPathIdx"].as<const char*>();
+        idx++;
+      }
+      Serial.printf("[SYNC-EMOTIONS] Telechargement de %u fichier(s) medias (mjpeg+idx, connexion reuse par hote)...\n", (unsigned)totalFiles);
+      int okCount = DownloadManager::downloadUrlsToFiles(urls, paths, (int)totalFiles, syncEmotionsProgress);
+      Serial.printf("[SYNC-EMOTIONS] Termine: %d/%u fichier(s). Redemarrez ou reinit pour prendre en compte.\n",
+                    okCount, (unsigned)totalFiles);
+    }
+  }
+
+  // Mettre à jour la date de dernier sync dans /config.json pour le prochain sync incrémental
+  if (syncedAtStr[0] != '\0') {
+    File rootConfig = SD.open("/config.json", FILE_READ);
+    if (rootConfig) {
+      size_t sz = (size_t)rootConfig.size();
+      if (sz > 0 && sz <= 4096) {
+        JsonDocument rootDoc;
+        DeserializationError parseErr = deserializeJson(rootDoc, rootConfig, DeserializationOption::NestingLimit(16));
+        rootConfig.close();
+        if (!parseErr && !rootDoc.isNull()) {
+          rootDoc["emotionsSyncLastAt"] = syncedAtStr;
+          rootConfig = SD.open("/config.json", FILE_WRITE);
+          if (rootConfig) {
+            serializeJson(rootDoc, rootConfig);
+            rootConfig.close();
+            Serial.printf("[SYNC-EMOTIONS] emotionsSyncLastAt mis a jour: %s (prochain sync: incrémental)\n", syncedAtStr);
+          } else {
+            Serial.println("[SYNC-EMOTIONS] Impossible d'ecrire config.json pour emotionsSyncLastAt");
+          }
+        } else {
+          Serial.printf("[SYNC-EMOTIONS] Erreur parsing config.json pour emotionsSyncLastAt: %s (ajoutez-le avec config-set)\n", parseErr ? parseErr.c_str() : "doc null");
+        }
+      } else {
+        rootConfig.close();
+        if (sz > 4096) {
+          Serial.println("[SYNC-EMOTIONS] config.json trop volumineux (>4Ko): emotionsSyncLastAt non mis a jour. Ajoutez-le avec config-set.");
+        }
+      }
+    } else {
+      Serial.println("[SYNC-EMOTIONS] Impossible d'ouvrir /config.json pour mettre a jour emotionsSyncLastAt");
+    }
+  } else {
+    Serial.println("[SYNC-EMOTIONS] Serveur n'a pas renvoye syncedAt, emotionsSyncLastAt non mis a jour.");
+  }
+  return true;
+}
+#endif
 
 bool ModelGotchiSerialCommands::processCommand(const String& command) {
   int spaceIndex = command.indexOf(' ');
@@ -597,6 +839,15 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
     return cmdGotchiNfcWrite(args);
   }
 
+  if (cmd == "sync-emotions") {
+#if defined(HAS_SD) && defined(HAS_WIFI)
+    return cmdSyncEmotions(args);
+#else
+    Serial.println("[SYNC-EMOTIONS] Non disponible: compilation sans HAS_SD ou HAS_WIFI");
+    return true;
+#endif
+  }
+
 #ifdef HAS_LCD
   if (cmd == "emotion-load") {
     return cmdEmotionLoad(args);
@@ -621,13 +872,16 @@ void ModelGotchiSerialCommands::printHelp() {
   Serial.println("  i2c-scan         - Scanner le bus I2C (debug NFC/RTC)");
   Serial.println("");
   Serial.println("--- Commandes Systeme de Vie ---");
-  Serial.println("  gotchi-feed <type>     - Nourrir le Gotchi (bottle/snack/water)");
+  Serial.println("  gotchi-feed [type]    - Nourrir (sans type = 1er dispo; bottle/cake/candy/apple)");
   Serial.println("  gotchi-status          - Afficher les stats et cooldowns");
   Serial.println("  gotchi-tick            - Forcer le declin des stats (cycle 30min)");
   Serial.println("  gotchi-reset           - Reinitialiser toutes les stats");
   Serial.println("  gotchi-set <stat> <delta> - Modifier une stat manuellement");
   Serial.println("  gotchi-nfc <key>       - Simuler la lecture d'un badge NFC");
   Serial.println("  gotchi-nfc-write <key> - Ecrire une cle sur un tag NFC physique");
+#if defined(HAS_SD) && defined(HAS_WIFI)
+  Serial.println("  sync-emotions           - Recuperer config emotions depuis l'API (API_BASE_URL, sauvegarde SD)");
+#endif
 #ifdef HAS_LCD
   Serial.println("");
   Serial.println("--- Commandes Emotions (systeme asynchrone) ---");
