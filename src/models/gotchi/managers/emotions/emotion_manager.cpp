@@ -7,13 +7,47 @@
 #include <ArduinoJson.h>
 #endif
 
+// Membres statiques - état existant
 String EmotionManager::_characterId = "";
 EmotionData EmotionManager::_currentEmotion;
 bool EmotionManager::_loaded = false;
 
+// Membres statiques - nouveau système asynchrone
+uint8_t* EmotionManager::_frameBuffer = nullptr;
+PlaybackContext EmotionManager::_playback = {
+  EMOTION_STATE_IDLE, // state
+  0,                  // currentFrameIndex
+  0,                  // currentLoopIteration
+  0,                  // totalLoopIterations
+  0,                  // lastFrameTime
+  100,                // frameDurationMs (défaut 10 FPS)
+  false,              // interruptRequested
+  File(),             // mjpegFile
+  false               // fileOpen
+};
+EmotionRequest EmotionManager::_queue[EMOTION_QUEUE_MAX_SIZE];
+int EmotionManager::_queueHead = 0;
+int EmotionManager::_queueTail = 0;
+int EmotionManager::_queueCount = 0;
+
 bool EmotionManager::init() {
   _loaded = false;
   _characterId = "";
+
+  // Initialiser la state machine
+  _playback.state = EMOTION_STATE_IDLE;
+  _playback.currentFrameIndex = 0;
+  _playback.currentLoopIteration = 0;
+  _playback.totalLoopIterations = 0;
+  _playback.lastFrameTime = 0;
+  _playback.frameDurationMs = 100;
+  _playback.interruptRequested = false;
+  _playback.fileOpen = false;
+
+  // Initialiser la queue
+  _queueHead = 0;
+  _queueTail = 0;
+  _queueCount = 0;
 
 #if defined(HAS_SD)
   // Charger le characterId depuis /config.json
@@ -23,6 +57,22 @@ bool EmotionManager::init() {
   }
 
   Serial.printf("[EMOTION] CharacterId charge: %s\n", _characterId.c_str());
+
+  // Allouer le buffer PSRAM persistant (128KB)
+  _frameBuffer = (uint8_t*)heap_caps_malloc(FRAME_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+  if (!_frameBuffer) {
+    Serial.println("[EMOTION] ERREUR: Impossible d'allouer buffer frame en PSRAM");
+    Serial.println("[EMOTION] Tentative allocation en RAM interne...");
+    _frameBuffer = (uint8_t*)malloc(FRAME_BUFFER_SIZE);
+    if (!_frameBuffer) {
+      Serial.println("[EMOTION] ERREUR CRITIQUE: Impossible d'allouer buffer frame");
+      return false;
+    }
+    Serial.println("[EMOTION] Buffer alloue en RAM interne (fallback)");
+  } else {
+    Serial.printf("[EMOTION] Buffer frame alloue en PSRAM: %d bytes\n", FRAME_BUFFER_SIZE);
+  }
+
   return true;
 #else
   Serial.println("[EMOTION] SD non disponible");
@@ -62,6 +112,12 @@ bool EmotionManager::loadCharacterId() {
 
 bool EmotionManager::loadEmotion(const String& emotionKey) {
 #if defined(HAS_SD)
+  // Garde: ne pas charger pendant la lecture
+  if (isPlaying()) {
+    Serial.println("[EMOTION] Erreur: Impossible de charger pendant la lecture. Utilisez cancelAll() d'abord.");
+    return false;
+  }
+
   if (_characterId.isEmpty()) {
     Serial.println("[EMOTION] Erreur: characterId non charge, appelez init() d'abord");
     return false;
@@ -88,6 +144,10 @@ bool EmotionManager::loadEmotion(const String& emotionKey) {
   Serial.printf("[EMOTION] Emotion '%s' chargee: %d frames (intro:%d, loop:%d, exit:%d)\n",
                 _currentEmotion.key.c_str(), _currentEmotion.totalFrames,
                 _currentEmotion.intro.frames, _currentEmotion.loop.frames, _currentEmotion.exit.frames);
+  Serial.printf("[EMOTION] Timeline sizes: intro=%d, loop=%d, exit=%d\n",
+                _currentEmotion.intro.timeline.size(),
+                _currentEmotion.loop.timeline.size(),
+                _currentEmotion.exit.timeline.size());
   Serial.printf("[EMOTION] Index construit: %d frames indexees\n", _currentEmotion.frameOffsets.size());
 
   return true;
@@ -137,6 +197,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
   _currentEmotion.key = emotionKey;
   _currentEmotion.emotionId = emotionObj["emotionId"].as<String>();
   _currentEmotion.trigger = emotionObj["trigger"].as<String>();
+  _currentEmotion.variant = emotionObj["variant"] | 1;  // Par défaut: 1
 
   // Si trigger est vide, mettre "manual" par défaut
   if (_currentEmotion.trigger.isEmpty()) {
@@ -385,169 +446,390 @@ bool EmotionManager::isLoaded() {
   return _loaded;
 }
 
-void EmotionManager::playPhase(const EmotionPhase& phase) {
-#if defined(HAS_LCD) && defined(HAS_SD)
+// ================================================================
+// Ancien code bloquant - SUPPRIMÉ et remplacé par le système asynchrone
+// Les anciennes méthodes playPhase(), playIntro(), playLoop(), playExit(), playAll()
+// ont été remplacées par la state machine update() + requestEmotion()
+// ================================================================
+
+//================================================================
+// NOUVEAU SYSTÈME ASYNCHRONE - State Machine
+//================================================================
+
+bool EmotionManager::enqueue(const EmotionRequest& request) {
+  if (_queueCount >= EMOTION_QUEUE_MAX_SIZE) {
+    return false;  // Queue pleine
+  }
+
+  _queue[_queueTail] = request;
+  _queueTail = (_queueTail + 1) % EMOTION_QUEUE_MAX_SIZE;
+  _queueCount++;
+  return true;
+}
+
+bool EmotionManager::dequeue(EmotionRequest& request) {
+  if (_queueCount == 0) {
+    return false;  // Queue vide
+  }
+
+  request = _queue[_queueHead];
+  _queueHead = (_queueHead + 1) % EMOTION_QUEUE_MAX_SIZE;
+  _queueCount--;
+  return true;
+}
+
+void EmotionManager::clearQueue() {
+  _queueHead = 0;
+  _queueTail = 0;
+  _queueCount = 0;
+  Serial.println("[EMOTION] Queue videe");
+}
+
+void EmotionManager::closeMjpegFile() {
+  if (_playback.fileOpen && _playback.mjpegFile) {
+    _playback.mjpegFile.close();
+    _playback.fileOpen = false;
+    Serial.println("[EMOTION] Fichier MJPEG ferme");
+  }
+}
+
+bool EmotionManager::openMjpegFile() {
+#if defined(HAS_SD)
   if (!_loaded) {
     Serial.println("[EMOTION] Erreur: Aucune emotion chargee");
-    return;
+    return false;
   }
 
-  if (!LCDManager::isAvailable()) {
-    Serial.println("[EMOTION] Erreur: LCD non disponible");
-    return;
+  // Fermer si déjà ouvert
+  closeMjpegFile();
+
+  _playback.mjpegFile = SD.open(_currentEmotion.mjpegPath.c_str(), FILE_READ);
+  if (!_playback.mjpegFile) {
+    Serial.printf("[EMOTION] Erreur: Impossible d'ouvrir %s\n", _currentEmotion.mjpegPath.c_str());
+    return false;
   }
 
-  if (phase.timeline.empty()) {
-    Serial.println("[EMOTION] Phase vide, rien a jouer");
-    return;
-  }
-
-  if (_currentEmotion.frameOffsets.empty()) {
-    Serial.println("[EMOTION] Erreur: Index des frames non construit");
-    return;
-  }
-
-  Serial.printf("[EMOTION] Lecture phase: %d frames dans la timeline\n", phase.timeline.size());
-
-  File f = SD.open(_currentEmotion.mjpegPath.c_str(), FILE_READ);
-  if (!f) {
-    Serial.printf("[EMOTION] Erreur: fichier MJPEG introuvable: %s\n", _currentEmotion.mjpegPath.c_str());
-    return;
-  }
-
-  // Allouer un buffer pour la plus grande frame possible (on va réutiliser ce buffer)
-  const size_t MAX_FRAME_SIZE = 131072;  // 128 KB max par frame
-  uint8_t* frameBuf = (uint8_t*)malloc(MAX_FRAME_SIZE);
-  if (!frameBuf) {
-    f.close();
-    Serial.println("[EMOTION] Erreur allocation memoire");
-    return;
-  }
-
-  const uint32_t FRAME_MS = 1000 / (_currentEmotion.fps > 0 ? _currentEmotion.fps : 10);
-  int playedFrames = 0;
-
-  // Parcourir la timeline et afficher chaque frame
-  for (const auto& tf : phase.timeline) {
-    int frameIdx = tf.sourceFrameIndex;
-
-    // Vérifier que l'index est valide
-    if (frameIdx < 0 || frameIdx >= (int)_currentEmotion.frameOffsets.size()) {
-      Serial.printf("[EMOTION] Erreur: Index frame invalide: %d\n", frameIdx);
-      continue;
-    }
-
-    const FrameIndex& idx = _currentEmotion.frameOffsets[frameIdx];
-
-    // Vérifier la taille de la frame
-    if (idx.frameSize > MAX_FRAME_SIZE) {
-      Serial.printf("[EMOTION] Erreur: Frame %d trop grande (%d bytes)\n", frameIdx, idx.frameSize);
-      continue;
-    }
-
-    uint32_t frameStart = millis();
-
-    // Seek à la position de la frame et lire directement
-    if (!f.seek(idx.fileOffset)) {
-      Serial.printf("[EMOTION] Erreur seek frame %d\n", frameIdx);
-      continue;
-    }
-
-    int bytesRead = f.read(frameBuf, idx.frameSize);
-    if (bytesRead != (int)idx.frameSize) {
-      Serial.printf("[EMOTION] Erreur lecture frame %d: lu %d/%d bytes\n", frameIdx, bytesRead, idx.frameSize);
-      continue;
-    }
-
-    // Afficher la frame
-    LCDManager::displayJpegFrame(frameBuf, idx.frameSize);
-    playedFrames++;
-
-    // Respecter le timing FPS
-    uint32_t elapsed = millis() - frameStart;
-    if (elapsed < FRAME_MS) {
-      delay(FRAME_MS - elapsed);
-    }
-  }
-
-  free(frameBuf);
-  f.close();
-
-  Serial.printf("[EMOTION] Phase terminee: %d frames jouees\n", playedFrames);
+  _playback.fileOpen = true;
+  Serial.printf("[EMOTION] Fichier MJPEG ouvert: %s\n", _currentEmotion.mjpegPath.c_str());
+  return true;
 #else
-  Serial.println("[EMOTION] LCD ou SD non disponible");
+  return false;
 #endif
 }
 
-void EmotionManager::playIntro() {
-  if (!_loaded) {
-    Serial.println("[EMOTION] Erreur: Aucune emotion chargee");
-    return;
+void EmotionManager::transitionTo(EmotionPlayState newState) {
+  // Log de la transition
+  const char* stateNames[] = {"IDLE", "PLAYING_INTRO", "PLAYING_LOOP", "PLAYING_EXIT"};
+  Serial.printf("[EMOTION] Transition: %s -> %s\n",
+                stateNames[_playback.state], stateNames[newState]);
+
+  // Exit logic pour l'état courant
+  switch (_playback.state) {
+    case EMOTION_STATE_PLAYING_EXIT:
+      // Sortie de la phase exit = fin de l'émotion
+      closeMjpegFile();
+      break;
+    default:
+      break;
   }
 
-  Serial.println("[EMOTION] === INTRO START ===");
-  playPhase(_currentEmotion.intro);
-  Serial.println("[EMOTION] === INTRO END ===");
+  // Entrée dans le nouvel état
+  _playback.state = newState;
+  _playback.currentFrameIndex = 0;
+
+  switch (newState) {
+    case EMOTION_STATE_IDLE:
+      closeMjpegFile();  // Sécurité: toujours fermer en IDLE
+      _playback.interruptRequested = false;
+      break;
+
+    case EMOTION_STATE_PLAYING_INTRO:
+      Serial.println("[EMOTION] === INTRO START ===");
+      _playback.lastFrameTime = millis() - _playback.frameDurationMs;  // Permet affichage immédiat
+      break;
+
+    case EMOTION_STATE_PLAYING_LOOP:
+      Serial.printf("[EMOTION] === LOOP START (iteration %d/%d) ===\n",
+                    _playback.currentLoopIteration + 1, _playback.totalLoopIterations);
+      break;
+
+    case EMOTION_STATE_PLAYING_EXIT:
+      Serial.println("[EMOTION] === EXIT START ===");
+      break;
+
+    default:
+      break;
+  }
 }
 
-void EmotionManager::playLoop() {
-  if (!_loaded) {
-    Serial.println("[EMOTION] Erreur: Aucune emotion chargee");
-    return;
+const EmotionPhase* EmotionManager::getCurrentPhase() {
+  switch (_playback.state) {
+    case EMOTION_STATE_PLAYING_INTRO:
+      return &_currentEmotion.intro;
+    case EMOTION_STATE_PLAYING_LOOP:
+      return &_currentEmotion.loop;
+    case EMOTION_STATE_PLAYING_EXIT:
+      return &_currentEmotion.exit;
+    default:
+      return nullptr;
   }
-
-  Serial.println("[EMOTION] === LOOP START ===");
-  playPhase(_currentEmotion.loop);
-  Serial.println("[EMOTION] === LOOP END ===");
 }
 
-void EmotionManager::playExit() {
-  if (!_loaded) {
-    Serial.println("[EMOTION] Erreur: Aucune emotion chargee");
-    return;
+bool EmotionManager::displayCurrentFrame(const EmotionPhase& phase) {
+#if defined(HAS_LCD) && defined(HAS_SD)
+  // Vérifier le timing
+  unsigned long now = millis();
+  if (now - _playback.lastFrameTime < _playback.frameDurationMs) {
+    return false;  // Pas encore le moment
   }
 
-  Serial.println("[EMOTION] === EXIT START ===");
-  playPhase(_currentEmotion.exit);
-  Serial.println("[EMOTION] === EXIT END ===");
+  if (_playback.currentFrameIndex >= (int)phase.timeline.size()) {
+    Serial.printf("[EMOTION] Erreur: Index frame hors limites: %d >= %d\n",
+                  _playback.currentFrameIndex, phase.timeline.size());
+    return false;
+  }
+
+  int frameIdx = phase.timeline[_playback.currentFrameIndex].sourceFrameIndex;
+
+  if (frameIdx < 0 || frameIdx >= (int)_currentEmotion.frameOffsets.size()) {
+    Serial.printf("[EMOTION] Erreur: Index frame invalide: %d\n", frameIdx);
+    _playback.lastFrameTime = now;
+    return true;  // Sauter cette frame
+  }
+
+  const FrameIndex& idx = _currentEmotion.frameOffsets[frameIdx];
+
+  if (idx.frameSize > FRAME_BUFFER_SIZE) {
+    Serial.printf("[EMOTION] Erreur: Frame %d trop grande (%d bytes)\n", frameIdx, idx.frameSize);
+    _playback.lastFrameTime = now;
+    return true;  // Sauter
+  }
+
+  // Seek et lecture depuis le fichier déjà ouvert
+  if (!_playback.mjpegFile.seek(idx.fileOffset)) {
+    Serial.printf("[EMOTION] Erreur seek frame %d\n", frameIdx);
+    _playback.lastFrameTime = now;
+    return true;
+  }
+
+  int bytesRead = _playback.mjpegFile.read(_frameBuffer, idx.frameSize);
+  if (bytesRead != (int)idx.frameSize) {
+    Serial.printf("[EMOTION] Erreur lecture frame %d: %d/%d bytes\n", frameIdx, bytesRead, idx.frameSize);
+    _playback.lastFrameTime = now;
+    return true;
+  }
+
+  // Afficher la frame
+  bool displaySuccess = LCDManager::displayJpegFrame(_frameBuffer, idx.frameSize);
+  _playback.lastFrameTime = now;
+
+  if (!displaySuccess) {
+    Serial.printf("[EMOTION] ERREUR: Echec affichage frame %d (%d bytes)\n", frameIdx, idx.frameSize);
+    return false;  // Signaler l'échec
+  }
+
+  // Log seulement les premières et dernières frames pour éviter le flood
+  if (_playback.currentFrameIndex == 0 || _playback.currentFrameIndex < 3 ||
+      _playback.currentFrameIndex >= (int)phase.timeline.size() - 3) {
+    Serial.printf("[EMOTION] Frame %d OK (%d bytes)\n", frameIdx, idx.frameSize);
+  }
+  return true;
+#else
+  return false;
+#endif
 }
 
-void EmotionManager::playAll(int loopCount) {
-  if (!_loaded) {
-    Serial.println("[EMOTION] Erreur: Aucune emotion chargee");
-    return;
-  }
+void EmotionManager::update() {
+  switch (_playback.state) {
 
-  Serial.printf("[EMOTION] === PLAY ALL START (INTRO -> LOOP x%d -> EXIT) ===\n", loopCount);
+    case EMOTION_STATE_IDLE: {
+      // Vérifier la queue
+      EmotionRequest req;
+      if (!dequeue(req)) {
+        return;  // Queue vide, rien à faire
+      }
 
-  // Créer une timeline combinée pour éviter les coupures entre phases
-  EmotionPhase combinedPhase;
-  combinedPhase.frames = _currentEmotion.intro.frames +
-                        (_currentEmotion.loop.frames * loopCount) +
-                        _currentEmotion.exit.frames;
+      // Charger l'émotion
+      if (!loadEmotion(req.emotionKey)) {
+        Serial.printf("[EMOTION] Echec chargement '%s', ignoré\n", req.emotionKey.c_str());
+        return;  // Réessaiera au prochain update()
+      }
 
-  // Ajouter intro
-  Serial.println("[EMOTION] === INTRO ===");
-  for (const auto& frame : _currentEmotion.intro.timeline) {
-    combinedPhase.timeline.push_back(frame);
-  }
+      // Configurer le contexte de lecture
+      _playback.totalLoopIterations = req.loopCount;
+      _playback.currentLoopIteration = 0;
+      // Ajuster le timing: ajouter 20ms de marge pour le décodage JPEG
+      uint32_t baseDuration = 1000 / (_currentEmotion.fps > 0 ? _currentEmotion.fps : 10);
+      _playback.frameDurationMs = baseDuration + 20;  // Ex: 100ms + 20ms = 120ms
+      _playback.interruptRequested = false;
 
-  // Ajouter loop × N
-  for (int i = 0; i < loopCount; i++) {
-    Serial.printf("[EMOTION] === LOOP %d/%d ===\n", i + 1, loopCount);
-    for (const auto& frame : _currentEmotion.loop.timeline) {
-      combinedPhase.timeline.push_back(frame);
+      // Ouvrir le fichier MJPEG
+      if (!openMjpegFile()) {
+        Serial.println("[EMOTION] Echec ouverture fichier MJPEG");
+        return;
+      }
+
+      transitionTo(EMOTION_STATE_PLAYING_INTRO);
+      // Pas de break, on essaie d'afficher la première frame immédiatement
+      [[fallthrough]];
     }
+
+    case EMOTION_STATE_PLAYING_INTRO: {
+      const EmotionPhase& phase = _currentEmotion.intro;
+
+      // Phase vide ?
+      if (phase.timeline.empty()) {
+        Serial.println("[EMOTION] INTRO timeline vide, saut vers LOOP");
+        transitionTo(EMOTION_STATE_PLAYING_LOOP);
+        return;
+      }
+
+      // Interruption demandée ?
+      if (_playback.interruptRequested) {
+        transitionTo(EMOTION_STATE_PLAYING_EXIT);
+        return;
+      }
+
+      // Afficher la frame courante si timing OK
+      if (!displayCurrentFrame(phase)) {
+        return;  // Pas encore le moment
+      }
+
+      // Passer à la frame suivante
+      _playback.currentFrameIndex++;
+      if (_playback.currentFrameIndex >= (int)phase.timeline.size()) {
+        // Intro terminé
+        transitionTo(EMOTION_STATE_PLAYING_LOOP);
+      }
+      break;
+    }
+
+    case EMOTION_STATE_PLAYING_LOOP: {
+      const EmotionPhase& phase = _currentEmotion.loop;
+
+      // Phase vide ou 0 itérations ?
+      if (phase.timeline.empty() || _playback.totalLoopIterations <= 0) {
+        Serial.printf("[EMOTION] LOOP timeline vide ou iterations=0 (timeline.size=%d, iterations=%d), saut vers EXIT\n",
+                      phase.timeline.size(), _playback.totalLoopIterations);
+        transitionTo(EMOTION_STATE_PLAYING_EXIT);
+        return;
+      }
+
+      // Interruption demandée ?
+      if (_playback.interruptRequested) {
+        transitionTo(EMOTION_STATE_PLAYING_EXIT);
+        return;
+      }
+
+      // Afficher la frame courante si timing OK
+      if (!displayCurrentFrame(phase)) {
+        return;  // Pas encore le moment
+      }
+
+      // Passer à la frame suivante
+      _playback.currentFrameIndex++;
+      if (_playback.currentFrameIndex >= (int)phase.timeline.size()) {
+        // Une itération de loop complète
+        _playback.currentLoopIteration++;
+        _playback.currentFrameIndex = 0;
+
+        // Vérifier si on doit sortir
+        bool shouldExit;
+        if (_playback.totalLoopIterations == 0) {
+          // Loop infini: sortir seulement si interrupt ou queue non-vide
+          shouldExit = _playback.interruptRequested || (_queueCount > 0);
+        } else {
+          shouldExit = (_playback.currentLoopIteration >= _playback.totalLoopIterations);
+        }
+
+        // Ou si la queue a de nouveaux éléments
+        bool queueHasItems = (_queueCount > 0);
+
+        if (shouldExit || queueHasItems) {
+          transitionTo(EMOTION_STATE_PLAYING_EXIT);
+        }
+        // Sinon, continue loop (currentFrameIndex déjà reset à 0)
+      }
+      break;
+    }
+
+    case EMOTION_STATE_PLAYING_EXIT: {
+      const EmotionPhase& phase = _currentEmotion.exit;
+
+      // Phase vide ?
+      if (phase.timeline.empty()) {
+        Serial.println("[EMOTION] EXIT timeline vide, saut vers IDLE");
+        transitionTo(EMOTION_STATE_IDLE);
+        return;
+      }
+
+      // Afficher la frame courante si timing OK
+      if (!displayCurrentFrame(phase)) {
+        return;  // Pas encore le moment
+      }
+
+      // Passer à la frame suivante
+      _playback.currentFrameIndex++;
+      if (_playback.currentFrameIndex >= (int)phase.timeline.size()) {
+        // Exit terminé
+        transitionTo(EMOTION_STATE_IDLE);
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+bool EmotionManager::requestEmotion(const String& emotionKey, int loopCount,
+                                     EmotionPriority priority) {
+  EmotionRequest req;
+  req.emotionKey = emotionKey;
+  req.loopCount = loopCount;
+  req.priority = priority;
+
+  if (priority == EMOTION_PRIORITY_HIGH) {
+    // Haute priorité: vider la queue, insérer en tête, set interrupt flag
+    clearQueue();
+    if (!enqueue(req)) {
+      Serial.println("[EMOTION] Erreur: Impossible d'enqueuer (queue pleine après clear ?!)");
+      return false;
+    }
+    _playback.interruptRequested = true;
+    Serial.printf("[EMOTION] HIGH priority request: '%s' (interrupt set)\n", emotionKey.c_str());
+  } else {
+    // Priorité normale: juste enqueuer
+    if (!enqueue(req)) {
+      Serial.println("[EMOTION] Erreur: Queue pleine, requete ignoree");
+      return false;
+    }
+    Serial.printf("[EMOTION] Requete mise en queue: '%s' (loops=%d)\n", emotionKey.c_str(), loopCount);
   }
 
-  // Ajouter exit
-  Serial.println("[EMOTION] === EXIT ===");
-  for (const auto& frame : _currentEmotion.exit.timeline) {
-    combinedPhase.timeline.push_back(frame);
+  return true;
+}
+
+void EmotionManager::cancelAll() {
+  clearQueue();
+  closeMjpegFile();
+  _playback.state = EMOTION_STATE_IDLE;
+  _playback.interruptRequested = false;
+  _playback.currentFrameIndex = 0;
+  Serial.println("[EMOTION] Tout annule, etat -> IDLE");
+}
+
+bool EmotionManager::isPlaying() {
+  return _playback.state != EMOTION_STATE_IDLE;
+}
+
+EmotionPlayState EmotionManager::getState() {
+  return _playback.state;
+}
+
+String EmotionManager::getCurrentPlayingKey() {
+  if (_playback.state == EMOTION_STATE_IDLE || !_loaded) {
+    return "";
   }
-
-  // Jouer toute la séquence d'un coup sans interruption
-  playPhase(combinedPhase);
-
-  Serial.println("[EMOTION] === PLAY ALL END ===");
+  return _currentEmotion.key;
 }

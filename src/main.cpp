@@ -31,6 +31,7 @@
 #ifdef KIDOO_MODEL_GOTCHI
 #include "models/gotchi/managers/life/life_manager.h"
 #ifdef HAS_LCD
+#include "models/gotchi/managers/emotions/emotion_manager.h"
 #include "models/gotchi/managers/emotions/trigger_manager.h"
 #endif
 #endif
@@ -219,9 +220,10 @@ void loop() {
   #ifdef KIDOO_MODEL_GOTCHI
   LifeManager::update();
 
-  // Mettre à jour le gestionnaire de triggers automatiques
+  // Mettre à jour le gestionnaire d'émotions (système asynchrone)
   #ifdef HAS_LCD
-  TriggerManager::update();
+  EmotionManager::update();  // Avance la state machine d'une frame par cycle
+  TriggerManager::update();  // Évalue et enqueue les triggers automatiques
   #endif
   #endif
   

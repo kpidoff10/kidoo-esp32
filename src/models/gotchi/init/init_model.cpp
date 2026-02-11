@@ -14,6 +14,7 @@
 #include "../managers/life/life_manager.h"
 #ifdef HAS_NFC
 #include "../../common/managers/nfc/nfc_manager.h"
+#include "../managers/nfc/gotchi_nfc_handler.h"
 #include "../config/constants.h"
 #endif
 
@@ -145,9 +146,9 @@ bool InitModelGotchi::init() {
     Serial.println("[INIT-GOTCHI] Avertissement: Module NFC non detecte");
     Serial.println("[INIT-GOTCHI] Les commandes NFC seront desactivees");
   } else {
-    // Configurer le callback pour la détection automatique
-    NFCManager::setTagCallback(onNFCTagDetected);
-    Serial.println("[INIT-GOTCHI] Callback NFC configure - detection automatique active");
+    // Initialiser le gestionnaire NFC Gotchi avec système de variants
+    GotchiNFCHandler::init();
+    Serial.println("[INIT-GOTCHI] GotchiNFCHandler initialise - systeme de variants actif");
   }
 #endif
 

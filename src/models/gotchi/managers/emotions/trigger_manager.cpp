@@ -18,6 +18,7 @@ bool TriggerManager::_enabled = true;
 unsigned long TriggerManager::_lastCheckTime = 0;
 unsigned long TriggerManager::_lastTriggerTime = 0;
 String TriggerManager::_lastActiveTrigger = "";
+int TriggerManager::_requestedVariant = 0;
 std::map<String, std::vector<IndexedEmotion>> TriggerManager::_triggerIndex;
 
 bool TriggerManager::init() {
@@ -95,6 +96,7 @@ bool TriggerManager::loadTriggerConfig() {
     String key = emotionObj["key"].as<String>();
     String emotionId = emotionObj["emotionId"].as<String>();
     String trigger = emotionObj["trigger"].as<String>();
+    int variant = emotionObj["variant"] | 1;  // Par défaut: 1
 
     // Si trigger est vide ou null, utiliser "manual"
     if (trigger.isEmpty()) {
@@ -106,13 +108,14 @@ bool TriggerManager::loadTriggerConfig() {
     emotion.key = key;
     emotion.emotionId = emotionId;
     emotion.trigger = trigger;
+    emotion.variant = variant;
 
     // Ajouter à l'index (map de trigger → liste d'émotions)
     _triggerIndex[trigger].push_back(emotion);
     emotionCount++;
 
-    Serial.printf("[TRIGGER] Indexe: %s -> %s (trigger: %s)\n",
-                  key.c_str(), emotionId.c_str(), trigger.c_str());
+    Serial.printf("[TRIGGER] Indexe: %s -> %s (trigger: %s, variant: %d)\n",
+                  key.c_str(), emotionId.c_str(), trigger.c_str(), variant);
   }
 
   Serial.printf("[TRIGGER] %d emotions indexees\n", emotionCount);
@@ -138,6 +141,11 @@ void TriggerManager::update() {
 
   // Vérifier si le cooldown global est écoulé
   if (!isCooldownElapsed()) {
+    return;
+  }
+
+  // Nouveau: Ne pas évaluer les triggers si EmotionManager est déjà occupé
+  if (EmotionManager::isPlaying()) {
     return;
   }
 
@@ -242,15 +250,19 @@ void TriggerManager::activateTrigger(const String& triggerName) {
   Serial.printf("[TRIGGER] Activation du trigger '%s' -> emotion '%s'\n",
                 triggerName.c_str(), emotionKey.c_str());
 
-  // Charger et jouer l'émotion
-  if (EmotionManager::loadEmotion(emotionKey)) {
-    EmotionManager::playAll(1); // Jouer une fois (intro + loop + exit)
+  // Déterminer la priorité: triggers critiques = HIGH priority
+  EmotionPriority priority = EMOTION_PRIORITY_NORMAL;
+  if (triggerName == "hunger_critical" || triggerName == "health_critical") {
+    priority = EMOTION_PRIORITY_HIGH;
+  }
 
+  // Demander la lecture de l'émotion (non-bloquant)
+  if (EmotionManager::requestEmotion(emotionKey, 1, priority)) {
     // Mettre à jour les timestamps
     _lastTriggerTime = millis();
     _lastActiveTrigger = triggerName;
   } else {
-    Serial.printf("[TRIGGER] Erreur: Impossible de charger l'emotion '%s'\n", emotionKey.c_str());
+    Serial.printf("[TRIGGER] Erreur: Impossible d'enqueuer l'emotion '%s'\n", emotionKey.c_str());
   }
 }
 
@@ -264,9 +276,32 @@ String TriggerManager::selectRandomEmotion(const String& triggerName) {
     return "";
   }
 
-  // Sélection aléatoire
-  int randomIndex = random(0, emotions.size());
-  return emotions[randomIndex].key;
+  // Sélectionner un variant aléatoire (1-4)
+  int selectedVariant = random(1, 5);  // random(1, 5) donne 1, 2, 3 ou 4
+
+  // Filtrer les émotions avec ce variant
+  std::vector<IndexedEmotion*> matchingEmotions;
+  for (auto& emotion : emotions) {
+    if (emotion.variant == selectedVariant) {
+      matchingEmotions.push_back(&emotion);
+    }
+  }
+
+  // Si aucune émotion avec ce variant, prendre n'importe laquelle du trigger
+  if (matchingEmotions.empty()) {
+    Serial.printf("[TRIGGER] Aucune emotion pour variant %d, selection aleatoire\n", selectedVariant);
+    int randomIndex = random(0, emotions.size());
+    _requestedVariant = emotions[randomIndex].variant;
+    return emotions[randomIndex].key;
+  }
+
+  // Sélectionner aléatoirement parmi les émotions du variant choisi
+  int randomIndex = random(0, matchingEmotions.size());
+  IndexedEmotion* selected = matchingEmotions[randomIndex];
+  _requestedVariant = selected->variant;
+
+  Serial.printf("[TRIGGER] Selection: variant %d -> %s\n", _requestedVariant, selected->key.c_str());
+  return selected->key;
 }
 
 bool TriggerManager::isCooldownElapsed() {
@@ -287,4 +322,8 @@ void TriggerManager::setEnabled(bool enabled) {
 
 bool TriggerManager::isEnabled() {
   return _enabled;
+}
+
+int TriggerManager::getRequestedVariant() {
+  return _requestedVariant;
 }

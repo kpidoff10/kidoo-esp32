@@ -81,6 +81,7 @@ static bool cmdEmotionLoad(const String& args) {
     Serial.println("[GOTCHI] Usage: emotion-load <key>");
     Serial.println("[GOTCHI] Exemple: emotion-load OK");
     Serial.println("[GOTCHI] Cles disponibles: OK, SLEEP, COLD, etc.");
+    Serial.println("[GOTCHI] Note: Ne charge que les metadonnees (ne joue pas l'emotion)");
     return true;
   }
 
@@ -110,65 +111,96 @@ static bool cmdEmotionLoad(const String& args) {
   }
 }
 
-static bool cmdEmotionIntro(const String& args) {
-  if (!EmotionManager::isLoaded()) {
-    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
-    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
-    return true;
-  }
-
-  Serial.println("[GOTCHI] Lecture de la phase intro...");
-  EmotionManager::playIntro();
-  Serial.println("[GOTCHI] Phase intro terminee");
-  return true;
-}
-
-static bool cmdEmotionLoop(const String& args) {
-  if (!EmotionManager::isLoaded()) {
-    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
-    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
-    return true;
-  }
-
-  Serial.println("[GOTCHI] Lecture de la phase loop...");
-  EmotionManager::playLoop();
-  Serial.println("[GOTCHI] Phase loop terminee");
-  return true;
-}
-
-static bool cmdEmotionExit(const String& args) {
-  if (!EmotionManager::isLoaded()) {
-    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
-    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
-    return true;
-  }
-
-  Serial.println("[GOTCHI] Lecture de la phase exit...");
-  EmotionManager::playExit();
-  Serial.println("[GOTCHI] Phase exit terminee");
-  return true;
-}
-
 static bool cmdEmotionPlay(const String& args) {
-  if (!EmotionManager::isLoaded()) {
-    Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
-    Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' d'abord");
-    return true;
-  }
+  // Parser les arguments: [key] [loops]
+  // emotion-play OK 3     -> charge et joue OK avec 3 loops
+  // emotion-play 3        -> joue l'émotion chargée avec 3 loops
+  // emotion-play          -> joue l'émotion chargée avec 1 loop
 
-  // Parser le nombre de loops (défaut: 1)
+  String key = "";
   int loopCount = 1;
+
   if (args.length() > 0) {
-    loopCount = args.toInt();
-    if (loopCount < 1) {
-      Serial.println("[GOTCHI] Erreur: Le nombre de loops doit etre >= 1");
-      return true;
+    // Parser les arguments
+    int spaceIndex = args.indexOf(' ');
+    if (spaceIndex > 0) {
+      // Deux arguments: key et loops
+      key = args.substring(0, spaceIndex);
+      String loopsStr = args.substring(spaceIndex + 1);
+      loopsStr.trim();
+      loopCount = loopsStr.toInt();
+      if (loopCount < 0) loopCount = 1;
+    } else {
+      // Un seul argument: soit key soit loops
+      String arg = args;
+      arg.trim();
+
+      // Si c'est un nombre, c'est loops
+      if (arg.toInt() > 0 || arg == "0") {
+        loopCount = arg.toInt();
+        if (loopCount < 0) loopCount = 1;
+      } else {
+        // Sinon c'est une key
+        key = arg;
+      }
     }
   }
 
-  Serial.printf("[GOTCHI] Lecture de l'emotion complete (intro -> loop x%d -> exit)...\n", loopCount);
-  EmotionManager::playAll(loopCount);
-  Serial.println("[GOTCHI] Emotion complete terminee");
+  // Si une key est fournie, l'utiliser. Sinon, utiliser l'émotion chargée
+  if (key.length() > 0) {
+    key.toUpperCase();
+    Serial.printf("[GOTCHI] Requete animation: '%s' (loops=%d)\n", key.c_str(), loopCount);
+    if (EmotionManager::requestEmotion(key, loopCount)) {
+      Serial.println("[GOTCHI] Animation mise en queue");
+    } else {
+      Serial.println("[GOTCHI] Erreur: Queue pleine");
+    }
+  } else {
+    // Utiliser l'émotion actuellement chargée
+    if (!EmotionManager::isLoaded()) {
+      Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
+      Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' ou 'emotion-play <key>' d'abord");
+      return true;
+    }
+
+    const EmotionData* emotion = EmotionManager::getCurrentEmotion();
+    if (emotion) {
+      Serial.printf("[GOTCHI] Requete animation: '%s' (loops=%d)\n", emotion->key.c_str(), loopCount);
+      if (EmotionManager::requestEmotion(emotion->key, loopCount)) {
+        Serial.println("[GOTCHI] Animation mise en queue");
+      } else {
+        Serial.println("[GOTCHI] Erreur: Queue pleine");
+      }
+    }
+  }
+
+  return true;
+}
+
+static bool cmdEmotionStop(const String& args) {
+  EmotionManager::cancelAll();
+  Serial.println("[GOTCHI] Toutes les animations annulees");
+  return true;
+}
+
+static bool cmdEmotionStatus(const String& args) {
+  const char* stateNames[] = {"IDLE", "PLAYING_INTRO", "PLAYING_LOOP", "PLAYING_EXIT"};
+  EmotionPlayState state = EmotionManager::getState();
+
+  Serial.println("[GOTCHI] ========================================");
+  Serial.println("[GOTCHI]        STATUT EMOTIONS");
+  Serial.println("[GOTCHI] ========================================");
+  Serial.printf("[GOTCHI]   Etat:        %s\n", stateNames[state]);
+  Serial.printf("[GOTCHI]   En lecture:  %s\n", EmotionManager::isPlaying() ? "OUI" : "NON");
+
+  if (state != EMOTION_STATE_IDLE) {
+    String key = EmotionManager::getCurrentPlayingKey();
+    if (key.length() > 0) {
+      Serial.printf("[GOTCHI]   Emotion:     %s\n", key.c_str());
+    }
+  }
+
+  Serial.println("[GOTCHI] ========================================");
   return true;
 }
 #endif
@@ -568,14 +600,12 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
 #ifdef HAS_LCD
   if (cmd == "emotion-load") {
     return cmdEmotionLoad(args);
-  } else if (cmd == "emotion-intro") {
-    return cmdEmotionIntro(args);
-  } else if (cmd == "emotion-loop") {
-    return cmdEmotionLoop(args);
-  } else if (cmd == "emotion-exit") {
-    return cmdEmotionExit(args);
   } else if (cmd == "emotion-play" || cmd == "emotion-all") {
     return cmdEmotionPlay(args);
+  } else if (cmd == "emotion-stop") {
+    return cmdEmotionStop(args);
+  } else if (cmd == "emotion-status") {
+    return cmdEmotionStatus(args);
   }
 #endif
 
@@ -600,12 +630,11 @@ void ModelGotchiSerialCommands::printHelp() {
   Serial.println("  gotchi-nfc-write <key> - Ecrire une cle sur un tag NFC physique");
 #ifdef HAS_LCD
   Serial.println("");
-  Serial.println("--- Commandes Emotions ---");
-  Serial.println("  emotion-load <key>     - Charger une emotion (ex: emotion-load OK)");
-  Serial.println("  emotion-intro          - Jouer la phase intro de l'emotion");
-  Serial.println("  emotion-loop           - Jouer la phase loop de l'emotion");
-  Serial.println("  emotion-exit           - Jouer la phase exit de l'emotion");
-  Serial.println("  emotion-play [loops]   - Jouer l'emotion complete (intro->loop x N->exit)");
+  Serial.println("--- Commandes Emotions (systeme asynchrone) ---");
+  Serial.println("  emotion-load <key>        - Charger metadonnees emotion (ex: emotion-load OK)");
+  Serial.println("  emotion-play [key] [loops]- Jouer emotion (ex: emotion-play OK 3)");
+  Serial.println("  emotion-stop              - Annuler toutes les animations");
+  Serial.println("  emotion-status            - Afficher l'etat du systeme d'emotions");
 #endif
   Serial.println("========================================");
   Serial.println("");

@@ -24,6 +24,7 @@ struct IndexedEmotion {
   String key;         // Clé de l'émotion (OK, SLEEP, etc.)
   String emotionId;   // UUID de l'émotion
   String trigger;     // Trigger (hunger_low, eating_finished, etc.)
+  int variant;        // Variant (1-4) pour plusieurs animations par trigger
 };
 
 class TriggerManager {
@@ -67,12 +68,19 @@ public:
    */
   static bool isEnabled();
 
+  /**
+   * Obtenir le variant actuellement demandé par le dernier trigger
+   * @return Variant (1-4), ou 0 si aucun trigger actif
+   */
+  static int getRequestedVariant();
+
 private:
   static bool _initialized;
   static bool _enabled;
   static unsigned long _lastCheckTime;
   static unsigned long _lastTriggerTime;
   static String _lastActiveTrigger;
+  static int _requestedVariant;  // Variant demandé par le dernier trigger (1-4)
 
   // Map: trigger name → list of emotions
   static std::map<String, std::vector<IndexedEmotion>> _triggerIndex;
