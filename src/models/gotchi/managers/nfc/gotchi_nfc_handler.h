@@ -32,6 +32,9 @@ public:
    */
   static void update();
 
+  /** Indique si un tag NFC est actuellement présent (ex. biberon posé). */
+  static bool isTagPresent();
+
 private:
   static bool initialized;
   static bool tagPresent;

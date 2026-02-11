@@ -14,6 +14,12 @@
 #ifdef HAS_AUDIO
 #include "../audio/audio_manager.h"
 #endif
+#ifdef HAS_VIBRATOR
+#include "../vibrator/vibrator_manager.h"
+#endif
+#ifdef HAS_TOUCH
+#include "../touch/touch_manager.h"
+#endif
 #include "../../../model_config.h"
 #include "../../../../../color/colors.h"
 #include "../../../model_init.h"
@@ -33,7 +39,9 @@ SystemStatus InitManager::systemStatus = {
   INIT_NOT_STARTED,  // pubnub
   INIT_NOT_STARTED,  // rtc
   INIT_NOT_STARTED,  // potentiometer
-  INIT_NOT_STARTED   // audio
+  INIT_NOT_STARTED,  // audio
+  INIT_NOT_STARTED,  // vibrator
+  INIT_NOT_STARTED   // touch
 };
 bool InitManager::initialized = false;
 SDConfig* InitManager::globalConfig = nullptr;
@@ -241,6 +249,22 @@ bool InitManager::init() {
   }
   #endif
   
+  // ÉTAPE 9b : Initialiser le vibreur (optionnel)
+  #ifdef HAS_VIBRATOR
+  if (HAS_VIBRATOR) {
+    initVibrator();
+    delay(50);
+  }
+  #endif
+  
+  // ÉTAPE 9c : Initialiser le capteur tactile TTP223 (optionnel)
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    initTouch();
+    delay(50);
+  }
+  #endif
+  
   // ÉTAPE 10 : Initialisation spécifique au modèle (APRÈS tous les composants)
   if (serialAvailable) {
     Serial.println("[INIT] Appel InitModel::init()...");
@@ -328,6 +352,10 @@ InitStatus InitManager::getComponentStatus(const char* componentName) {
     return systemStatus.potentiometer;
   } else if (strcmp(componentName, "audio") == 0) {
     return systemStatus.audio;
+  } else if (strcmp(componentName, "vibrator") == 0) {
+    return systemStatus.vibrator;
+  } else if (strcmp(componentName, "touch") == 0) {
+    return systemStatus.touch;
   }
   // Ajouter d'autres composants ici
   
@@ -543,6 +571,46 @@ void InitManager::printStatus() {
         Serial.print("[INIT]   -> Volume: ");
         Serial.print(AudioManager::getVolume());
         Serial.println("/21");
+        break;
+      case INIT_FAILED:
+        Serial.println("Non disponible");
+        break;
+    }
+  }
+  #endif
+  
+  #ifdef HAS_VIBRATOR
+  if (HAS_VIBRATOR) {
+    Serial.print("[INIT] Vibrator: ");
+    switch (systemStatus.vibrator) {
+      case INIT_NOT_STARTED:
+        Serial.println("Non demarre");
+        break;
+      case INIT_IN_PROGRESS:
+        Serial.println("En cours");
+        break;
+      case INIT_SUCCESS:
+        Serial.println("OK");
+        break;
+      case INIT_FAILED:
+        Serial.println("Non disponible");
+        break;
+    }
+  }
+  #endif
+  
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    Serial.print("[INIT] Touch (TTP223): ");
+    switch (systemStatus.touch) {
+      case INIT_NOT_STARTED:
+        Serial.println("Non demarre");
+        break;
+      case INIT_IN_PROGRESS:
+        Serial.println("En cours");
+        break;
+      case INIT_SUCCESS:
+        Serial.println("OK");
         break;
       case INIT_FAILED:
         Serial.println("Non disponible");

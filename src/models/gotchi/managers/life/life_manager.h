@@ -17,7 +17,7 @@
  *
  * Fonctionnalités:
  * - Déclin automatique des stats toutes les 30 minutes
- * - Actions pour nourrir (bottle/snack/water)
+ * - Actions pour nourrir (bottle/cake/apple/candy)
  * - Cooldowns pour chaque action
  * - Sauvegarde/chargement de l'état sur SD
  * - Commandes Serial pour simulation (phase 1)
@@ -34,17 +34,18 @@ struct GotchiStats {
 
 // Structure pour les cooldowns des actions
 struct ActionCooldowns {
-  unsigned long lastBottle;      // Timestamp du dernier biberon
-  unsigned long lastSnack;       // Timestamp du dernier snack
-  unsigned long lastWater;       // Timestamp de la dernière eau
-  unsigned long lastToothbrush;  // Timestamp du dernier brossage (future)
-  unsigned long lastSoap;        // Timestamp du dernier savon (future)
-  unsigned long lastBed;         // Timestamp du dernier sommeil (future)
+  unsigned long lastBottle;
+  unsigned long lastCake;
+  unsigned long lastCandy;
+  unsigned long lastApple;
+  unsigned long lastToothbrush;
+  unsigned long lastSoap;
+  unsigned long lastBed;
 };
 
 // Structure pour l'effet progressif en cours
 struct ActiveProgressiveEffect {
-  char itemId[16];              // ID de l'item actif ("bottle", "snack", "water")
+  char itemId[16];              // ID de l'item actif ("bottle", "cake", "apple", "candy")
   uint8_t tickHunger;           // Hunger donné par tick
   uint8_t tickHappiness;        // Happiness donné par tick
   uint8_t tickHealth;           // Health donné par tick
@@ -76,10 +77,18 @@ public:
 
   /**
    * Appliquer une action (nourrir, etc.)
-   * @param actionId ID de l'action ("bottle", "snack", "water")
+   * @param actionId ID de l'action ("bottle", "cake", "apple", "candy")
    * @return true si l'action a été appliquée, false si cooldown actif ou action invalide
    */
   static bool applyAction(const String& actionId);
+
+  /**
+   * Appliquer l'effet instantané d'un trigger (ex. head_caress -> +1 bonheur).
+   * Utilise TRIGGER_STAT_EFFECTS généré depuis kidoo-shared.
+   * @param triggerId ID du trigger ("head_caress", etc.)
+   * @return true si un effet a été appliqué, false sinon
+   */
+  static bool applyTriggerEffect(const String& triggerId);
 
   /**
    * Obtenir le timestamp de la dernière utilisation d'une action
@@ -121,10 +130,16 @@ public:
   static bool loadState();
 
   /**
-   * Réinitialiser toutes les stats aux valeurs par défaut
-   * Utile pour tests ou remise à zéro
+   * Arrêter un effet progressif en cours (ex. biberon quand le tag NFC est retiré).
+   * @param actionId ID de l'action ("bottle", "cake", "apple", "candy")
    */
-  static void resetStats();
+  static void stopProgressiveEffect(const String& actionId);
+
+  /**
+   * Réinitialiser toutes les stats aux valeurs par défaut
+   * @param saveToFile si true (défaut), écrit l'état sur la SD ; si false, ne modifie pas le fichier (évite d'écraser un save corrompu)
+   */
+  static void resetStats(bool saveToFile = true);
 
   /**
    * Modifier une stat manuellement (pour tests)
@@ -133,6 +148,13 @@ public:
    * @return true si la stat a été modifiée, false si nom invalide
    */
   static bool adjustStat(const String& statName, int delta);
+
+  /**
+   * Appliquer le premier aliment disponible (pour gotchi-feed sans type / "any").
+   * Ordre : bottle, cake, apple, candy.
+   * @return true si un aliment a été appliqué, false si tous en cooldown
+   */
+  static bool applyFirstAvailableFood();
 
 private:
   // Variables statiques
@@ -163,10 +185,10 @@ private:
   static bool applySnack();
 
   /**
-   * Appliquer l'effet de l'eau
+   * Appliquer l'effet pomme (fruit)
    * @return true si appliqué, false si en cooldown
    */
-  static bool applyWater();
+  static bool applyApple();
 
   /**
    * Limiter une stat entre STATS_MIN et STATS_MAX

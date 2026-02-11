@@ -507,7 +507,8 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
       // Si on change de couleur et qu'on n'a pas d'effet actif, appliquer immédiatement
       // Si on a un effet, la couleur sera appliquée par l'effet
       if (currentEffect == LED_EFFECT_NONE && strip != nullptr) {
-        // Appliquer la couleur immédiatement
+        // Restaurer la luminosité (CLEAR met le strip à 0 ; sans ça la LED reste invisible après un tick)
+        strip->setBrightness(currentBrightness);
         for (int i = 0; i < NUM_LEDS; i++) {
           strip->setPixelColor(i, currentColor);
         }
@@ -570,7 +571,6 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
             strip->setPixelColor(i, 0);
           }
           strip->show();
-          Serial.println("[LED] processCommand SET_EFFECT NONE - Transition depuis effet anime, LEDs eteintes temporairement (couleur preservee)");
         }
         // Si on est déjà en mode NONE, ne pas réinitialiser la couleur
         // Cela permet d'afficher une couleur fixe avec LED_EFFECT_NONE
@@ -602,7 +602,6 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
     }
       
     case LED_CMD_CLEAR:
-      Serial.println("[LED] processCommand CLEAR");
       currentColor = 0;  // Noir
       currentEffect = LED_EFFECT_NONE;
       testSequentialActive = false;  // Arrêter le test si en cours
@@ -720,9 +719,7 @@ void LEDManager::checkSleepMode() {
   // Vérifier si on doit entrer en sleep mode
   // Ne pas entrer en sleep mode si un effet animé est actif (mais LED_EFFECT_NONE peut entrer en sleep)
   if (!isSleeping && !isFadingToSleep && !hasActiveAnimatedEffect && timeSinceActivity >= sleepTimeoutMs) {
-    // Démarrer l'animation de fade vers sleep
-    Serial.printf("[LED] Entree en sleep mode (timeout: %lu ms, inactivite: %lu ms, lastActivityTime=%lu, currentTime=%lu)\n", 
-                  sleepTimeoutMs, timeSinceActivity, lastActivityTime, currentTime);
+
     isFadingToSleep = true;
     sleepFadeStartTime = currentTime;
     // Sauvegarder l'effet actuel pour le restaurer au réveil

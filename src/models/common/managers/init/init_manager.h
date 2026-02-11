@@ -33,6 +33,8 @@ struct SystemStatus {
   InitStatus rtc;           // Gestionnaire RTC DS3231
   InitStatus potentiometer; // Gestionnaire Potentiomètre
   InitStatus audio;         // Gestionnaire Audio I2S
+  InitStatus vibrator;      // Gestionnaire Vibreur PWM
+  InitStatus touch;         // Capteur tactile TTP223
   // Ajouter d'autres composants ici
   
   bool isFullyInitialized() const {
@@ -83,6 +85,8 @@ private:
   static bool initPotentiometer();
   static bool initAudio();
   static bool initLCD();
+  static bool initVibrator();
+  static bool initTouch();
   // Ajouter d'autres méthodes d'initialisation ici
   
   // Variables statiques

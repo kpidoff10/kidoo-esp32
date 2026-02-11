@@ -110,8 +110,6 @@ int LCDManager::jpegDrawCallback(JPEGDRAW *pDraw) {
   // Debug première fois
   static bool firstCall = true;
   if (firstCall) {
-    Serial.printf("[JPEG-CB] Premier appel: x=%d y=%d w=%d h=%d, offsetX=%d offsetY=%d\n",
-                  pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, _mjpegOffsetX, _mjpegOffsetY);
     firstCall = false;
   }
 

@@ -30,6 +30,10 @@
 // Gestionnaire de vie (modèle Gotchi uniquement)
 #ifdef KIDOO_MODEL_GOTCHI
 #include "models/gotchi/managers/life/life_manager.h"
+#include "models/gotchi/managers/nfc/gotchi_nfc_handler.h"
+#ifdef HAS_NFC
+#include "models/common/managers/nfc/nfc_manager.h"
+#endif
 #ifdef HAS_LCD
 #include "models/gotchi/managers/emotions/emotion_manager.h"
 #include "models/gotchi/managers/emotions/trigger_manager.h"
@@ -39,6 +43,10 @@
 // RTC pour synchronisation automatique lors de la connexion WiFi
 #ifdef HAS_RTC
 #include "models/common/managers/rtc/rtc_manager.h"
+#endif
+
+#ifdef HAS_TOUCH
+#include "models/common/managers/touch/touch_manager.h"
 #endif
 
 /**
@@ -110,6 +118,13 @@ void loop() {
   
   // Traiter les commandes Serial en attente
   SerialCommands::update();
+
+  // Mettre à jour le touch (TTP223) en début de loop pour que tout le reste voie un état à jour
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    TouchManager::update();
+  }
+  #endif
   
   #ifdef HAS_PUBNUB
   // Note: PubNubManager::loop() ne fait plus rien - le thread gère tout
@@ -218,12 +233,25 @@ void loop() {
 
   // Mettre à jour le gestionnaire de vie (modèle Gotchi uniquement)
   #ifdef KIDOO_MODEL_GOTCHI
+  // Traiter les événements NFC dans la loop principale (évite accès SD concurrent → corruption carte / écran figé)
+  #ifdef HAS_NFC
+  NFCManager::processTagEvents();
+  #endif
+  // Avant LifeManager : détecter le retrait du tag NFC pour arrêter l'effet biberon tout de suite
+  GotchiNFCHandler::update();
   LifeManager::update();
+
+  // Mettre à jour le capteur tactile TTP223 (debounce) avant les triggers pour lecture à jour
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    TouchManager::update();
+  }
+  #endif
 
   // Mettre à jour le gestionnaire d'émotions (système asynchrone)
   #ifdef HAS_LCD
   EmotionManager::update();  // Avance la state machine d'une frame par cycle
-  TriggerManager::update();  // Évalue et enqueue les triggers automatiques
+  TriggerManager::update();  // Évalue et enqueue les triggers automatiques (dont touch head_caress)
   #endif
   #endif
   

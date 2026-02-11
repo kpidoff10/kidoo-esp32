@@ -32,6 +32,31 @@ static const uint8_t BADGE_APPLE_LEN = 4;
 static const uint8_t BADGE_CANDY_UID[] = {0xF1, 0xB0, 0x0C, 0x04};
 static const uint8_t BADGE_CANDY_LEN = 4;
 
+// Variant depuis la clé écrite sur le tag (gotchi-nfc-write) - bloc 4
+// On accepte préfixe ou égal (lecture bloc 4 peut être légèrement corrompue: "SNAC4..." au lieu de "SNACK")
+static int getVariantForWrittenKey(const String& key) {
+  String k = key;
+  k.trim();
+  if (k.length() < 2) return 0;
+  if (k.startsWith("BOTTLE")) return 1;
+  if (k.startsWith("SNACK") || k.startsWith("CAKE") || k.startsWith("SNAC")) return 2;  // snack/gâteau
+  if (k.startsWith("APPLE")) return 3;
+  if (k.startsWith("CANDY")) return 4;
+  return 0;
+}
+
+// Nombre d'itérations de loop "illimité" pour le biberon (sortie par condition uniquement)
+#define BOTTLE_LOOP_ITERATIONS 32767
+// Faim à 100% = rassasié → on déclenche l'animation EXIT (fin) même si le NFC est encore posé
+#define BOTTLE_HUNGER_SATIATED 100
+
+// Condition de sortie de la loop biberon : on continue seulement si tag présent ET encore faim (< 100%)
+static bool bottleLoopContinueCondition() {
+  if (!GotchiNFCHandler::isTagPresent()) return false;  // Tag retiré → arrêter tout de suite
+  GotchiStats stats = LifeManager::getStats();
+  return (stats.hunger < BOTTLE_HUNGER_SATIATED);  // À 100% → EXIT automatique
+}
+
 // ============================================
 // Implémentation
 // ============================================
@@ -78,10 +103,18 @@ void GotchiNFCHandler::update() {
       Serial.println("[GOTCHI-NFC] Tag retire");
       tagPresent = false;
       activeTagLength = 0;
+      // Arrêter l'effet progressif biberon pour ne plus ajouter de faim
+      LifeManager::stopProgressiveEffect("bottle");
+      // Forcer l'animation à jouer la phase EXIT puis s'arrêter
+      EmotionManager::requestExitLoop();
     }
   }
 
 #endif
+}
+
+bool GotchiNFCHandler::isTagPresent() {
+  return tagPresent;
 }
 
 void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
@@ -95,9 +128,31 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
   activeTagLength = uidLength;
   tagPresent = true;
 
-  // Obtenir le variant du badge NFC
+  // Obtenir le variant du badge NFC (par UID prédéfini ou par clé écrite en bloc 4)
   int badgeVariant = getVariantForBadge(uid, uidLength);
-
+  if (badgeVariant == 0) {
+    uint8_t data[16];
+    if (NFCManager::readBlock(4, data, uid, uidLength)) {
+      // Priorité : code variant 1 octet (écrit par gotchi-nfc-write) = fiable
+      if (data[0] >= 1 && data[0] <= 4) {
+        badgeVariant = data[0];
+        Serial.printf("[GOTCHI-NFC] Tag reconnu par code: %d\n", badgeVariant);
+      } else {
+        // Fallback : clé texte (anciens tags ou écriture manuelle)
+        data[15] = '\0';
+        String key = String((char*)data);
+        key.trim();
+        badgeVariant = getVariantForWrittenKey(key);
+        if (badgeVariant != 0) {
+          Serial.printf("[GOTCHI-NFC] Tag reconnu par cle ecrite: %s -> variant %d\n", key.c_str(), badgeVariant);
+        } else {
+          Serial.printf("[GOTCHI-NFC] Cle lue bloc 4 non reconnue: '%s' (attendu code 1-4 ou BOTTLE/SNACK/CAKE/APPLE/CANDY)\n", key.c_str());
+        }
+      }
+    } else {
+      Serial.println("[GOTCHI-NFC] Lecture bloc 4 echouee (garder le tag pose un peu plus longtemps?)");
+    }
+  }
   if (badgeVariant == 0) {
     Serial.println("[GOTCHI-NFC] Badge inconnu, aucune action");
     return;
@@ -105,14 +160,14 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
 
   Serial.printf("[GOTCHI-NFC] Badge variant: %d\n", badgeVariant);
 
-  // Obtenir le variant demandé par le Gotchi (depuis le dernier trigger)
-  int requestedVariant = TriggerManager::getRequestedVariant();
+  // Triggers faim : accepter n'importe quel badge aliment. Sinon variant demandé par le dernier trigger.
+  int requestedVariant = TriggerManager::isAcceptAnyFoodTrigger() ? 0 : TriggerManager::getRequestedVariant();
 
   Serial.printf("[GOTCHI-NFC] Variant demande par Gotchi: %d\n", requestedVariant);
 
-  // Si pas de variant demandé (pas de trigger actif), accepter n'importe quel badge
+  // Si pas de variant demandé (trigger faim ou pas de trigger actif), accepter n'importe quel badge
   if (requestedVariant == 0) {
-    Serial.println("[GOTCHI-NFC] Aucun variant demande, accepte le badge");
+    Serial.println("[GOTCHI-NFC] Accepte le badge (faim = tout aliment, ou pas de demande)");
     requestedVariant = badgeVariant;  // Accepter
   }
 
@@ -135,7 +190,7 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
   // Bon variant! → appliquer l'action et jouer l'animation eating
   Serial.printf("[GOTCHI-NFC] Bon variant! Application de l'action\n");
 
-  // Obtenir l'action correspondante (bottle, snack, water, etc.)
+  // Obtenir l'action correspondante (bottle, cake, apple, candy)
   String action = getActionForVariant(badgeVariant);
 
   if (action.isEmpty()) {
@@ -147,12 +202,17 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
   if (LifeManager::applyAction(action)) {
     Serial.printf("[GOTCHI-NFC] Action '%s' appliquee avec succes\n", action.c_str());
 
-    // Jouer l'animation "eating" correspondant au variant
-    // Les animations eating doivent avoir été créées avec les bons variants (1-4)
-    // dans la config côté serveur
-    String emotionKey = "FOOD";  // Ou "EAT", selon votre convention
+    // Jouer l'animation "eating" (Mange) correspondant au variant (biberon=1, gâteau=2, pomme=3, bonbon=4)
+    String emotionKey = "eating";
 
-    if (EmotionManager::requestEmotion(emotionKey, 1, EMOTION_PRIORITY_HIGH)) {
+    // Biberon (variant 1) : boucle tant qu'il a encore faim OU que le tag est présent (condition passée dans la requête)
+    if (badgeVariant == 1) {
+      if (EmotionManager::requestEmotion(emotionKey, BOTTLE_LOOP_ITERATIONS, EMOTION_PRIORITY_HIGH, badgeVariant, "eating", bottleLoopContinueCondition)) {
+        Serial.println("[GOTCHI-NFC] Animation biberon lancee (loop jusqu'a rassasiement ou tag retire)");
+      } else {
+        Serial.println("[GOTCHI-NFC] ERREUR: Impossible de lancer animation eating");
+      }
+    } else if (EmotionManager::requestEmotion(emotionKey, 1, EMOTION_PRIORITY_HIGH, badgeVariant)) {
       Serial.printf("[GOTCHI-NFC] Animation eating (variant %d) lancee\n", badgeVariant);
     } else {
       Serial.println("[GOTCHI-NFC] ERREUR: Impossible de lancer animation eating");
@@ -197,16 +257,11 @@ int GotchiNFCHandler::getVariantForBadge(uint8_t* uid, uint8_t uidLength) {
 
 String GotchiNFCHandler::getActionForVariant(int variant) {
   switch (variant) {
-    case 1:
-      return "bottle";  // Biberon
-    case 2:
-      return "snack";   // Gâteau (snack)
-    case 3:
-      return "water";   // Pomme (TODO: créer action "apple" si différent de water)
-    case 4:
-      return "snack";   // Bonbon (snack)
-    default:
-      return "";
+    case 1: return "bottle";
+    case 2: return "cake";    // Gâteau
+    case 3: return "apple";   // Pomme
+    case 4: return "candy";   // Bonbon
+    default: return "";
   }
 }
 

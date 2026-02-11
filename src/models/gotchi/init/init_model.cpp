@@ -39,32 +39,41 @@ static void onNFCTagDetected(uint8_t* uid, uint8_t uidLength) {
   }
   Serial.println();
 
-  // Lire le bloc 4 pour obtenir la clé
+  // Lire le bloc 4 (code variant 1 octet ou clé texte)
   uint8_t data[16];
   if (!NFCManager::readBlock(4, data, uid, uidLength)) {
     Serial.println("[INIT-GOTCHI] Erreur: Impossible de lire le bloc 4");
     return;
   }
 
-  // Convertir les données en String (la clé est stockée en texte)
-  String key = "";
-  for (int i = 0; i < 16 && data[i] != 0; i++) {
-    key += (char)data[i];
-  }
-
-  Serial.printf("[INIT-GOTCHI] Cle lue: '%s'\n", key.c_str());
-
-  // Mapper la clé vers une action
   const NFCKeyMapping* mapping = nullptr;
-  for (size_t i = 0; i < NFC_KEY_TABLE_SIZE; i++) {
-    if (key == NFC_KEY_TABLE[i].key) {
-      mapping = &NFC_KEY_TABLE[i];
-      break;
+  if (data[0] >= 1 && data[0] <= 4) {
+    // Code variant (écrit par gotchi-nfc-write)
+    for (size_t i = 0; i < NFC_KEY_TABLE_SIZE; i++) {
+      if (NFC_KEY_TABLE[i].variant == data[0]) {
+        mapping = &NFC_KEY_TABLE[i];
+        Serial.printf("[INIT-GOTCHI] Code lu: %d -> %s\n", data[0], mapping->key);
+        break;
+      }
+    }
+  }
+  if (mapping == nullptr) {
+    // Fallback : clé en texte
+    String key = "";
+    for (int i = 0; i < 16 && data[i] != 0; i++) {
+      key += (char)data[i];
+    }
+    Serial.printf("[INIT-GOTCHI] Cle lue: '%s'\n", key.c_str());
+    for (size_t i = 0; i < NFC_KEY_TABLE_SIZE; i++) {
+      if (key == NFC_KEY_TABLE[i].key) {
+        mapping = &NFC_KEY_TABLE[i];
+        break;
+      }
     }
   }
 
   if (mapping == nullptr) {
-    Serial.printf("[INIT-GOTCHI] Cle inconnue: '%s'\n", key.c_str());
+    Serial.println("[INIT-GOTCHI] Cle/code inconnu");
     return;
   }
 

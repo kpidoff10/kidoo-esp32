@@ -69,6 +69,12 @@ private:
   static void cmdLCDPlayMjpeg(const String& args);
   static void cmdOta(const String& args);
   
+  // Commandes vibreur
+  static void cmdVibrator(const String& args);
+  
+  // Commandes touch (TTP223)
+  static void cmdTouch(const String& args);
+  
   // Commandes audio
   static void cmdAudio();
   static void cmdAudioPlay(const String& args);

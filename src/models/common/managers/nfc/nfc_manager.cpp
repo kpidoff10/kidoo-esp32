@@ -16,6 +16,7 @@ static Adafruit_PN532* nfcInstance = nullptr;
 bool NFCManager::initialized = false;
 bool NFCManager::available = false;
 uint32_t NFCManager::firmwareVersion = 0;
+QueueHandle_t NFCManager::tagEventQueue = nullptr;
 
 // Thread
 TaskHandle_t NFCManager::taskHandle = nullptr;
@@ -80,22 +81,14 @@ void NFCManager::nfcTask(void* parameter) {
           
           xSemaphoreGive(nfcMutex);  // Libérer le mutex d'abord
           
-          // Appeler le callback si c'est un nouveau tag
-          if (isNewTag) {
-            // Afficher l'UID du tag détecté
-            Serial.print("[NFC] Tag detecte: ");
-            for (uint8_t i = 0; i < uidLength; i++) {
-              if (lastUID[i] < 0x10) Serial.print("0");
-              Serial.print(lastUID[i], HEX);
-              if (i < uidLength - 1) Serial.print(":");
-            }
-            Serial.println();
-            
-            if (tagCallback != nullptr) {
-              Serial.println("[NFC] Appel du callback...");
-              tagCallback(lastUID, lastUIDLength);
-            } else {
-              Serial.println("[NFC] Pas de callback configure");
+          // Mettre l'événement en file pour traitement dans la loop principale (éviter accès SD concurrent)
+          if (isNewTag && tagCallback != nullptr && tagEventQueue != nullptr) {
+            TagEvent ev = {};
+            uint8_t len = (lastUIDLength > 10) ? 10 : lastUIDLength;
+            memcpy(ev.uid, lastUID, len);
+            ev.uidLength = len;
+            if (xQueueSend(tagEventQueue, &ev, 0) != pdTRUE) {
+              Serial.println("[NFC] File evenements tag pleine, evenement ignore");
             }
           }
         } else {
@@ -138,6 +131,13 @@ bool NFCManager::init() {
   nfcMutex = xSemaphoreCreateMutex();
   if (!nfcMutex) {
     Serial.println("[NFC] ERREUR: Impossible de creer le mutex");
+    return false;
+  }
+
+  // Créer la file d'événements tag (traitement reporté dans la loop principale)
+  tagEventQueue = xQueueCreate(TAG_EVENT_QUEUE_LEN, sizeof(TagEvent));
+  if (!tagEventQueue) {
+    Serial.println("[NFC] ERREUR: Impossible de creer la file evenements tag");
     return false;
   }
   
@@ -197,6 +197,18 @@ uint32_t NFCManager::getFirmwareVersion() {
 void NFCManager::setTagCallback(NFCTagCallback callback) {
   tagCallback = callback;
   Serial.println("[NFC] Callback configure");
+}
+
+void NFCManager::processTagEvents() {
+#ifdef HAS_NFC
+  if (tagCallback == nullptr || tagEventQueue == nullptr) {
+    return;
+  }
+  TagEvent ev;
+  while (xQueueReceive(tagEventQueue, &ev, 0) == pdTRUE) {
+    tagCallback(ev.uid, ev.uidLength);
+  }
+#endif // HAS_NFC
 }
 
 void NFCManager::setAutoDetect(bool enabled) {
@@ -416,7 +428,7 @@ bool NFCManager::writeBlock(uint8_t blockNumber, uint8_t* data, uint8_t* uid, ui
 #endif // HAS_NFC
 }
 
-bool NFCManager::writeTag(const String& key) {
+bool NFCManager::writeTag(const String& key, int variantCode) {
 #ifdef HAS_NFC
   if (!isAvailable()) {
     Serial.println("[NFC] NFC non disponible");
@@ -447,15 +459,19 @@ bool NFCManager::writeTag(const String& key) {
   uint8_t data[16];
   memset(data, 0, 16);
 
-  // Copier la clé dans le buffer (tronquer à 16 caractères)
-  int len = key.length();
-  if (len > 16) len = 16;
-  memcpy(data, key.c_str(), len);
-
-  // Écrire sur le bloc 4 (premier bloc de données utilisable)
-  Serial.print("[NFC] Ecriture de la cle '");
-  Serial.print(key);
-  Serial.println("' sur le bloc 4...");
+  if (variantCode >= 1 && variantCode <= 4) {
+    // Écrire uniquement le code variant (1 octet) : reconnaissance fiable, pas de corruption texte
+    data[0] = (uint8_t)variantCode;
+    Serial.printf("[NFC] Ecriture du code variant %d sur le bloc 4...\n", variantCode);
+  } else {
+    // Fallback : écrire la clé en texte (tronquer à 16 caractères)
+    int len = key.length();
+    if (len > 16) len = 16;
+    memcpy(data, key.c_str(), len);
+    Serial.print("[NFC] Ecriture de la cle '");
+    Serial.print(key);
+    Serial.println("' sur le bloc 4...");
+  }
 
   bool success = writeBlock(4, data, uid, uidLength);
 
