@@ -4,6 +4,10 @@
 #include "../../../model_config.h"
 #include <set>
 
+#if defined(HAS_TOUCH)
+#include "../../../common/managers/touch/touch_manager.h"
+#endif
+
 // Mettre à 1 pour debug (attention: flood Serial, accès console difficile)
 #define TRIGGER_DEBUG_SERIAL 0
 
@@ -18,6 +22,8 @@
 #define IDLE_OK_DELAY_MIN_MS 5000       // Délai min avant prochaine émotion OK (attente)
 #define IDLE_OK_DELAY_MAX_MS 30000      // Délai max avant prochaine émotion OK (attente)
 #define MIN_OK_BETWEEN_DEMAND_TRIGGERS 4  // Au moins 4 animations OK entre deux "demandes" (faim, gâteau, etc.)
+#define HEAD_CARESS_EXIT_DELAY_MS 4000   // Délai sans toucher avant de lancer la phase exit (main enlevée = 4 s)
+#define HEAD_CARESS_MIN_INTERVAL_MS 2500 // Délai min entre deux caresse (évite rebonds + pas d'enqueue tant que HEAD joue)
 
 // Variables statiques
 bool TriggerManager::_initialized = false;
@@ -32,6 +38,28 @@ int TriggerManager::_idleOkCountSinceLastDemand = MIN_OK_BETWEEN_DEMAND_TRIGGERS
 std::map<String, std::vector<IndexedEmotion>> TriggerManager::_triggerIndex;
 // Triggers pour lesquels on a déjà logué "Aucune emotion" (éviter le flood Serial)
 static std::set<String> s_loggedMissingTriggers;
+#if defined(HAS_TOUCH)
+static bool s_lastHeadTouchState = false;
+static unsigned long s_headCaressLastReleaseMs = 0;  // 0 = doigt actuellement posé ou pas encore relâché
+static unsigned long s_lastHeadCaressTriggerMs = 0; // Dernier déclenchement caresse (anti-rebond)
+
+/** Callback pour la loop head_caress : continuer tant que touch ou relâché depuis moins de HEAD_CARESS_EXIT_DELAY_MS. */
+static bool headCaressLoopContinueCondition() {
+  if (!HAS_TOUCH || !TouchManager::isInitialized()) {
+    return false;  // Pas de capteur → sortir
+  }
+  if (TouchManager::isTouched()) {
+    s_headCaressLastReleaseMs = 0;  // Doigt sur le capteur → on annule le timer de sortie
+    return true;   // Continuer la loop
+  }
+  unsigned long now = millis();
+  if (s_headCaressLastReleaseMs == 0) {
+    s_headCaressLastReleaseMs = now;  // Premier frame sans toucher → démarrer le délai
+  }
+  unsigned long elapsed = now - s_headCaressLastReleaseMs;
+  return elapsed < (unsigned long)HEAD_CARESS_EXIT_DELAY_MS;  // true = continuer, false = passer en exit
+}
+#endif
 
 bool TriggerManager::init() {
   _initialized = false;
@@ -150,14 +178,35 @@ void TriggerManager::update() {
 
   unsigned long now = millis();
 
-  // Vérifier les triggers selon l'intervalle défini
+#if defined(HAS_TOUCH)
+  // Action tactile : caresse sur la tête — un seul déclenchement par caresse, pas d'enqueue tant que HEAD joue
+  if (HAS_TOUCH && TouchManager::isInitialized()) {
+    bool touched = TouchManager::isTouched();
+    if (touched && !s_lastHeadTouchState) {
+      s_lastHeadTouchState = true;
+      unsigned long nowTouch = millis();
+      bool intervalOk = (nowTouch - s_lastHeadCaressTriggerMs) >= (unsigned long)HEAD_CARESS_MIN_INTERVAL_MS;
+      bool headNotPlaying = (EmotionManager::getCurrentPlayingKey() != "HEAD");
+      if (intervalOk && headNotPlaying) {
+        s_lastHeadCaressTriggerMs = nowTouch;
+        setRequestedVariant(1);
+        checkTrigger("head_caress");
+        Serial.println("[TRIGGER] Touch -> head_caress (caresse sur la tete)");
+      }
+    } else if (!touched) {
+      s_lastHeadTouchState = false;
+    }
+  }
+#endif
+
+  // Vérifier les triggers humeur selon l'intervalle défini (tous les 5 s)
   if (now - _lastCheckTime < TRIGGER_CHECK_INTERVAL) {
     return;
   }
 
   _lastCheckTime = now;
 
-  // Ne pas évaluer les triggers si une animation est déjà en cours
+  // Ne pas évaluer les triggers humeur si une animation est déjà en cours
   if (EmotionManager::isPlaying()) {
     return;
   }
@@ -210,10 +259,14 @@ void TriggerManager::update() {
 
 void TriggerManager::checkTrigger(const String& triggerName) {
   if (!_initialized || !_enabled) {
+    if (triggerName == "head_caress") {
+      Serial.println("[TRIGGER] head_caress: skip (non initialise ou desactive)");
+    }
     return;
   }
 
-  if (!isCooldownElapsed()) {
+  // Cooldown 30 s pour les triggers auto (OK, humeur) ; la caresse (touch) peut toujours être déclenchée
+  if (triggerName != "head_caress" && !isCooldownElapsed()) {
 #if TRIGGER_DEBUG_SERIAL
     Serial.println("[TRIGGER] Cooldown actif, trigger ignore");
 #endif
@@ -254,13 +307,16 @@ bool TriggerManager::evaluateTrigger(const String& triggerName) {
   // Eating : déclenché uniquement par LifeManager::checkTrigger("eating"), pas par la boucle stats
   if (triggerName == "eating") return false;
 
+  // Head caress : déclenché uniquement par le capteur tactile (TTP223) dans update(), pas par les stats
+  if (triggerName == "head_caress") return false;
+
   // Manual or unknown
   return false;
 }
 
 bool TriggerManager::activateTrigger(const String& triggerName) {
-  // Éviter de rejouer le même trigger avant la fin du cooldown (30 s)
-  if (triggerName == _lastActiveTrigger && !isCooldownElapsed()) {
+  // Cooldown 30 s pour éviter de rejouer le même trigger (sauf head_caress : la caresse répond à chaque touch)
+  if (triggerName != "head_caress" && triggerName == _lastActiveTrigger && !isCooldownElapsed()) {
     return false;  // Skip, pas d'émotion jouée → laisser la place aux OK
   }
 
@@ -274,21 +330,35 @@ bool TriggerManager::activateTrigger(const String& triggerName) {
       s_loggedMissingTriggers.insert(triggerName);
       Serial.printf("[TRIGGER] Aucune emotion pour le trigger '%s' (message unique)\n", triggerName.c_str());
     }
+    if (triggerName == "head_caress") {
+      Serial.println("[TRIGGER] head_caress: aucune emotion dans config SD (trigger 'head_caress')");
+    }
     return false;
   }
 
   if (_triggerIndex[triggerName].empty()) {
+    if (triggerName == "head_caress") {
+      Serial.println("[TRIGGER] head_caress: liste emotions vide");
+    }
     return false;
   }
 
   String emotionKey = selectRandomEmotion(triggerName);
   if (emotionKey.isEmpty()) {
+    if (triggerName == "head_caress") {
+      Serial.println("[TRIGGER] head_caress: selectRandomEmotion a retourne vide");
+    }
     return false;
   }
 
+  if (triggerName == "head_caress") {
+    Serial.printf("[TRIGGER] head_caress -> emotion key='%s' variant=%d\n", emotionKey.c_str(), getRequestedVariant());
+  }
 #if TRIGGER_DEBUG_SERIAL
-  Serial.printf("[TRIGGER] Activation du trigger '%s' -> emotion '%s'\n",
-                triggerName.c_str(), emotionKey.c_str());
+  else {
+    Serial.printf("[TRIGGER] Activation du trigger '%s' -> emotion '%s'\n",
+                  triggerName.c_str(), emotionKey.c_str());
+  }
 #endif
 
   EmotionPriority priority = EMOTION_PRIORITY_NORMAL;
@@ -297,12 +367,30 @@ bool TriggerManager::activateTrigger(const String& triggerName) {
   }
 
   int variant = getRequestedVariant();
-  if (EmotionManager::requestEmotion(emotionKey, 1, priority, variant, triggerName)) {
+  int loopCount = 1;
+  LoopContinueConditionFn loopCondition = nullptr;
+
+#if defined(HAS_TOUCH)
+  if (triggerName == "head_caress") {
+    s_headCaressLastReleaseMs = 0;
+    loopCount = 100;  // Boucle "infinie" jusqu'à ce que la condition demande l'exit (4 s sans touch)
+    loopCondition = headCaressLoopContinueCondition;  // Passée dans la requête pour être restaurée au déqueue
+  }
+#endif
+
+  if (EmotionManager::requestEmotion(emotionKey, loopCount, priority, variant, triggerName, loopCondition)) {
+    if (triggerName == "head_caress") {
+      Serial.println("[TRIGGER] head_caress: emotion enqueuee OK");
+    }
     _lastTriggerTime = millis();
     _lastActiveTrigger = triggerName;
+    LifeManager::applyTriggerEffect(triggerName);  // Effet instantané sur les stats (ex. caresse -> +1 bonheur)
     return true;
   }
   Serial.printf("[TRIGGER] Erreur: Impossible d'enqueuer l'emotion '%s'\n", emotionKey.c_str());
+  if (triggerName == "head_caress") {
+    Serial.println("[TRIGGER] head_caress: requestEmotion a echoue (queue pleine?)");
+  }
   return false;
 }
 

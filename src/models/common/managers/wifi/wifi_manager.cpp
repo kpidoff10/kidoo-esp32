@@ -124,6 +124,9 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   
   // Attendre la connexion avec timeout
   unsigned long startTime = millis();
+  unsigned long lastRetryTime = startTime;
+  const unsigned long RETRY_BACKOFF_MS = 4000;   // Pause toutes les 4 s si l'AP refuse (évite "Association refused temporarily")
+  const unsigned long BACKOFF_WAIT_MS = 3000;    // Attendre 3 s avant de réessayer (respecte le backoff de l'AP)
   int dotCount = 0;
   
   while (WiFi.status() != WL_CONNECTED) {
@@ -149,6 +152,16 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
       }
       connectionStatus = WIFI_STATUS_CONNECTION_FAILED;
       return false;
+    }
+    
+    // Si l'AP refuse (Association refused temporarily) : faire une pause puis réessayer au lieu de bombarder
+    if (millis() - lastRetryTime >= RETRY_BACKOFF_MS) {
+      Serial.println();
+      Serial.println("[WIFI] Pause puis nouvel essai (evite surcharge AP)...");
+      WiFi.disconnect();
+      delay(BACKOFF_WAIT_MS);
+      WiFi.begin(ssid, password);
+      lastRetryTime = millis();
     }
     
     delay(500);

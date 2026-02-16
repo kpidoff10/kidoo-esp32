@@ -131,6 +131,27 @@ bool LifeManager::applyAction(const String& actionId) {
   return true;
 }
 
+bool LifeManager::applyTriggerEffect(const String& triggerId) {
+#if defined(TRIGGER_STAT_EFFECTS_SIZE) && TRIGGER_STAT_EFFECTS_SIZE > 0
+  if (!initialized) return false;
+  const char* idCstr = triggerId.c_str();
+  for (size_t i = 0; i < TRIGGER_STAT_EFFECTS_SIZE; i++) {
+    if (strcmp(TRIGGER_STAT_EFFECTS[i].triggerId, idCstr) != 0) continue;
+    const struct TriggerStatEffect* e = &TRIGGER_STAT_EFFECTS[i].effect;
+    if (e->hunger != 0)  stats.hunger   = clampStat((int)stats.hunger   + e->hunger);
+    if (e->happiness != 0) stats.happiness = clampStat((int)stats.happiness + e->happiness);
+    if (e->health != 0)   stats.health   = clampStat((int)stats.health   + e->health);
+    if (e->fatigue != 0)  stats.fatigue  = clampStat((int)stats.fatigue  + e->fatigue);
+    if (e->hygiene != 0)  stats.hygiene  = clampStat((int)stats.hygiene  + e->hygiene);
+    saveState();
+    Serial.printf("[LifeManager] Effet trigger '%s' appliqué (hunger=%d happiness=%d health=%d fatigue=%d hygiene=%d)\n",
+                  idCstr, (int)e->hunger, (int)e->happiness, (int)e->health, (int)e->fatigue, (int)e->hygiene);
+    return true;
+  }
+#endif
+  return false;
+}
+
 unsigned long LifeManager::getLastActionTime(const String& actionId) {
   if (actionId == NFC_ITEM_BOTTLE) return cooldowns.lastBottle;
   if (actionId == NFC_ITEM_CAKE || actionId == "snack") return cooldowns.lastCake;
@@ -407,6 +428,12 @@ void LifeManager::declineStats() {
   }
   int newProprete = (int)stats.hygiene - hygieneDecay;
   stats.hygiene = clampStat(newProprete);
+
+  // Santé (vie) : -1 toutes les 30 min si très faim (faim < seuil critique)
+  if (stats.hunger < STATS_HUNGER_THRESHOLD_CRITICAL) {
+    int newSante = (int)stats.health - STATS_HEALTH_DECLINE_WHEN_VERY_HUNGRY;
+    stats.health = clampStat(newSante);
+  }
 }
 
 bool LifeManager::applyBottle() {
@@ -530,6 +557,13 @@ void LifeManager::stopProgressiveEffect(const String& actionId) {
   progressiveEffect.active = false;
   progressiveEffect.remainingTicks = 0;
   saveState();
+}
+
+bool LifeManager::isProgressiveEffectActive(const String& actionId) {
+  if (!initialized || !progressiveEffect.active) {
+    return false;
+  }
+  return (actionId == progressiveEffect.itemId);
 }
 
 void LifeManager::applyProgressiveTick() {

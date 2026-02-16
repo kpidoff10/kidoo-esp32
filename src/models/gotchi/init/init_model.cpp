@@ -109,6 +109,26 @@ bool InitModelGotchi::configure() {
   return true;
 }
 
+#ifdef HAS_LCD
+void InitModelGotchi::showStartupScreen() {
+  LCDManager::setRotation(2);   // Portrait à l'envers : texte pivoté 90° dans l'autre sens
+  LCDManager::fillScreen(LCDManager::COLOR_BLACK);
+  LCDManager::setTextColor(LCDManager::COLOR_GREEN);
+  LCDManager::setTextSize(3);
+  LCDManager::setCursor(70, 50);
+  LCDManager::println("Kidoo");
+  LCDManager::setCursor(80, 95);
+  LCDManager::println("Gotchi");
+  LCDManager::setTextSize(2);
+  LCDManager::setTextColor(LCDManager::COLOR_WHITE);
+  LCDManager::setCursor(55, 155);
+  LCDManager::println("Demarrage...");
+  LCDManager::setRotation(1);   // Restaurer paysage pour le reste de l'app
+}
+#else
+void InitModelGotchi::showStartupScreen() { }
+#endif
+
 bool InitModelGotchi::init() {
   Serial.println("");
   Serial.println("========================================");
@@ -117,18 +137,12 @@ bool InitModelGotchi::init() {
 
 #ifdef HAS_LCD
   if (LCDManager::isAvailable()) {
-    LCDManager::fillScreen(LCDManager::COLOR_BLACK);
-    LCDManager::setTextColor(LCDManager::COLOR_GREEN);
-    LCDManager::setTextSize(3);
-    LCDManager::setCursor(40, 100);
-    LCDManager::println("Kidoo");
-    LCDManager::setCursor(50, 140);
-    LCDManager::println("Gotchi");
-    LCDManager::setTextSize(1);
-    LCDManager::setTextColor(LCDManager::COLOR_WHITE);
-    LCDManager::setCursor(30, 200);
-    LCDManager::println("Demarrage...");
+    LCDManager::setBacklight(true);
+    InitModelGotchi::showStartupScreen();
     delay(1500);
+
+    // Callback pour ré-afficher le nom après la re-init LCD différée (reboot)
+    LCDManager::setPostReinitCallback(InitModelGotchi::showStartupScreen);
 
     // Initialiser le gestionnaire d'émotions
     if (!EmotionManager::init()) {

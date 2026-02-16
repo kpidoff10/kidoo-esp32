@@ -37,10 +37,24 @@ enum EmotionPriority {
   EMOTION_PRIORITY_HIGH = 1,    // Interrompt l'animation courante (saute vers exit)
 };
 
+/** Type d'action à exécuter à l'affichage d'une frame (aligné avec FrameAction côté server). */
+enum FrameActionType {
+  FRAME_ACTION_NONE = 0,
+  FRAME_ACTION_LED,   // Couleur LED (r, g, b)
+  FRAME_ACTION_VIBRATION  // Réservé pour plus tard
+};
+
+/** Action matérielle déclenchée à cette frame (LED, vibration, etc.). */
+struct FrameAction {
+  FrameActionType type;
+  uint8_t r, g, b;  // Pour LED : couleur RGB
+  uint8_t vibratorEffect;  // Pour FRAME_ACTION_VIBRATION : 0=short, 1=long, 2=jerky, 3=pulse, 4=doubletap
+};
+
 /** Structure d'une frame dans la timeline */
 struct TimelineFrame {
   int sourceFrameIndex;  // Index de la frame source dans le MJPEG
-  // Note: actions ignorées pour le moment
+  std::vector<FrameAction> actions;  // Actions à exécuter quand cette frame est affichée (LED, etc.)
 };
 
 /** Structure pour l'index d'une frame JPEG dans le fichier MJPEG */
@@ -73,6 +87,9 @@ struct EmotionData {
   std::vector<FrameIndex> frameOffsets;  // Index des frames pour accès direct
 };
 
+/** Callback optionnel : retourne false pour passer en phase EXIT (ex. head_caress après 4 s sans touch). */
+typedef bool (*LoopContinueConditionFn)();
+
 /** Requête d'émotion pour la queue */
 struct EmotionRequest {
   String emotionKey;       // Clé de l'émotion à charger
@@ -80,6 +97,7 @@ struct EmotionRequest {
   EmotionPriority priority; // Priorité de la requête
   int variant;             // Variant (1-4) pour key+variant ; 0 = premier qui matche la key
   String requestedTrigger; // Trigger qui a déclenché la requête (ex. hunger_medium) ; vide si manuel/NFC
+  LoopContinueConditionFn loopCondition;  // Si non null, utilisée en phase loop pour décider EXIT (ex. head_caress)
 };
 
 /** Contexte de lecture (état interne de la state machine) */
@@ -110,10 +128,11 @@ public:
 
   /** Demander la lecture d'une émotion (mise en queue). Non-bloquant.
    * @param variant Variant (1-4) pour sélectionner l'animation key+variant ; 0 = premier qui matche la key
-   * @param requestedTrigger Trigger qui a déclenché (ex. hunger_medium) ; utilisé pour le log, vide si manuel/NFC */
+   * @param requestedTrigger Trigger qui a déclenché (ex. hunger_medium) ; utilisé pour le log, vide si manuel/NFC
+   * @param loopCondition Si non null, appelée en phase loop pour décider de passer en EXIT (ex. head_caress) */
   static bool requestEmotion(const String& emotionKey, int loopCount = 1,
                              EmotionPriority priority = EMOTION_PRIORITY_NORMAL, int variant = 0,
-                             const String& requestedTrigger = "");
+                             const String& requestedTrigger = "", LoopContinueConditionFn loopCondition = nullptr);
 
   /** Annuler toutes les animations (vide queue, interruption immédiate → IDLE) */
   static void cancelAll();
@@ -129,7 +148,6 @@ public:
 
   /** Callback appelé à chaque fin d'itération de loop : retourne true pour continuer, false pour passer en EXIT.
    *  Utilisé ex. pour le biberon : boucle tant que (faim OU tag NFC présent). */
-  typedef bool (*LoopContinueConditionFn)();
   static void setLoopContinueCondition(LoopContinueConditionFn fn);
 
   /** Forcer la loop en cours à passer en EXIT au prochain update() (ex. tag NFC retiré → jouer la phase exit). */
@@ -158,11 +176,19 @@ private:
   static EmotionData _currentEmotion; // Émotion actuellement chargée
   static bool _loaded;                // true si une émotion est chargée
 
-  // Nouveau : buffer PSRAM persistant pour frames JPEG
+  // Buffer PSRAM : JPEG/MJPEG (legacy) ou données RLE pour .anim
   static uint8_t* _frameBuffer;
   static const size_t FRAME_BUFFER_SIZE = 131072;  // 128 KB
 
-  // Nouveau : contexte de lecture (state machine)
+  // Format .anim : palette + double buffer RGB565 pour fluidité
+  static bool _useAnimFormat;
+  static uint16_t _animPalette[256];
+  static uint8_t _animPaletteSize;
+  static uint16_t* _animRgbBuffer[2];   // Double buffering PSRAM
+  static int _animRgbBufferIndex;        // 0 ou 1, alterné à chaque frame
+  static const size_t ANIM_RGB_BUFFER_SIZE = 240 * 280 * 2;  // 134400 bytes par buffer
+
+  // Contexte de lecture (state machine)
   static PlaybackContext _playback;
 
   // Nouveau : queue d'animations (circular buffer fixe)
@@ -186,11 +212,17 @@ private:
    * @param silentIfNotFound Si true, ne pas imprimer en Serial quand la clé est absente (pour fallback eating→FOOD). */
   static bool parseEmotionConfig(const String& jsonPath, const String& emotionKey, int requestedVariant = 0, bool silentIfNotFound = false);
 
-  /** Construire l'index des frames du MJPEG pour accès direct */
+  /** Construire l'index des frames (MJPEG .idx ou .anim en parcourant le fichier) */
   static bool buildFrameIndex();
+
+  /** Construire l'index des frames pour un fichier .anim (header + palette + offsets) */
+  static bool buildAnimFrameIndex();
 
   /** Afficher la frame courante si le timing est respecté. Retourne true si affichée. */
   static bool displayCurrentFrame(const EmotionPhase& phase);
+
+  /** Exécuter les actions de la frame courante (LED, etc.). Appelé après affichage réussi. */
+  static void runFrameActions(const EmotionPhase& phase, int frameIndex);
 
   /** Ouvrir le fichier MJPEG de l'émotion actuellement chargée */
   static bool openMjpegFile();

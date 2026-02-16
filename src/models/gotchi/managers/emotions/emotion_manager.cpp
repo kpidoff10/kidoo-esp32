@@ -1,6 +1,13 @@
 #include "emotion_manager.h"
+#include "anim_format.h"
 #include "../../../model_config.h"
 #include "../../../common/managers/lcd/lcd_manager.h"
+#if defined(HAS_LED)
+#include "../../../common/managers/led/led_manager.h"
+#endif
+#if defined(HAS_VIBRATOR)
+#include "../../../common/managers/vibrator/vibrator_manager.h"
+#endif
 
 // Mettre à 1 pour debug détaillé (attention: flood Serial, accès console difficile)
 #define EMOTION_DEBUG_SERIAL 0
@@ -14,6 +21,22 @@
 #endif
 #if defined(ESP32)
 #include <esp_random.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
+// Tâche one-shot pour jouer un effet vibreur sans bloquer la boucle d'émotion.
+// La vibration doit se terminer même si on change de frame ou d'animation : on ne
+// fait jamais VibratorManager::stop() lors des transitions, cette tâche court
+// jusqu'au bout (ex. EFFECT_LONG ~800 ms) puis se supprime.
+#if defined(HAS_VIBRATOR)
+static void vibratorEffectTask(void* param) {
+  uint8_t idx = (uint8_t)(uintptr_t)param;
+  if (idx <= (uint8_t)VibratorManager::EFFECT_DOUBLE_TAP) {
+    VibratorManager::playEffect((VibratorManager::Effect)idx);
+  }
+  vTaskDelete(nullptr);
+}
 #endif
 
 // Membres statiques - état existant
@@ -23,6 +46,11 @@ bool EmotionManager::_loaded = false;
 
 // Membres statiques - nouveau système asynchrone
 uint8_t* EmotionManager::_frameBuffer = nullptr;
+bool EmotionManager::_useAnimFormat = false;
+uint16_t EmotionManager::_animPalette[256] = {0};
+uint8_t EmotionManager::_animPaletteSize = 0;
+uint16_t* EmotionManager::_animRgbBuffer[2] = {nullptr, nullptr};
+int EmotionManager::_animRgbBufferIndex = 0;
 PlaybackContext EmotionManager::_playback = {
   EMOTION_STATE_IDLE, // state
   0,                  // currentFrameIndex
@@ -39,7 +67,7 @@ EmotionRequest EmotionManager::_queue[EMOTION_QUEUE_MAX_SIZE];
 int EmotionManager::_queueHead = 0;
 int EmotionManager::_queueTail = 0;
 int EmotionManager::_queueCount = 0;
-EmotionManager::LoopContinueConditionFn EmotionManager::_loopContinueCondition = nullptr;
+LoopContinueConditionFn EmotionManager::_loopContinueCondition = nullptr;
 
 bool EmotionManager::init() {
   _loaded = false;
@@ -84,6 +112,19 @@ bool EmotionManager::init() {
   } else {
     Serial.printf("[EMOTION] Buffer frame alloue en PSRAM: %d bytes\n", FRAME_BUFFER_SIZE);
   }
+
+  // Double buffer RGB565 pour .anim (PSRAM)
+  for (int i = 0; i < 2; i++) {
+    _animRgbBuffer[i] = (uint16_t*)heap_caps_malloc(ANIM_RGB_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+    if (!_animRgbBuffer[i]) {
+      _animRgbBuffer[i] = (uint16_t*)malloc(ANIM_RGB_BUFFER_SIZE);
+    }
+    if (!_animRgbBuffer[i]) {
+      Serial.printf("[EMOTION] ERREUR: Impossible d'allouer buffer RGB anim %d\n", i);
+      return false;
+    }
+  }
+  Serial.printf("[EMOTION] Double buffer RGB .anim alloue: 2 x %d bytes\n", ANIM_RGB_BUFFER_SIZE);
 
   return true;
 #else
@@ -165,6 +206,75 @@ bool EmotionManager::loadEmotion(const String& emotionKey, int variant) {
   return false;
 #endif
 }
+
+#if defined(HAS_SD)
+/** Parse une couleur hex "#RRGGBB" ou "RRGGBB" dans r, g, b. */
+static void parseHexColor(const char* str, uint8_t& r, uint8_t& g, uint8_t& b) {
+  r = g = b = 0;
+  if (!str) return;
+  const char* p = (str[0] == '#') ? str + 1 : str;
+  if (strlen(p) < 6) return;
+  auto hex2 = [](const char* s) -> int {
+    int v = 0;
+    for (int i = 0; i < 2; i++) {
+      char c = s[i];
+      if (c >= '0' && c <= '9') v = (v << 4) + (c - '0');
+      else if (c >= 'A' && c <= 'F') v = (v << 4) + (c - 'A' + 10);
+      else if (c >= 'a' && c <= 'f') v = (v << 4) + (c - 'a' + 10);
+      else return 0;
+    }
+    return v;
+  };
+  r = (uint8_t)hex2(p);
+  g = (uint8_t)hex2(p + 2);
+  b = (uint8_t)hex2(p + 4);
+}
+
+/** Remplit actions à partir du tableau JSON frame["actions"] (type "led" ou "vibration"). */
+static void parseFrameActions(JsonObject frame, std::vector<FrameAction>& actions) {
+  actions.clear();
+  JsonArray arr = frame["actions"];
+  if (arr.isNull()) return;
+  for (JsonObject act : arr) {
+    const char* t = act["type"].as<const char*>();
+    if (!t) continue;
+
+    if (strcmp(t, "led") == 0) {
+#if defined(HAS_LED)
+      const char* color = act["color"].as<const char*>();
+      if (!color) continue;
+      FrameAction fa;
+      fa.type = FRAME_ACTION_LED;
+      fa.r = fa.g = fa.b = 0;
+      fa.vibratorEffect = 0;
+      parseHexColor(color, fa.r, fa.g, fa.b);
+      actions.push_back(fa);
+#endif
+      continue;
+    }
+
+#if defined(HAS_VIBRATOR)
+    if (strcmp(t, "vibration") == 0 || strcmp(t, "vibrator") == 0) {
+      const char* effect = act["effect"].as<const char*>();
+      if (!effect) continue;
+      // short=0, long=1, jerky/saccade=2, pulse=3, doubletap=4 (ordre VibratorManager::Effect)
+      uint8_t effectIdx = 0;
+      if (strcmp(effect, "long") == 0) effectIdx = 1;
+      else if (strcmp(effect, "saccade") == 0 || strcmp(effect, "saccadé") == 0 || strcmp(effect, "jerky") == 0) effectIdx = 2;
+      else if (strcmp(effect, "pulse") == 0 || strcmp(effect, "pulsation") == 0) effectIdx = 3;
+      else if (strcmp(effect, "doubletap") == 0 || strcmp(effect, "double-tap") == 0) effectIdx = 4;
+      else if (strcmp(effect, "short") == 0 || strcmp(effect, "court") == 0) effectIdx = 0;
+
+      FrameAction fa;
+      fa.type = FRAME_ACTION_VIBRATION;
+      fa.r = fa.g = fa.b = 0;
+      fa.vibratorEffect = effectIdx;
+      actions.push_back(fa);
+    }
+#endif
+  }
+}
+#endif
 
 bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& emotionKey, int requestedVariant, bool silentIfNotFound) {
 #if defined(HAS_SD)
@@ -313,6 +423,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
     for (JsonObject frame : introTimeline) {
       TimelineFrame tf;
       tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+      parseFrameActions(frame, tf.actions);
       if (tf.sourceFrameIndex >= 0) {
         _currentEmotion.intro.timeline.push_back(tf);
       }
@@ -329,6 +440,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
     for (JsonObject frame : loopTimeline) {
       TimelineFrame tf;
       tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+      parseFrameActions(frame, tf.actions);
       if (tf.sourceFrameIndex >= 0) {
         _currentEmotion.loop.timeline.push_back(tf);
       }
@@ -345,16 +457,22 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
     for (JsonObject frame : exitTimeline) {
       TimelineFrame tf;
       tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+      parseFrameActions(frame, tf.actions);
       if (tf.sourceFrameIndex >= 0) {
         _currentEmotion.exit.timeline.push_back(tf);
       }
     }
   }
 
-  // Construire le chemin du fichier MJPEG avec l'emotion_videoId
+  // Chemin du fichier d'animation : .anim (lossless) prioritaire, fallback .mjpeg
+  String animPath = "/characters/" + _characterId + "/emotions/" + emotionKey + "/" + emotionVideoId + "/video.anim";
   String mjpegPath = "/characters/" + _characterId + "/emotions/" + emotionKey + "/" + emotionVideoId + "/video.mjpeg";
 
 #if defined(HAS_SD)
+  // Préférer .anim si présent, sinon .mjpeg
+  if (SD.exists(animPath.c_str())) {
+    mjpegPath = animPath;
+  }
   // Si la vidéo choisie n'est pas sur la SD (ex: 2e OK pas encore sync), repasser à la première pour éviter écran noir
   if (videoCount > 1 && !SD.exists(mjpegPath.c_str())) {
     Serial.println("[EMOTION] Video choisie absente sur SD, fallback video 0");
@@ -365,7 +483,8 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
       Serial.println("[EMOTION] Erreur: emotion_videoId manquant (fallback video 0)");
       return false;
     }
-    mjpegPath = "/characters/" + _characterId + "/emotions/" + emotionKey + "/" + emotionVideoId + "/video.mjpeg";
+    animPath = "/characters/" + _characterId + "/emotions/" + emotionKey + "/" + emotionVideoId + "/video.anim";
+    mjpegPath = SD.exists(animPath.c_str()) ? animPath : ("/characters/" + _characterId + "/emotions/" + emotionKey + "/" + emotionVideoId + "/video.mjpeg");
     _currentEmotion.fps = video["fps"] | 10;
     _currentEmotion.width = video["width"] | 280;
     _currentEmotion.height = video["height"] | 240;
@@ -382,6 +501,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
         for (JsonObject frame : introTimeline) {
           TimelineFrame tf;
           tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+          parseFrameActions(frame, tf.actions);
           if (tf.sourceFrameIndex >= 0) _currentEmotion.intro.timeline.push_back(tf);
         }
       }
@@ -391,6 +511,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
         for (JsonObject frame : loopTimeline) {
           TimelineFrame tf;
           tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+          parseFrameActions(frame, tf.actions);
           if (tf.sourceFrameIndex >= 0) _currentEmotion.loop.timeline.push_back(tf);
         }
       }
@@ -400,6 +521,7 @@ bool EmotionManager::parseEmotionConfig(const String& jsonPath, const String& em
         for (JsonObject frame : exitTimeline) {
           TimelineFrame tf;
           tf.sourceFrameIndex = frame["sourceFrameIndex"] | -1;
+          parseFrameActions(frame, tf.actions);
           if (tf.sourceFrameIndex >= 0) _currentEmotion.exit.timeline.push_back(tf);
         }
       }
@@ -419,7 +541,13 @@ bool EmotionManager::buildFrameIndex() {
 #if defined(HAS_SD)
   _currentEmotion.frameOffsets.clear();
 
-  // Essayer de charger l'index pré-calculé depuis video.idx
+  // Format .anim : construire l'index en parcourant le fichier (header + palette + frames)
+  if (_currentEmotion.mjpegPath.endsWith(".anim")) {
+    return buildAnimFrameIndex();
+  }
+
+  // MJPEG : index .idx ou scan manuel
+  _useAnimFormat = false;
   String idxPath = _currentEmotion.mjpegPath;
   idxPath.replace(".mjpeg", ".idx");
 
@@ -551,6 +679,68 @@ bool EmotionManager::buildFrameIndex() {
 #endif
 }
 
+bool EmotionManager::buildAnimFrameIndex() {
+#if defined(HAS_SD)
+  _useAnimFormat = true;
+  File f = SD.open(_currentEmotion.mjpegPath.c_str(), FILE_READ);
+  if (!f) {
+    Serial.printf("[EMOTION] Erreur: fichier .anim introuvable: %s\n", _currentEmotion.mjpegPath.c_str());
+    _useAnimFormat = false;
+    return false;
+  }
+
+  AnimHeader h;
+  if (!loadAnimHeader(f, h)) {
+    Serial.println("[EMOTION] Erreur: header .anim invalide (magic/version)");
+    f.close();
+    _useAnimFormat = false;
+    return false;
+  }
+
+  // 0 dans le fichier = 256 couleurs (uint8 ne peut pas stocker 256)
+  uint8_t palSizeByte = h.palette_size;
+  uint16_t palSize = (palSizeByte == 0) ? 256 : (uint16_t)palSizeByte;
+  if (!loadPalette(f, _animPalette, palSize)) {
+    Serial.println("[EMOTION] Erreur: lecture palette .anim");
+    f.close();
+    _useAnimFormat = false;
+    return false;
+  }
+  _animPaletteSize = (uint8_t)(palSize > 255 ? 0 : palSize);  // 0 = 256
+
+  for (uint16_t i = 0; i < h.num_frames; i++) {
+    if (f.available() < 4) {
+      break;
+    }
+    FrameIndex idx;
+    idx.fileOffset = f.position();
+    uint32_t rle_size = 0;
+    f.read((uint8_t*)&rle_size, 4);
+    idx.frameSize = 4 + rle_size;
+    if (!f.seek(f.position() + rle_size)) {
+      Serial.printf("[EMOTION] .anim tronque a la frame %u (seek rle_size=%u), utilisation des %u frames deja indexees\n",
+                    (unsigned)i, (unsigned)rle_size, (unsigned)_currentEmotion.frameOffsets.size());
+      break;
+    }
+    _currentEmotion.frameOffsets.push_back(idx);
+  }
+
+  f.close();
+  if (_currentEmotion.frameOffsets.empty()) {
+    Serial.println("[EMOTION] Erreur: .anim sans aucune frame valide");
+    _useAnimFormat = false;
+    return false;
+  }
+#if EMOTION_DEBUG_SERIAL
+  Serial.printf("[EMOTION] .anim indexe: %u frames (header %u), palette %u\n",
+                (unsigned)_currentEmotion.frameOffsets.size(), (unsigned)h.num_frames, (unsigned)palSize);
+#endif
+  return true;
+#else
+  return false;
+#endif
+}
+
 const EmotionData* EmotionManager::getCurrentEmotion() {
   return _loaded ? &_currentEmotion : nullptr;
 }
@@ -625,6 +815,9 @@ bool EmotionManager::openMjpegFile() {
   }
 
   _playback.fileOpen = true;
+  if (LCDManager::isAvailable()) {
+    _playback.lastFrameTime = 0;  // 1re frame affichée tout de suite au même cycle
+  }
   return true;
 #else
   return false;
@@ -641,6 +834,8 @@ void EmotionManager::requestExitLoop() {
 }
 
 void EmotionManager::transitionTo(EmotionPlayState newState) {
+  // Ne jamais arrêter le vibreur ici : les effets (ex. vibration longue) sont
+  // joués dans une tâche dédiée et doivent se terminer même si on change de frame/émotion.
   // Exit logic pour l'état courant
   switch (_playback.state) {
     case EMOTION_STATE_PLAYING_EXIT:
@@ -679,6 +874,19 @@ const EmotionPhase* EmotionManager::getCurrentPhase() {
 
 bool EmotionManager::displayCurrentFrame(const EmotionPhase& phase) {
 #if defined(HAS_LCD) && defined(HAS_SD)
+  if (!LCDManager::isAvailable()) {
+    return true;  // Ne pas bloquer la phase ; les effets (LED, vibreur) continuent
+  }
+  // Pendant l'écran de démarrage (re-init différée), ne pas dessiner l'animation par-dessus
+  if (LCDManager::isStartupScreenVisible()) {
+    return true;
+  }
+  // Avant la première frame d'animation : clear une fois (passage propre de l'écran de démarrage à l'anim)
+  static bool clearedBeforeFirstAnim = false;
+  if (!clearedBeforeFirstAnim) {
+    clearedBeforeFirstAnim = true;
+    LCDManager::fillScreen(LCDManager::COLOR_BLACK);
+  }
   // Vérifier le timing
   unsigned long now = millis();
   if (now - _playback.lastFrameTime < _playback.frameDurationMs) {
@@ -707,13 +915,81 @@ bool EmotionManager::displayCurrentFrame(const EmotionPhase& phase) {
 
   const FrameIndex& idx = _currentEmotion.frameOffsets[frameIdx];
 
+  // ---------- Format .anim : RLE + palette -> RGB565, pushImageDMA ----------
+  if (_useAnimFormat) {
+    if (idx.frameSize < 4) {
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    uint32_t rle_size = idx.frameSize - 4;  // frameSize = 4 + rle_data_size
+    if (rle_size > FRAME_BUFFER_SIZE) {
+      Serial.printf("[EMOTION] Erreur: RLE frame %d trop grand (%u bytes)\n", frameIdx, (unsigned)rle_size);
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    if (!_playback.mjpegFile.seek(idx.fileOffset)) {
+      if (!_playback.frameErrorOccurred) {
+        _playback.frameErrorOccurred = true;
+        Serial.printf("[EMOTION] Erreur seek frame .anim %d\n", frameIdx);
+      }
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    uint32_t rle_size_read = 0;
+    if (_playback.mjpegFile.read((uint8_t*)&rle_size_read, 4) != 4) {
+      if (!_playback.frameErrorOccurred) {
+        _playback.frameErrorOccurred = true;
+        Serial.printf("[EMOTION] Erreur lecture rle_size frame %d\n", frameIdx);
+      }
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    if (rle_size_read > FRAME_BUFFER_SIZE) {
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    if (_playback.mjpegFile.read(_frameBuffer, rle_size_read) != (int)rle_size_read) {
+      if (!_playback.frameErrorOccurred) {
+        _playback.frameErrorOccurred = true;
+        Serial.printf("[EMOTION] Erreur lecture RLE frame %d\n", frameIdx);
+      }
+      _playback.lastFrameTime = now;
+      return true;
+    }
+
+    // Buffer 0 = decode 240x280 ; buffer 1 = affichage 280x240 (stride = largeur écran)
+    uint16_t* rgbBuf = _animRgbBuffer[0];
+    uint16_t* displayBuf = _animRgbBuffer[1];
+    uint16_t palSize = (_animPaletteSize == 0) ? 256 : (uint16_t)_animPaletteSize;
+    bool decodeOk = decodeRLEFrame(_frameBuffer, rle_size_read, rgbBuf,
+                                   _animPalette, palSize,
+                                   240, 280,
+                                   true, LCDManager::COLOR_BLACK);  // index 0 = transparent, fond noir
+    if (!decodeOk) {
+      _playback.lastFrameTime = now;
+      return true;
+    }
+    // Copier 240x280 → 280x240 : 240 lignes, par ligne 240 px image + 40 px noirs (stride = largeur écran)
+    const uint16_t black = LCDManager::COLOR_BLACK;
+    for (int y = 0; y < 240; y++) {
+      memcpy(displayBuf + (size_t)y * 280, rgbBuf + (size_t)y * 240, 240 * 2);
+      for (int x = 240; x < 280; x++) displayBuf[(size_t)y * 280 + x] = black;
+    }
+    // pushImage = image entière en un bloc (pas de DMA) → pas de décalage de lignes
+    LCDManager::pushImage(0, 0, 280, 240, displayBuf);
+
+    _playback.lastFrameTime = now;
+    runFrameActions(phase, _playback.currentFrameIndex);
+    return true;
+  }
+
+  // ---------- Format MJPEG : JPEG dans _frameBuffer -> displayJpegFrame ----------
   if (idx.frameSize > FRAME_BUFFER_SIZE) {
     Serial.printf("[EMOTION] Erreur: Frame %d trop grande (%d bytes)\n", frameIdx, idx.frameSize);
     _playback.lastFrameTime = now;
     return true;  // Sauter
   }
 
-  // Seek et lecture depuis le fichier déjà ouvert
   if (!_playback.mjpegFile.seek(idx.fileOffset)) {
     if (!_playback.frameErrorOccurred) {
       _playback.frameErrorOccurred = true;
@@ -728,29 +1004,63 @@ bool EmotionManager::displayCurrentFrame(const EmotionPhase& phase) {
     if (!_playback.frameErrorOccurred) {
       _playback.frameErrorOccurred = true;
       Serial.printf("[EMOTION] Erreur lecture frame %d: %d/%d bytes; passage en EXIT\n", frameIdx, bytesRead, (int)idx.frameSize);
+      Serial.printf("[EMOTION] Fichier: %s (verifier presence et .idx coherent)\n", _currentEmotion.mjpegPath.c_str());
     }
     _playback.lastFrameTime = now;
     return true;
   }
 
-  // Afficher la frame
   bool displaySuccess = LCDManager::displayJpegFrame(_frameBuffer, idx.frameSize);
   _playback.lastFrameTime = now;
 
   if (!displaySuccess) {
     Serial.printf("[EMOTION] ERREUR: Echec affichage frame %d (%d bytes)\n", frameIdx, idx.frameSize);
 #if defined(HAS_LCD)
-    LCDManager::fillScreen(LCDManager::COLOR_BLACK);  // Effacer frame corrompue
+    LCDManager::fillScreen(LCDManager::COLOR_BLACK);
 #endif
-    // Enchaîner sur une animation OK pour ne pas rester sur écran noir
     EmotionManager::requestEmotion("OK", 1, EMOTION_PRIORITY_NORMAL, 0);
-    return false;  // Signaler l'échec → passage EXIT puis IDLE, l'OK jouera
+    return false;
   }
 
+  runFrameActions(phase, _playback.currentFrameIndex);
   return true;
 #else
   return false;
 #endif
+}
+
+void EmotionManager::runFrameActions(const EmotionPhase& phase, int frameIndex) {
+  if (frameIndex < 0 || frameIndex >= (int)phase.timeline.size()) return;
+#if defined(HAS_LED)
+  // LED en "tick" : allumage/extinction instantanés par frame, pas d'effet de fade.
+  // clear() puis (si action) setColor + NONE appliquent la couleur immédiatement.
+  if (LEDManager::isInitialized()) {
+    LEDManager::clear();
+  }
+#endif
+  const std::vector<FrameAction>& actions = phase.timeline[frameIndex].actions;
+  for (const FrameAction& act : actions) {
+    if (act.type == FRAME_ACTION_LED) {
+#if defined(HAS_LED)
+      if (LEDManager::isInitialized()) {
+        LEDManager::setColor(act.r, act.g, act.b);
+        LEDManager::setEffect(LED_EFFECT_NONE);
+      }
+#endif
+    }
+#if defined(HAS_VIBRATOR)
+    else if (act.type == FRAME_ACTION_VIBRATION) {
+      if (VibratorManager::isInitialized()) {
+        uint8_t effectIdx = act.vibratorEffect;
+        if (effectIdx <= (uint8_t)VibratorManager::EFFECT_DOUBLE_TAP) {
+          TaskHandle_t h = nullptr;
+          xTaskCreate(vibratorEffectTask, "vibEff", 1024, (void*)(uintptr_t)effectIdx, 1, &h);
+          (void)h;
+        }
+      }
+    }
+#endif
+  }
 }
 
 void EmotionManager::update() {
@@ -773,7 +1083,7 @@ void EmotionManager::update() {
         _currentEmotion.trigger = req.requestedTrigger;
       }
 
-      _loopContinueCondition = nullptr;  // Ne pas garder une condition d'une requête précédente
+      _loopContinueCondition = req.loopCondition;  // Restaurer la condition si cette requête en avait une (ex. head_caress)
 
       // Configurer le contexte de lecture
       _playback.totalLoopIterations = req.loopCount;
@@ -944,13 +1254,14 @@ void EmotionManager::update() {
 
 bool EmotionManager::requestEmotion(const String& emotionKey, int loopCount,
                                      EmotionPriority priority, int variant,
-                                     const String& requestedTrigger) {
+                                     const String& requestedTrigger, LoopContinueConditionFn loopCondition) {
   EmotionRequest req;
   req.emotionKey = emotionKey;
   req.loopCount = loopCount;
   req.priority = priority;
   req.variant = variant;
   req.requestedTrigger = requestedTrigger;
+  req.loopCondition = loopCondition;
 
   if (priority == EMOTION_PRIORITY_HIGH) {
     // Haute priorité: vider la queue, insérer en tête, set interrupt flag

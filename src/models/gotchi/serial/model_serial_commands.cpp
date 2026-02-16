@@ -87,24 +87,34 @@ static bool cmdI2cScan(const String& args) {
 #ifdef HAS_LCD
 static bool cmdEmotionLoad(const String& args) {
   if (args.length() == 0) {
-    Serial.println("[GOTCHI] Usage: emotion-load <key>");
+    Serial.println("[GOTCHI] Usage: emotion-load <key> [variant]");
     Serial.println("[GOTCHI] Exemple: emotion-load OK");
-    Serial.println("[GOTCHI] Cles disponibles: OK, SLEEP, COLD, etc.");
+    Serial.println("[GOTCHI]          emotion-load OK 2");
+    Serial.println("[GOTCHI] Cles: OK, SLEEP, COLD, eating, etc. | variant: 0-4 (0=premier qui matche)");
     Serial.println("[GOTCHI] Note: Ne charge que les metadonnees (ne joue pas l'emotion)");
     return true;
   }
 
   String key = args;
   key.trim();
+  int variant = 0;
+  int spaceIdx = key.indexOf(' ');
+  if (spaceIdx > 0) {
+    variant = key.substring(spaceIdx + 1).toInt();
+    if (variant < 0) variant = 0;
+    key = key.substring(0, spaceIdx);
+  }
+  key.trim();
   key.toUpperCase();
 
-  Serial.printf("[GOTCHI] Chargement de l'emotion '%s'...\n", key.c_str());
+  Serial.printf("[GOTCHI] Chargement de l'emotion '%s' (variant=%d)...\n", key.c_str(), variant);
 
-  if (EmotionManager::loadEmotion(key)) {
+  if (EmotionManager::loadEmotion(key, variant)) {
     Serial.printf("[GOTCHI] Emotion '%s' chargee avec succes!\n", key.c_str());
 
     const EmotionData* emotion = EmotionManager::getCurrentEmotion();
     if (emotion) {
+      Serial.printf("[GOTCHI]   Variant: %d\n", emotion->variant);
       Serial.printf("[GOTCHI]   FPS: %d\n", emotion->fps);
       Serial.printf("[GOTCHI]   Taille: %dx%d\n", emotion->width, emotion->height);
       Serial.printf("[GOTCHI]   Total frames: %d\n", emotion->totalFrames);
@@ -115,67 +125,83 @@ static bool cmdEmotionLoad(const String& args) {
     }
     return true;
   } else {
-    Serial.printf("[GOTCHI] Erreur: Impossible de charger l'emotion '%s'\n", key.c_str());
+    Serial.printf("[GOTCHI] Erreur: Impossible de charger l'emotion '%s' (variant=%d)\n", key.c_str(), variant);
     return true;
   }
 }
 
 static bool cmdEmotionPlay(const String& args) {
-  // Parser les arguments: [key] [loops]
-  // emotion-play OK 3     -> charge et joue OK avec 3 loops
-  // emotion-play 3        -> joue l'émotion chargée avec 3 loops
-  // emotion-play          -> joue l'émotion chargée avec 1 loop
+  // Parser: [key] [variant] [loops]  ou  [key] [variant|loops]  ou  [loops]
+  // emotion-play OK 2       -> OK variant 2, 1 loop
+  // emotion-play OK 2 3     -> OK variant 2, 3 loops
+  // emotion-play OK 5       -> OK variant 0, 5 loops (2e arg >= 5 = loops)
+  // emotion-play OK         -> OK variant 0, 1 loop
+  // emotion-play 3          -> emotion chargee, 3 loops
 
   String key = "";
+  int variant = 0;
   int loopCount = 1;
 
   if (args.length() > 0) {
-    // Parser les arguments
-    int spaceIndex = args.indexOf(' ');
-    if (spaceIndex > 0) {
-      // Deux arguments: key et loops
-      key = args.substring(0, spaceIndex);
-      String loopsStr = args.substring(spaceIndex + 1);
-      loopsStr.trim();
-      loopCount = loopsStr.toInt();
-      if (loopCount < 0) loopCount = 1;
-    } else {
-      // Un seul argument: soit key soit loops
-      String arg = args;
-      arg.trim();
+    // Extraire les tokens (key, optionnel variant, optionnel loops)
+    String rest = args;
+    rest.trim();
+    int p = rest.indexOf(' ');
+    String tok1 = (p > 0) ? rest.substring(0, p) : rest;
+    if (p > 0) rest = rest.substring(p + 1);
+    rest.trim();
+    int p2 = rest.indexOf(' ');
+    String tok2 = (p2 > 0) ? rest.substring(0, p2) : rest;
+    if (p2 > 0) rest = rest.substring(p2 + 1);
+    rest.trim();
+    String tok3 = rest;
 
-      // Si c'est un nombre, c'est loops
-      if (arg.toInt() > 0 || arg == "0") {
-        loopCount = arg.toInt();
+    if (tok1.length() > 0) {
+      // Premier token: key si pas un nombre, sinon loops (pas de key)
+      if (tok1.toInt() > 0 || tok1 == "0") {
+        loopCount = tok1.toInt();
         if (loopCount < 0) loopCount = 1;
       } else {
-        // Sinon c'est une key
-        key = arg;
+        key = tok1;
+        key.toUpperCase();
+        if (tok2.length() > 0) {
+          int n2 = tok2.toInt();
+          if (tok3.length() > 0) {
+            variant = n2;
+            if (variant < 0) variant = 0;
+            loopCount = tok3.toInt();
+            if (loopCount < 0) loopCount = 1;
+          } else {
+            if (n2 >= 1 && n2 <= 4) {
+              variant = n2;
+              loopCount = 1;
+            } else {
+              variant = 0;
+              loopCount = (n2 > 0) ? n2 : 1;
+            }
+          }
+        }
       }
     }
   }
 
-  // Si une key est fournie, l'utiliser. Sinon, utiliser l'émotion chargée
   if (key.length() > 0) {
-    key.toUpperCase();
-    Serial.printf("[GOTCHI] Requete animation: '%s' (loops=%d)\n", key.c_str(), loopCount);
-    if (EmotionManager::requestEmotion(key, loopCount)) {
+    Serial.printf("[GOTCHI] Requete animation: '%s' variant=%d loops=%d\n", key.c_str(), variant, loopCount);
+    if (EmotionManager::requestEmotion(key, loopCount, EMOTION_PRIORITY_NORMAL, variant)) {
       Serial.println("[GOTCHI] Animation mise en queue");
     } else {
       Serial.println("[GOTCHI] Erreur: Queue pleine");
     }
   } else {
-    // Utiliser l'émotion actuellement chargée
     if (!EmotionManager::isLoaded()) {
       Serial.println("[GOTCHI] Erreur: Aucune emotion chargee");
-      Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' ou 'emotion-play <key>' d'abord");
+      Serial.println("[GOTCHI] Utilisez 'emotion-load <key>' ou 'emotion-play <key> [variant] [loops]'");
       return true;
     }
-
     const EmotionData* emotion = EmotionManager::getCurrentEmotion();
     if (emotion) {
       Serial.printf("[GOTCHI] Requete animation: '%s' (loops=%d)\n", emotion->key.c_str(), loopCount);
-      if (EmotionManager::requestEmotion(emotion->key, loopCount)) {
+      if (EmotionManager::requestEmotion(emotion->key, loopCount, EMOTION_PRIORITY_NORMAL, emotion->variant)) {
         Serial.println("[GOTCHI] Animation mise en queue");
       } else {
         Serial.println("[GOTCHI] Erreur: Queue pleine");
@@ -732,7 +758,15 @@ static bool cmdSyncEmotions(const String& args) {
                   configPath.c_str(), (unsigned)written, (unsigned)config.size());
   }
 
-  const size_t totalFiles = files.size() * 2;
+  size_t totalFiles = 0;
+  for (size_t i = 0; i < files.size(); i++) {
+    const char* animUrl = files[i]["animUrl"].as<const char*>();
+    if (animUrl && animUrl[0] != '\0') {
+      totalFiles += 1;  // .anim uniquement (prioritaire, on ne dl pas mjpeg/idx)
+    } else {
+      totalFiles += 2;  // mjpeg + idx
+    }
+  }
   if (totalFiles == 0) {
     Serial.println("[SYNC-EMOTIONS] Aucun fichier a telecharger.");
   } else {
@@ -745,14 +779,21 @@ static bool cmdSyncEmotions(const String& args) {
       size_t idx = 0;
       for (size_t i = 0; i < files.size(); i++) {
         JsonObject f = files[i];
-        urls[idx] = f["mjpegUrl"] | "";
-        paths[idx] = f["localPathMjpeg"].as<const char*>();
-        idx++;
-        urls[idx] = f["idxUrl"] | "";
-        paths[idx] = f["localPathIdx"].as<const char*>();
-        idx++;
+        const char* aUrl = f["animUrl"].as<const char*>();
+        if (aUrl && aUrl[0] != '\0') {
+          urls[idx] = aUrl;
+          paths[idx] = f["localPathAnim"].as<const char*>();
+          idx++;
+        } else {
+          urls[idx] = f["mjpegUrl"] | "";
+          paths[idx] = f["localPathMjpeg"].as<const char*>();
+          idx++;
+          urls[idx] = f["idxUrl"] | "";
+          paths[idx] = f["localPathIdx"].as<const char*>();
+          idx++;
+        }
       }
-      Serial.printf("[SYNC-EMOTIONS] Telechargement de %u fichier(s) medias (mjpeg+idx, connexion reuse par hote)...\n", (unsigned)totalFiles);
+      Serial.printf("[SYNC-EMOTIONS] Telechargement de %u fichier(s) medias (.anim prioritaire, sinon mjpeg+idx)...\n", (unsigned)totalFiles);
       int okCount = DownloadManager::downloadUrlsToFiles(urls, paths, (int)totalFiles, syncEmotionsProgress);
       Serial.printf("[SYNC-EMOTIONS] Termine: %d/%u fichier(s). Redemarrez ou reinit pour prendre en compte.\n",
                     okCount, (unsigned)totalFiles);
@@ -886,7 +927,7 @@ void ModelGotchiSerialCommands::printHelp() {
   Serial.println("");
   Serial.println("--- Commandes Emotions (systeme asynchrone) ---");
   Serial.println("  emotion-load <key>        - Charger metadonnees emotion (ex: emotion-load OK)");
-  Serial.println("  emotion-play [key] [loops]- Jouer emotion (ex: emotion-play OK 3)");
+  Serial.println("  emotion-play [key] [variant] [loops] - ex: emotion-play OK 2  ou  OK 2 3");
   Serial.println("  emotion-stop              - Annuler toutes les animations");
   Serial.println("  emotion-status            - Afficher l'etat du systeme d'emotions");
 #endif

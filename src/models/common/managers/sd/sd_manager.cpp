@@ -115,9 +115,9 @@ bool SDManager::initSDCard() {
   SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
   delay(100);  // Délai plus long après SPI.begin() - important pour ESP32-C3
   
-  // Initialiser la carte SD avec une fréquence plus basse pour ESP32-C3 (plus stable)
-  // ESP32-C3 a des problèmes connus avec SD.begin() - utiliser une fréquence réduite
-  #if defined(ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(IS_SINGLE_CORE)
+  // Initialiser la carte SD : fréquence réduite uniquement pour ESP32-C3 (plus stable)
+  // Ne pas utiliser IS_SINGLE_CORE ici : il est défini pour tous les modèles (true/false).
+  #if defined(ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     Serial.println("[SD] Mode ESP32-C3 detecte - utilisation frequence reduite (400kHz)");
     // ESP32-C3 : essayer plusieurs fréquences de plus en plus basses
     // Commencer par 400kHz (très basse mais plus stable)
@@ -367,15 +367,32 @@ bool SDManager::saveConfig(const SDConfig& config) {
     return false;
   }
   
-  // Créer un document JSON
-  // Note: StaticJsonDocument est déprécié mais toujours fonctionnel dans ArduinoJson v7
-  // Taille augmentée pour inclure weekdaySchedule (peut être volumineux avec 7 jours)
+  // Document JSON : lire l'existant pour ne mettre à jour que les champs SDConfig,
+  // et préserver les autres clés (characterId, pubnub_*, emotionsSyncLastAt, etc.)
+  static const size_t CONFIG_JSON_MAX = 4096;
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<1536> doc;
+  StaticJsonDocument<CONFIG_JSON_MAX> doc;
   #pragma GCC diagnostic pop
   
-  // Ajouter les valeurs (seulement si elles sont valides/modifiées)
+  if (configFileExists()) {
+    File configFile = SD.open(CONFIG_FILE_PATH, FILE_READ);
+    if (configFile) {
+      size_t fileSize = configFile.size();
+      if (fileSize > 0 && fileSize <= CONFIG_JSON_MAX) {
+        char* jsonBuffer = new char[fileSize + 1];
+        if (jsonBuffer) {
+          size_t bytesRead = configFile.readBytes(jsonBuffer, fileSize);
+          jsonBuffer[bytesRead] = '\0';
+          deserializeJson(doc, jsonBuffer);
+          delete[] jsonBuffer;
+        }
+      }
+      configFile.close();
+    }
+  }
+  
+  // Mettre à jour uniquement les champs gérés par SDConfig (merge, pas écrasement total)
   if (strlen(config.device_name) > 0) {
     doc["device_name"] = config.device_name;
   }
@@ -400,23 +417,18 @@ bool SDManager::saveConfig(const SDConfig& config) {
   doc["bedtime_effect"] = config.bedtime_effect;
   
   // Sauvegarder weekdaySchedule (JSON sérialisé)
-  // Essayer de parser le JSON pour valider qu'il est valide avant de le sauvegarder
   if (strlen(config.bedtime_weekdaySchedule) > 0) {
-    // Parser le JSON pour valider qu'il est valide
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     StaticJsonDocument<512> scheduleDoc;
     #pragma GCC diagnostic pop
     DeserializationError error = deserializeJson(scheduleDoc, config.bedtime_weekdaySchedule);
     if (!error) {
-      // JSON valide, le sauvegarder comme objet JSON dans le document
       doc["bedtime_weekdaySchedule"] = scheduleDoc;
     } else {
-      // JSON invalide, sauvegarder comme string brute
       doc["bedtime_weekdaySchedule"] = config.bedtime_weekdaySchedule;
     }
   } else {
-    // Vide, sauvegarder un objet vide
     doc["bedtime_weekdaySchedule"] = "{}";
   }
   
@@ -426,33 +438,27 @@ bool SDManager::saveConfig(const SDConfig& config) {
   doc["wakeup_colorB"] = config.wakeup_colorB;
   doc["wakeup_brightness"] = config.wakeup_brightness;
   
-  // Sauvegarder weekdaySchedule wakeup (JSON sérialisé)
   if (strlen(config.wakeup_weekdaySchedule) > 0) {
-    // Parser le JSON pour valider qu'il est valide
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     StaticJsonDocument<512> scheduleDoc;
     #pragma GCC diagnostic pop
     DeserializationError error = deserializeJson(scheduleDoc, config.wakeup_weekdaySchedule);
     if (!error) {
-      // JSON valide, le sauvegarder comme objet JSON dans le document
       doc["wakeup_weekdaySchedule"] = scheduleDoc;
     } else {
-      // JSON invalide, sauvegarder comme string brute
       doc["wakeup_weekdaySchedule"] = config.wakeup_weekdaySchedule;
     }
   } else {
-    // Vide, sauvegarder un objet vide
     doc["wakeup_weekdaySchedule"] = "{}";
   }
   
-  // Ouvrir le fichier en mode écriture (crée le fichier s'il n'existe pas)
+  // Ouvrir le fichier en mode écriture (écrase le contenu mais doc contient déjà tout : merge)
   File configFile = SD.open(CONFIG_FILE_PATH, FILE_WRITE);
   if (!configFile) {
     return false;
   }
   
-  // Sérialiser le JSON dans le fichier
   size_t bytesWritten = serializeJson(doc, configFile);
   configFile.close();
   

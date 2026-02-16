@@ -20,8 +20,9 @@ public:
 #if defined(ESP32) || defined(ESP32S3)
       cfg.spi_host = SPI2_HOST;
       cfg.spi_mode = 0;
-      cfg.freq_write = 20000000;   // 20 MHz (comme Adafruit) pour stabilité avec bus partagé SD
-      cfg.freq_read = 16000000;
+      // 8 MHz : nécessaire quand rétroéclairage OK mais aucun pixel (panneau ne reçoit pas bien sur bus partagé SD)
+      cfg.freq_write = 8000000;
+      cfg.freq_read = 8000000;
       cfg.use_lock = true;         // Obligatoire pour partage SPI avec SD
       cfg.dma_channel = SPI_DMA_CH_AUTO;
 #endif

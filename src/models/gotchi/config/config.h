@@ -78,6 +78,7 @@
 #define TFT_MOSI_PIN 11   // Pin 4 - SDA (SPI data)
 #define TFT_SCK_PIN  12   // Pin 3 - SCL (SPI clock)
 #define TFT_BLK_PIN  7    // Pin 8 - Rétroéclairage (optionnel)
+// #define TFT_BLK_ACTIVE_LOW 1  // Décommenter si ton module : LOW = rétroéclairage ON (au lieu de HIGH)
 
 // Panel physique ST7789 : 240x280. Rotation 1 = landscape (280x240 logique)
 // Les vidéos sont pivotées côté serveur (transpose=1) pour s'afficher en landscape
@@ -100,6 +101,14 @@
 #define HAS_NFC true
 #define HAS_PUBNUB true
 #define HAS_RTC true
+#define HAS_VIBRATOR true
+#define HAS_TOUCH true
+
+// Pin vibreur PWM (module vibration motor) — ESP32-S3 : pas de GPIO 25, utiliser 4, 17, 18, etc.
+#define VIBRATOR_PIN 4
+
+// Pin capteur tactile TTP223 (sortie digitale : HIGH = touché)
+#define TOUCH_PIN 5
 
 // ============================================
 // Configuration du système de vie (Tamagotchi)
@@ -115,6 +124,7 @@
 #define STATS_HEALTH_INITIAL 100      // Health initial value
 #define STATS_FATIGUE_INITIAL 0       // Fatigue initial value (0 = not tired)
 #define STATS_HYGIENE_INITIAL 100     // Hygiene initial value
+#define STATS_SICKNESS_INITIAL 0      // Maladie initiale (0 = pas malade, augmente avec certains aliments)
 
 // --- Stats decline rates (points lost every 30 minutes) ---
 #define STATS_HUNGER_DECLINE_RATE 2     // -2 every 30min
@@ -131,6 +141,9 @@
 #define STATS_HAPPINESS_DECLINE_BONUS_CRITICAL 2  // En plus quand faim < 30 (total = base + 2)
 #define STATS_HYGIENE_DECLINE_BONUS_LOW 1
 #define STATS_HYGIENE_DECLINE_BONUS_CRITICAL 2
+
+// --- Perte de vie quand très faim (toutes les 30 min) ---
+#define STATS_HEALTH_DECLINE_WHEN_VERY_HUNGRY 1  // -1 santé si faim < STATS_HUNGER_THRESHOLD_CRITICAL
 
 // --- Intervalle de mise à jour des stats ---
 #define STATS_UPDATE_INTERVAL_MS 1800000  // 30 minutes en millisecondes

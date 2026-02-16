@@ -18,6 +18,9 @@ static JPEGDEC _jpeg;
 LGFX_Kidoo* LCDManager::_tft = nullptr;
 int16_t LCDManager::_mjpegOffsetX = -15;  // Offset horizontal pour centrer
 int16_t LCDManager::_mjpegOffsetY = 20;  // Offset vertical pour centrer
+bool LCDManager::_dmaInitialized = false;
+void (*LCDManager::_postReinitCallback)() = nullptr;
+unsigned long LCDManager::_startupScreenVisibleUntil = 0;
 #endif
 bool LCDManager::_initialized = false;
 bool LCDManager::_available = false;
@@ -49,40 +52,73 @@ bool LCDManager::init() {
   Serial.printf("[LCD] Pins: CS=%d, DC=%d, RST=%d, MOSI(SDA)=%d, SCK(SCL)=%d\n",
                 TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN, TFT_MOSI_PIN, TFT_SCK_PIN);
 
-  // Reset matériel propre pour éviter pixels morts et lignes fantômes
-  pinMode(TFT_RST_PIN, OUTPUT);
-  digitalWrite(TFT_RST_PIN, HIGH);
-  delay(20);
-  digitalWrite(TFT_RST_PIN, LOW);
-  delay(100);
-  digitalWrite(TFT_RST_PIN, HIGH);
-  delay(120);
+  // Cold boot : laisser le bus SPI et la SD bien inactifs (après upload OK, après reboot souvent KO sans ce délai)
+#if defined(HAS_SD)
+  delay(700);
+#endif
 
   _tft = &_display;
-
   if (!_tft) {
     Serial.println("[LCD] ERREUR: Pointeur TFT invalide");
     return false;
   }
 
-  if (!_tft->init()) {
-    Serial.println("[LCD] ERREUR: Init LovyanGFX echouee");
+  // Plusieurs tentatives avec reset complet (évite de devoir rebooter pour que l'écran s'affiche)
+  const int maxAttempts = 6;
+  bool initOk = false;
+  pinMode(TFT_RST_PIN, OUTPUT);
+
+  for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Reset matériel complet
+    digitalWrite(TFT_RST_PIN, HIGH);
+    delay(30);
+    digitalWrite(TFT_RST_PIN, LOW);
+    delay(150);
+    digitalWrite(TFT_RST_PIN, HIGH);
+    delay(attempt == 1 ? 200 : 300);
+    digitalWrite(TFT_RST_PIN, LOW);
+    delay(150);
+    digitalWrite(TFT_RST_PIN, HIGH);
+    delay(250);
+
+    if (_tft->init()) {
+      initOk = true;
+      if (attempt > 1) {
+        Serial.printf("[LCD] Ecran OK a la tentative %d/%d\n", attempt, maxAttempts);
+      }
+      break;
+    }
+    Serial.printf("[LCD] Init echouee tentative %d/%d, reset et nouvel essai...\n", attempt, maxAttempts);
+  }
+
+  if (!initOk) {
+    Serial.println("[LCD] ERREUR: Init LovyanGFX echouee apres toutes les tentatives");
     return false;
   }
 
+  // Laisser le panneau se réveiller avant toute commande
+  delay(120);
   _tft->setRotation(r);
-  delay(50);
-  _tft->fillScreen(COLOR_BLACK);
-  delay(10);
-  _tft->fillScreen(COLOR_BLACK);
+  delay(80);
 
 #ifdef TFT_BLK_PIN
   pinMode(TFT_BLK_PIN, OUTPUT);
-  digitalWrite(TFT_BLK_PIN, HIGH);  // Rétroéclairage ON (module: LOW = éteint)
+#if defined(TFT_BLK_ACTIVE_LOW)
+  digitalWrite(TFT_BLK_PIN, LOW);   // Rétroéclairage ON (module actif à LOW)
+#else
+  digitalWrite(TFT_BLK_PIN, HIGH);  // Rétroéclairage ON (module actif à HIGH)
 #endif
+  delay(20);
+#endif
+
+  _tft->fillScreen(COLOR_BLACK);
+  delay(80);
+  _tft->fillScreen(COLOR_BLACK);
+  delay(50);
 
   _available = true;
   Serial.println("[LCD] Ecran initialise (LovyanGFX)");
+  /* initDMA() est appelé au premier pushImageDMA() pour ne pas perturber le logo / texte au boot */
 
   // JPEGDEC s'initialise à la volée pour chaque frame
   Serial.println("[LCD] JPEGDEC pret");
@@ -100,6 +136,47 @@ bool LCDManager::isInitialized() {
 }
 
 #ifdef HAS_LCD
+void LCDManager::reinitDisplay() {
+  if (!_tft) return;
+  pinMode(TFT_RST_PIN, OUTPUT);
+  digitalWrite(TFT_RST_PIN, LOW);
+  delay(150);
+  digitalWrite(TFT_RST_PIN, HIGH);
+  delay(180);
+  _tft->init();
+  uint8_t r = (TFT_ROTATION & 3);
+  _tft->setRotation(r);
+  _tft->fillScreen(COLOR_BLACK);
+  setBacklight(true);
+}
+
+void LCDManager::tryDelayedReinit() {
+#ifdef HAS_LCD
+  static bool done = false;
+  if (done || !_available || !_tft) return;
+  if (millis() < 2500) return;
+  done = true;
+  Serial.println("[LCD] Re-init differee (apres reboot)...");
+  reinitDisplay();
+  _startupScreenVisibleUntil = millis() + 1500;  // Garder l'écran de démarrage visible 1,5 s
+  if (_postReinitCallback) _postReinitCallback();
+#endif
+}
+
+void LCDManager::setPostReinitCallback(void (*fn)()) {
+#ifdef HAS_LCD
+  _postReinitCallback = fn;
+#endif
+}
+
+bool LCDManager::isStartupScreenVisible() {
+#ifdef HAS_LCD
+  return _startupScreenVisibleUntil != 0 && millis() < _startupScreenVisibleUntil;
+#else
+  return false;
+#endif
+}
+
 // Callback JPEGDEC : dessine un bloc de pixels décodés sur l'écran
 int LCDManager::jpegDrawCallback(JPEGDRAW *pDraw) {
   if (!_tft || !pDraw) {
@@ -170,6 +247,28 @@ void LCDManager::pushImage(int16_t x, int16_t y, int16_t w, int16_t h, const uin
   if (_tft && data) _tft->pushImage(x, y, w, h, data);
 }
 
+void LCDManager::pushImageDMA(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data) {
+  if (!_tft || !data) return;
+#if defined(ESP32) || defined(ESP32S3)
+  if (!_dmaInitialized) {
+    _tft->initDMA();
+    _dmaInitialized = true;
+    delay(35);  // Laisse le DMA/panneau prêt après la première init (évite écran noir au démarrage)
+  }
+  _tft->pushImageDMA(x, y, w, h, data);
+#else
+  _tft->pushImage(x, y, w, h, data);
+#endif
+}
+
+void LCDManager::waitDMA() {
+  if (_tft) _tft->waitDMA();
+}
+
+void LCDManager::setRotation(uint8_t r) {
+  if (_tft) _tft->setRotation(r);
+}
+
 int16_t LCDManager::width() {
   return _tft ? _tft->width() : 0;
 }
@@ -180,7 +279,11 @@ int16_t LCDManager::height() {
 
 void LCDManager::setBacklight(bool on) {
 #ifdef TFT_BLK_PIN
+#if defined(TFT_BLK_ACTIVE_LOW)
+  digitalWrite(TFT_BLK_PIN, on ? LOW : HIGH);
+#else
   digitalWrite(TFT_BLK_PIN, on ? HIGH : LOW);
+#endif
 #endif
 }
 #else
@@ -197,6 +300,13 @@ void LCDManager::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16
 void LCDManager::drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color) { (void)x; (void)y; (void)r; (void)color; }
 void LCDManager::fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) { (void)x; (void)y; (void)r; (void)color; }
 void LCDManager::pushImage(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data) { (void)x; (void)y; (void)w; (void)h; (void)data; }
+void LCDManager::pushImageDMA(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data) { (void)x; (void)y; (void)w; (void)h; (void)data; }
+void LCDManager::waitDMA() { }
+void LCDManager::setRotation(uint8_t r) { (void)r; }
+void LCDManager::reinitDisplay() { }
+void LCDManager::tryDelayedReinit() { }
+void LCDManager::setPostReinitCallback(void (*fn)()) { (void)fn; }
+bool LCDManager::isStartupScreenVisible() { return false; }
 int16_t LCDManager::width() { return 0; }
 int16_t LCDManager::height() { return 0; }
 void LCDManager::setBacklight(bool on) { (void)on; }
@@ -224,6 +334,11 @@ void LCDManager::testLCD() {
     Serial.println("[LCD-TEST] LCD non disponible");
     return;
   }
+  waitDMA();
+  setBacklight(true);
+  delay(80);
+  reinitDisplay();
+  delay(50);
   Serial.println("[LCD-TEST] Rouge...");
   fillScreen(COLOR_RED);
   delay(1500);

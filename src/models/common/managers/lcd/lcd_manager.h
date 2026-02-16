@@ -41,6 +41,15 @@ public:
   /** Affiche un buffer RGB565 (ex: frame vidéo .bin) */
   static void pushImage(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data);
 
+  /** Affiche un buffer RGB565 via DMA si disponible (fluide pour animations .anim) */
+  static void pushImageDMA(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data);
+
+  /** Attend la fin du transfert DMA en cours (optionnel, avant de réutiliser le buffer) */
+  static void waitDMA();
+
+  /** Change la rotation de l'écran (0=portrait 240x280, 1=landscape 280x240). Pour .anim utiliser 0. */
+  static void setRotation(uint8_t r);
+
   // Dimensions
   static int16_t width();
   static int16_t height();
@@ -51,8 +60,20 @@ public:
   // Utilitaires
   static void printInfo();
 
-  /** Test LCD : affiche rouge, puis bleu, puis vert (uniquement si HAS_LCD et LCD disponible) */
+  /** Test LCD : affiche rouge, puis bleu, puis vert (réinit écran avant pour fiabilité bus SPI partagé) */
   static void testLCD();
+
+  /** Réinitialise l’écran (reset RST + init) pour repartir d’un état propre quand l’écran ne répond plus */
+  static void reinitDisplay();
+
+  /** À appeler en loop() : ré-init LCD une fois ~2,5 s après boot (corrige "après reboot pas d'affichage"). */
+  static void tryDelayedReinit();
+
+  /** Callback appelé après la re-init différée (ex. afficher "Kidoo Gotchi"). */
+  static void setPostReinitCallback(void (*fn)());
+
+  /** true pendant ~1,5 s après la re-init différée (ne pas dessiner l'animation par-dessus l'écran de démarrage). */
+  static bool isStartupScreenVisible();
 
   /** Test FPS : animation frame par frame (rectangle rebondissant) pendant ~3 s, affiche les FPS */
   static void testFPS();
@@ -80,6 +101,9 @@ private:
   static LGFX_Kidoo* _tft;
   static int16_t _mjpegOffsetX;  // Offset horizontal pour centrer le MJPEG
   static int16_t _mjpegOffsetY;  // Offset vertical pour centrer le MJPEG
+  static bool _dmaInitialized;   // initDMA() appelé au premier pushImageDMA (évite d’affecter le logo au boot)
+  static void (*_postReinitCallback)();
+  static unsigned long _startupScreenVisibleUntil;
 #endif
   static bool _initialized;
   static bool _available;

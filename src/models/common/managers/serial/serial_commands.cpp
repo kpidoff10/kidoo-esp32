@@ -20,6 +20,12 @@
 #ifdef HAS_LCD
 #include "../lcd/lcd_manager.h"
 #endif
+#ifdef HAS_VIBRATOR
+#include "../vibrator/vibrator_manager.h"
+#endif
+#ifdef HAS_TOUCH
+#include "../touch/touch_manager.h"
+#endif
 #include "../../../model_serial_commands.h"
 #ifdef HAS_PUBNUB
 #include "../../../model_pubnub_routes.h"
@@ -157,6 +163,14 @@ void SerialCommands::processCommand(const String& command) {
     cmdConfigList();
   } else if (cmd == "ota" || cmd == "ota-update" || cmd == "update") {
     cmdOta(args);
+  #ifdef HAS_VIBRATOR
+  } else if (cmd == "vibrator" || cmd == "vibe" || cmd == "vib") {
+    cmdVibrator(args);
+  #endif
+  #ifdef HAS_TOUCH
+  } else if (cmd == "touch" || cmd == "tap") {
+    cmdTouch(args);
+  #endif
   #ifdef HAS_LED
   } else if (cmd == "led-test" || cmd == "test-led" || cmd == "testleds") {
     cmdLEDTest();
@@ -164,6 +178,8 @@ void SerialCommands::processCommand(const String& command) {
   #ifdef HAS_LCD
   } else if (cmd == "lcd-test" || cmd == "test-lcd" || cmd == "testlcd") {
     cmdLCDTest();
+  } else if (cmd == "lcd-reset" || cmd == "lcd-reset-display") {
+    cmdLCDReset();
   } else if (cmd == "lcd-fps" || cmd == "fps" || cmd == "lcd-fps-test") {
     cmdLCDFps();
   } else if (cmd == "lcd-play-mjpeg" || cmd == "lcd-play-ffmpeg" || cmd == "video-play" || cmd == "play-mjpeg") {
@@ -218,6 +234,7 @@ void SerialCommands::printHelp() {
   #ifdef HAS_LCD
   if (HAS_LCD) {
     Serial.println("  lcd-test         - Tester l'ecran LCD (rouge, bleu, vert)");
+    Serial.println("  lcd-reset        - Reinitialiser l'ecran (si plus de reponse)");
     Serial.println("  lcd-fps          - Animation frame par frame, mesurer les FPS");
     Serial.println("  lcd-play-mjpeg [p] - Jouer un .mjpeg video depuis la SD (defaut: /video.mjpeg)");
   }
@@ -267,6 +284,20 @@ void SerialCommands::printHelp() {
   if (HAS_NFC) {
     Serial.println("  nfc-read [block] - Lire l'UID d'un tag NFC (optionnel: lire un bloc)");
     Serial.println("  nfc-write <block> <data> - Ecrire des donnees sur un tag NFC");
+  }
+  #endif
+  
+  #ifdef HAS_VIBRATOR
+  if (HAS_VIBRATOR) {
+    Serial.println("  vibrator [on|off|toggle|test|status] - Controle du vibreur");
+    Serial.println("  vibrator intensity [0-255] - Intensite PWM");
+    Serial.println("  vibrator short|long|saccade|pulse|doubletap - Effets (court, long, saccade, pulsation, double tap)");
+  }
+  #endif
+  
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    Serial.println("  touch [status|read] - Capteur tactile TTP223 (etat debounce ou lecture brute)");
   }
   #endif
   
@@ -1671,6 +1702,20 @@ void SerialCommands::cmdLCDTest() {
 #endif
 }
 
+void SerialCommands::cmdLCDReset() {
+#ifdef HAS_LCD
+  if (!LCDManager::isAvailable()) {
+    Serial.println("[LCD-RESET] LCD non disponible");
+    return;
+  }
+  LCDManager::waitDMA();
+  LCDManager::reinitDisplay();
+  Serial.println("[LCD-RESET] Ecran reinitialise");
+#else
+  Serial.println("[LCD-RESET] LCD non disponible sur ce modele");
+#endif
+}
+
 void SerialCommands::cmdLCDFps() {
 #ifdef HAS_LCD
   LCDManager::testFPS();
@@ -1686,6 +1731,144 @@ void SerialCommands::cmdLCDPlayMjpeg(const String& args) {
 #else
   (void)args;
   Serial.println("[LCD-PLAY] LCD non disponible sur ce modele");
+#endif
+}
+
+// ============================================
+// Commandes Touch (TTP223)
+// ============================================
+
+void SerialCommands::cmdTouch(const String& args) {
+#ifdef HAS_TOUCH
+  if (!TouchManager::isInitialized()) {
+    Serial.println("[TOUCH] Capteur non initialise");
+    return;
+  }
+
+  String a = args;
+  a.trim();
+  a.toLowerCase();
+
+  if (a.length() == 0 || a == "status" || a == "info") {
+    TouchManager::printStatus();
+    return;
+  }
+  if (a == "read" || a == "raw") {
+    TouchManager::update();  // Mettre à jour le debounce avant lecture
+    bool touched = TouchManager::isTouched();
+    bool raw = TouchManager::readRaw();
+    Serial.printf("[TOUCH] Debounce: %s | Brut: %s\n", touched ? "TOUCHE" : "RELACHE", raw ? "HIGH" : "LOW");
+    return;
+  }
+
+  Serial.println("[TOUCH] Usage: touch [status|read]");
+#else
+  (void)args;
+  Serial.println("[TOUCH] Capteur tactile non disponible sur ce modele");
+#endif
+}
+
+// ============================================
+// Commandes Vibreur
+// ============================================
+
+void SerialCommands::cmdVibrator(const String& args) {
+#ifdef HAS_VIBRATOR
+  if (!VibratorManager::isInitialized()) {
+    Serial.println("[VIBRATOR] Vibreur non initialise");
+    return;
+  }
+
+  String a = args;
+  a.trim();
+  a.toLowerCase();
+
+  if (a.length() == 0 || a == "status" || a == "info") {
+    VibratorManager::printStatus();
+    return;
+  }
+
+  if (a == "on") {
+    VibratorManager::setOn(true);
+    Serial.println("[VIBRATOR] ON");
+    return;
+  }
+  if (a == "off") {
+    VibratorManager::stop();
+    Serial.println("[VIBRATOR] OFF");
+    return;
+  }
+  if (a == "toggle") {
+    VibratorManager::setOn(!VibratorManager::isOn());
+    Serial.printf("[VIBRATOR] %s\n", VibratorManager::isOn() ? "ON" : "OFF");
+    return;
+  }
+  if (a == "test") {
+    Serial.println("[VIBRATOR] Test 500 ms...");
+    VibratorManager::setOn(true);
+    delay(500);
+    VibratorManager::stop();
+    Serial.println("[VIBRATOR] Test termine");
+    return;
+  }
+  if (a.startsWith("intensity ")) {
+    String valStr = a.substring(10);
+    valStr.trim();
+    if (valStr.length() == 0) {
+      Serial.printf("[VIBRATOR] Intensite actuelle: %d/255\n", VibratorManager::getIntensity());
+      return;
+    }
+    int val = valStr.toInt();
+    if (val < 0 || val > 255) {
+      Serial.println("[VIBRATOR] Erreur: intensite doit etre entre 0 et 255");
+      return;
+    }
+    VibratorManager::setIntensity((uint8_t)val);
+    Serial.printf("[VIBRATOR] Intensite definie a %d/255\n", val);
+    return;
+  }
+
+  // Effets : court, long, saccadé, pulsation, double tap
+  String effectName = a;
+  if (effectName.startsWith("effect ")) {
+    effectName = effectName.substring(7);
+    effectName.trim();
+  }
+  if (effectName == "short" || effectName == "court") {
+    Serial.println("[VIBRATOR] Effet court...");
+    VibratorManager::playEffect(VibratorManager::EFFECT_SHORT);
+    Serial.println("[VIBRATOR] OK");
+    return;
+  }
+  if (effectName == "long") {
+    Serial.println("[VIBRATOR] Effet long...");
+    VibratorManager::playEffect(VibratorManager::EFFECT_LONG);
+    Serial.println("[VIBRATOR] OK");
+    return;
+  }
+  if (effectName == "saccade" || effectName == "saccadé" || effectName == "jerky") {
+    Serial.println("[VIBRATOR] Effet saccade...");
+    VibratorManager::playEffect(VibratorManager::EFFECT_JERKY);
+    Serial.println("[VIBRATOR] OK");
+    return;
+  }
+  if (effectName == "pulse" || effectName == "pulsation") {
+    Serial.println("[VIBRATOR] Effet pulsation...");
+    VibratorManager::playEffect(VibratorManager::EFFECT_PULSE);
+    Serial.println("[VIBRATOR] OK");
+    return;
+  }
+  if (effectName == "doubletap" || effectName == "double-tap" || effectName == "double_tap") {
+    Serial.println("[VIBRATOR] Effet double tap...");
+    VibratorManager::playEffect(VibratorManager::EFFECT_DOUBLE_TAP);
+    Serial.println("[VIBRATOR] OK");
+    return;
+  }
+
+  Serial.println("[VIBRATOR] Usage: vibrator [on|off|toggle|test|status|intensity [0-255]|short|long|saccade|pulse|doubletap]");
+#else
+  (void)args;
+  Serial.println("[VIBRATOR] Vibreur non disponible sur ce modele");
 #endif
 }
 

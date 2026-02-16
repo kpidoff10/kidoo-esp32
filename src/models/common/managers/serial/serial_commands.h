@@ -65,9 +65,16 @@ private:
   static void cmdConfigList();
   static void cmdLEDTest();
   static void cmdLCDTest();
+  static void cmdLCDReset();
   static void cmdLCDFps();
   static void cmdLCDPlayMjpeg(const String& args);
   static void cmdOta(const String& args);
+  
+  // Commandes vibreur
+  static void cmdVibrator(const String& args);
+  
+  // Commandes touch (TTP223)
+  static void cmdTouch(const String& args);
   
   // Commandes audio
   static void cmdAudio();

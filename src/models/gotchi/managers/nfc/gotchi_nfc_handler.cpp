@@ -10,6 +10,8 @@ bool GotchiNFCHandler::initialized = false;
 bool GotchiNFCHandler::tagPresent = false;
 uint8_t GotchiNFCHandler::activeTagUID[10] = {0};
 uint8_t GotchiNFCHandler::activeTagLength = 0;
+// Action en cours pour la loop eating (bottle, cake, apple, candy) — utilisée pour arrêter l'effet au retrait du tag
+static String s_currentLoopActionId;
 
 // ============================================
 // Configuration des badges NFC (UIDs)
@@ -55,6 +57,12 @@ static bool bottleLoopContinueCondition() {
   if (!GotchiNFCHandler::isTagPresent()) return false;  // Tag retiré → arrêter tout de suite
   GotchiStats stats = LifeManager::getStats();
   return (stats.hunger < BOTTLE_HUNGER_SATIATED);  // À 100% → EXIT automatique
+}
+
+// Condition de sortie pour cake/apple/candy : on continue tant que le tag est posé ET l'effet progressif est actif (jusqu'au cooldown / fin des ticks)
+static bool foodLoopContinueCondition() {
+  if (!GotchiNFCHandler::isTagPresent()) return false;
+  return LifeManager::isProgressiveEffectActive(s_currentLoopActionId);
 }
 
 // ============================================
@@ -103,8 +111,11 @@ void GotchiNFCHandler::update() {
       Serial.println("[GOTCHI-NFC] Tag retire");
       tagPresent = false;
       activeTagLength = 0;
-      // Arrêter l'effet progressif biberon pour ne plus ajouter de faim
-      LifeManager::stopProgressiveEffect("bottle");
+      // Arrêter l'effet progressif en cours (biberon, gâteau, etc.)
+      if (!s_currentLoopActionId.isEmpty()) {
+        LifeManager::stopProgressiveEffect(s_currentLoopActionId);
+        s_currentLoopActionId = "";
+      }
       // Forcer l'animation à jouer la phase EXIT puis s'arrêter
       EmotionManager::requestExitLoop();
     }
@@ -171,6 +182,11 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
     requestedVariant = badgeVariant;  // Accepter
   }
 
+  // Biberon (variant 1) : toujours accepter, même si la faim est à 100 % (pas de trigger faim actif)
+  if (badgeVariant == 1) {
+    requestedVariant = 1;
+  }
+
   // Vérifier si le badge correspond au variant demandé
   if (badgeVariant != requestedVariant) {
     // Mauvais variant → jouer animation "NO"
@@ -207,17 +223,22 @@ void GotchiNFCHandler::onTagDetected(uint8_t* uid, uint8_t uidLength) {
 
     // Biberon (variant 1) : boucle tant qu'il a encore faim OU que le tag est présent
     if (badgeVariant == 1) {
-      EmotionManager::setLoopContinueCondition(bottleLoopContinueCondition);
-      if (EmotionManager::requestEmotion(emotionKey, BOTTLE_LOOP_ITERATIONS, EMOTION_PRIORITY_HIGH, badgeVariant)) {
+      s_currentLoopActionId = action;
+      if (EmotionManager::requestEmotion(emotionKey, BOTTLE_LOOP_ITERATIONS, EMOTION_PRIORITY_HIGH, badgeVariant, "eating", bottleLoopContinueCondition)) {
         Serial.println("[GOTCHI-NFC] Animation biberon lancee (loop jusqu'a rassasiement ou tag retire)");
       } else {
-        EmotionManager::setLoopContinueCondition(nullptr);
+        s_currentLoopActionId = "";
         Serial.println("[GOTCHI-NFC] ERREUR: Impossible de lancer animation eating");
       }
-    } else if (EmotionManager::requestEmotion(emotionKey, 1, EMOTION_PRIORITY_HIGH, badgeVariant)) {
-      Serial.printf("[GOTCHI-NFC] Animation eating (variant %d) lancee\n", badgeVariant);
     } else {
-      Serial.println("[GOTCHI-NFC] ERREUR: Impossible de lancer animation eating");
+      // Cake, apple, candy : boucle tant que le tag est posé et l'effet progressif actif (mange jusqu'au cooldown / fin des ticks)
+      s_currentLoopActionId = action;
+      if (EmotionManager::requestEmotion(emotionKey, BOTTLE_LOOP_ITERATIONS, EMOTION_PRIORITY_HIGH, badgeVariant, "eating", foodLoopContinueCondition)) {
+        Serial.printf("[GOTCHI-NFC] Animation eating (variant %d) lancee en loop (tag pose jusqu'a fin effet)\n", badgeVariant);
+      } else {
+        s_currentLoopActionId = "";
+        Serial.println("[GOTCHI-NFC] ERREUR: Impossible de lancer animation eating");
+      }
     }
 
   } else {

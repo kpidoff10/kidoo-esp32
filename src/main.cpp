@@ -45,6 +45,14 @@
 #include "models/common/managers/rtc/rtc_manager.h"
 #endif
 
+#ifdef HAS_TOUCH
+#include "models/common/managers/touch/touch_manager.h"
+#endif
+
+#ifdef HAS_LCD
+#include "models/common/managers/lcd/lcd_manager.h"
+#endif
+
 /**
  * Architecture multi-cœurs ESP32 (auto-détectée)
  * ==============================================
@@ -111,9 +119,21 @@ void loop() {
   // - ESP32-C3 (Mini)  : Core 0 (seul cœur)
   // Les threads FreeRTOS gèrent les tâches temps-réel indépendamment.
   // ====================================================================
+
+#ifdef HAS_LCD
+  // Ré-init LCD ~2,5 s après boot (corrige "après reboot pas d'affichage", upload OK)
+  LCDManager::tryDelayedReinit();
+#endif
   
   // Traiter les commandes Serial en attente
   SerialCommands::update();
+
+  // Mettre à jour le touch (TTP223) en début de loop pour que tout le reste voie un état à jour
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    TouchManager::update();
+  }
+  #endif
   
   #ifdef HAS_PUBNUB
   // Note: PubNubManager::loop() ne fait plus rien - le thread gère tout
@@ -230,10 +250,17 @@ void loop() {
   GotchiNFCHandler::update();
   LifeManager::update();
 
+  // Mettre à jour le capteur tactile TTP223 (debounce) avant les triggers pour lecture à jour
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    TouchManager::update();
+  }
+  #endif
+
   // Mettre à jour le gestionnaire d'émotions (système asynchrone)
   #ifdef HAS_LCD
   EmotionManager::update();  // Avance la state machine d'une frame par cycle
-  TriggerManager::update();  // Évalue et enqueue les triggers automatiques
+  TriggerManager::update();  // Évalue et enqueue les triggers automatiques (dont touch head_caress)
   #endif
   #endif
   

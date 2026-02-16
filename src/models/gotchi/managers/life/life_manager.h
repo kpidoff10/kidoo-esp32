@@ -83,6 +83,14 @@ public:
   static bool applyAction(const String& actionId);
 
   /**
+   * Appliquer l'effet instantané d'un trigger (ex. head_caress -> +1 bonheur).
+   * Utilise TRIGGER_STAT_EFFECTS généré depuis kidoo-shared.
+   * @param triggerId ID du trigger ("head_caress", etc.)
+   * @return true si un effet a été appliqué, false sinon
+   */
+  static bool applyTriggerEffect(const String& triggerId);
+
+  /**
    * Obtenir le timestamp de la dernière utilisation d'une action
    * @param actionId ID de l'action
    * @return Timestamp en millisecondes (0 si jamais utilisé)
@@ -126,6 +134,13 @@ public:
    * @param actionId ID de l'action ("bottle", "cake", "apple", "candy")
    */
   static void stopProgressiveEffect(const String& actionId);
+
+  /**
+   * Indique si un effet progressif est actif pour l'action donnée (ex. eating en cours).
+   * @param actionId ID de l'action ("bottle", "cake", "apple", "candy")
+   * @return true si l'effet est actif pour cette action
+   */
+  static bool isProgressiveEffectActive(const String& actionId);
 
   /**
    * Réinitialiser toutes les stats aux valeurs par défaut
