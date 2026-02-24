@@ -119,6 +119,31 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   Serial.print("[WIFI] Connexion a: ");
   Serial.println(ssid);
   
+  // Diagnostic: scan pour vérifier si le réseau est visible (SSID exact, 2.4 GHz, portée)
+  int n = WiFi.scanNetworks();
+  Serial.printf("[WIFI] Scan: %d reseaux detectes\n", n);
+  if (n > 0) {
+    bool found = false;
+    for (int i = 0; i < n && i < 20; i++) {
+      if (strcmp(WiFi.SSID(i).c_str(), ssid) == 0) {
+        found = true;
+        break;
+      }
+    }
+    // Afficher tous les réseaux trouvés (pour debug)
+    Serial.println("[WIFI] Reseaux visibles:");
+    for (int i = 0; i < n && i < 20; i++) {
+      Serial.print("  - ");
+      Serial.println(WiFi.SSID(i));
+    }
+    if (n > 20) Serial.printf("  ... et %d autres.\n", n - 20);
+
+    if (!found) {
+      Serial.println("[WIFI] Diag: SSID cible NON vu dans le scan.");
+      Serial.println("[WIFI] Verifiez: accent (e/é) identique, 2.4 GHz, portee.");
+    }
+  }
+  
   // Démarrer la connexion
   WiFi.begin(ssid, password);
   
@@ -128,26 +153,26 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   const unsigned long RETRY_BACKOFF_MS = 4000;   // Pause toutes les 4 s si l'AP refuse (évite "Association refused temporarily")
   const unsigned long BACKOFF_WAIT_MS = 3000;    // Attendre 3 s avant de réessayer (respecte le backoff de l'AP)
   int dotCount = 0;
-  
+  wl_status_t lastMeaningfulStatus = WL_DISCONNECTED; // Dernier statut avant disconnect/begin
+
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - startTime >= timeoutMs) {
       Serial.println();
       Serial.println("[WIFI] ERREUR: Timeout de connexion");
       // Afficher la raison pour aider au diagnostic (box vs partage teléphone)
-      wl_status_t lastStatus = WiFi.status();
-      switch (lastStatus) {
+      switch (lastMeaningfulStatus) {
         case WL_NO_SSID_AVAIL:
-          Serial.println("[WIFI] Raison: reseau non trouve. Verifiez: SSID correct, box en 2.4 GHz (ESP32 ne fait pas 5 GHz), portee.");
+          Serial.println("[WIFI] Raison: reseau non trouve (WL_NO_SSID_AVAIL). Verifiez: SSID exact (accents e/é), 2.4 GHz, portee.");
           break;
         case WL_CONNECT_FAILED:
-          Serial.println("[WIFI] Raison: echec auth. Verifiez: mot de passe, box en WPA2 ou WPA2/WPA3 mixte (pas WPA3 seul).");
+          Serial.println("[WIFI] Raison: echec auth. Verifiez: mot de passe, securite WPA2 (pas WPA3 seul - Samsung S24/Android 14 utilise WPA3 par defaut).");
           break;
         case WL_DISCONNECTED:
         case WL_CONNECTION_LOST:
           Serial.println("[WIFI] Raison: connexion interrompue. Verifiez: signal, isolation client desactivee sur la box.");
           break;
         default:
-          Serial.printf("[WIFI] Raison: code status=%d. Voir doc ESP32 WiFi (2.4 GHz, WPA2).\n", (int)lastStatus);
+          Serial.printf("[WIFI] Raison: code status=%d. Voir doc ESP32 WiFi (2.4 GHz, WPA2).\n", (int)lastMeaningfulStatus);
           break;
       }
       connectionStatus = WIFI_STATUS_CONNECTION_FAILED;
@@ -158,6 +183,8 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
     if (millis() - lastRetryTime >= RETRY_BACKOFF_MS) {
       Serial.println();
       Serial.println("[WIFI] Pause puis nouvel essai (evite surcharge AP)...");
+      // Sauvegarder le statut AVANT disconnect (apres begin il passe a WL_NO_SSID_AVAIL transitoire)
+      lastMeaningfulStatus = WiFi.status();
       WiFi.disconnect();
       delay(BACKOFF_WAIT_MS);
       WiFi.begin(ssid, password);

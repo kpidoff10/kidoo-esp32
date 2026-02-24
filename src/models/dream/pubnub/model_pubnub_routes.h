@@ -23,6 +23,7 @@
  * - stop-test-wakeup: Arrêter le test de l'heure de réveil
  * - set-wakeup-config: Sauvegarder la configuration de l'heure de réveil sur la SD
  * - firmware-update: Lancer une mise à jour OTA (version cible)
+ * - get-env: Récupérer température, humidité (et pression) du capteur AHT20+BMP280
  * 
  * Format des messages:
  * { "action": "get-info" }
@@ -39,6 +40,7 @@
  * { "action": "stop-test-wakeup" }
  * { "action": "set-wakeup-config", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50, "weekdaySchedule": {...} } }
  * { "action": "firmware-update", "version": "1.0.1" }
+ * { "action": "get-env" }
  */
 
 class ModelDreamPubNubRoutes {
@@ -69,6 +71,11 @@ public:
    * Vérifier le timeout du test de wakeup (à appeler périodiquement)
    */
   static void checkTestWakeupTimeout();
+
+  /**
+   * Publier env via PubNub si température ou humidité a changé (à appeler périodiquement dans loop)
+   */
+  static void updateEnvPublisher();
   
   /**
    * Vérifier si le test de wakeup est actif
@@ -92,6 +99,7 @@ private:
   static bool handleStopTestWakeup(const JsonObject& json);
   static bool handleSetWakeupConfig(const JsonObject& json);
   static bool handleFirmwareUpdate(const JsonObject& json);
+  static bool handleGetEnv(const JsonObject& json);
 };
 
 #endif // MODEL_DREAM_PUBNUB_ROUTES_H

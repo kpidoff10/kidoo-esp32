@@ -41,7 +41,8 @@ SystemStatus InitManager::systemStatus = {
   INIT_NOT_STARTED,  // potentiometer
   INIT_NOT_STARTED,  // audio
   INIT_NOT_STARTED,  // vibrator
-  INIT_NOT_STARTED   // touch
+  INIT_NOT_STARTED,  // touch
+  INIT_NOT_STARTED   // envSensor
 };
 bool InitManager::initialized = false;
 SDConfig* InitManager::globalConfig = nullptr;
@@ -265,6 +266,14 @@ bool InitManager::init() {
   }
   #endif
   
+  // ÉTAPE 9d : Initialiser le capteur environnemental AHT20 + BMP280 (optionnel)
+  #ifdef HAS_ENV_SENSOR
+  if (HAS_ENV_SENSOR) {
+    initEnvSensor();
+    delay(50);
+  }
+  #endif
+  
   // ÉTAPE 10 : Initialisation spécifique au modèle (APRÈS tous les composants)
   if (serialAvailable) {
     Serial.println("[INIT] Appel InitModel::init()...");
@@ -356,6 +365,8 @@ InitStatus InitManager::getComponentStatus(const char* componentName) {
     return systemStatus.vibrator;
   } else if (strcmp(componentName, "touch") == 0) {
     return systemStatus.touch;
+  } else if (strcmp(componentName, "envSensor") == 0) {
+    return systemStatus.envSensor;
   }
   // Ajouter d'autres composants ici
   
@@ -603,6 +614,26 @@ void InitManager::printStatus() {
   if (HAS_TOUCH) {
     Serial.print("[INIT] Touch (TTP223): ");
     switch (systemStatus.touch) {
+      case INIT_NOT_STARTED:
+        Serial.println("Non demarre");
+        break;
+      case INIT_IN_PROGRESS:
+        Serial.println("En cours");
+        break;
+      case INIT_SUCCESS:
+        Serial.println("OK");
+        break;
+      case INIT_FAILED:
+        Serial.println("Non disponible");
+        break;
+    }
+  }
+  #endif
+  
+  #ifdef HAS_ENV_SENSOR
+  if (HAS_ENV_SENSOR) {
+    Serial.print("[INIT] Env Sensor (AHT20+BMP280): ");
+    switch (systemStatus.envSensor) {
       case INIT_NOT_STARTED:
         Serial.println("Non demarre");
         break;

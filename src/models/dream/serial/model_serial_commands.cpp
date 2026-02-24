@@ -3,7 +3,14 @@
 #include "../managers/bedtime/bedtime_manager.h"
 #include "../managers/wakeup/wakeup_manager.h"
 #include "../../common/managers/led/led_manager.h"
+#include "../../common/managers/wifi/wifi_manager.h"
+#ifdef HAS_BLE
+#include "../../common/managers/ble_config/ble_config_manager.h"
+#endif
 #include <Arduino.h>
+#ifdef HAS_WIFI
+#include <WiFi.h>
+#endif
 
 /**
  * Commandes Serial spécifiques au modèle Kidoo Dream
@@ -25,6 +32,23 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
   args.trim();
   
   // Traiter les commandes spécifiques au Dream
+#ifdef HAS_BLE
+  if (cmd == "ble-start" || cmd == "ble-pair" || cmd == "ble-appairer") {
+    Serial.println("[DREAM] Lancement de l'appareillage BLE...");
+    if (BLEConfigManager::enableBLE(0, true)) {
+      Serial.println("[DREAM] BLE active. L'appareil est visible pour l'appairage (duree par defaut: 15 min).");
+    } else {
+      Serial.println("[DREAM] Erreur: impossible d'activer le BLE.");
+    }
+    return true;
+  }
+  else if (cmd == "ble-stop") {
+    Serial.println("[DREAM] Arret du mode appareillage BLE.");
+    BLEConfigManager::disableBLE();
+    Serial.println("[DREAM] BLE desactive.");
+    return true;
+  }
+#endif
   if (cmd == "dream-info") {
     Serial.println("[DREAM] Informations specifiques au modele Dream");
     Serial.println("[DREAM] Nombre de LEDs: 40");
@@ -197,7 +221,37 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
       return true;
     }
   }
-  
+  else if (cmd == "wifi-scan" || cmd == "scan-wifi") {
+    // Scanner les réseaux WiFi disponibles
+    Serial.println("");
+    Serial.println("========================================");
+    Serial.println("          SCAN RESEAUX WIFI");
+    Serial.println("========================================");
+
+    int n = WiFi.scanNetworks();
+    Serial.printf("Nombre de reseaux detectes: %d\n\n", n);
+
+    if (n > 0) {
+      Serial.println("Reseaux disponibles:");
+      for (int i = 0; i < n && i < 20; i++) {
+        Serial.print("  ");
+        Serial.print(i + 1);
+        Serial.print(". ");
+        Serial.print(WiFi.SSID(i));
+        Serial.print(" (");
+        Serial.print(WiFi.RSSI(i));
+        Serial.println(" dBm)");
+      }
+      if (n > 20) Serial.printf("  ... et %d autres reseaux.\n", n - 20);
+    } else {
+      Serial.println("Aucun reseau WiFi detecte");
+    }
+
+    Serial.println("========================================");
+    Serial.println("");
+    return true;
+  }
+
   return false; // Commande non reconnue
 }
 
@@ -206,6 +260,12 @@ void ModelDreamSerialCommands::printHelp() {
   Serial.println("========================================");
   Serial.println("  COMMANDES SPECIFIQUES DREAM");
   Serial.println("========================================");
+#ifdef HAS_BLE
+  Serial.println("  ble-start          - Lancer l'appareillage BLE (visible pour l'app mobile)");
+  Serial.println("  ble-stop           - Arreter le mode appareillage BLE");
+  Serial.println("  (ble-pair / ble-appairer = alias de ble-start)");
+#endif
+  Serial.println("  wifi-scan          - Scanner les reseaux WiFi disponibles");
   Serial.println("  dream-info         - Afficher les infos du modele Dream");
   Serial.println("  bedtime-show       - Afficher la configuration bedtime (coucher)");
   Serial.println("  wakeup-show        - Afficher la configuration wakeup (reveil)");

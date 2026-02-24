@@ -11,7 +11,11 @@
 #include "../managers/bedtime/bedtime_manager.h"
 #include "../managers/wakeup/wakeup_manager.h"
 #include "../../model_config.h"
+#ifdef HAS_ENV_SENSOR
+#include "../../common/managers/env_sensor/env_sensor_manager.h"
+#endif
 #include <limits.h>   // Pour ULONG_MAX
+#include <math.h>     // isnan, isfinite
 
 /**
  * Routes PubNub spécifiques au modèle Kidoo Dream
@@ -78,6 +82,9 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   }
   else if (strcmp(action, "firmware-update") == 0) {
     return handleFirmwareUpdate(json);
+  }
+  else if (strcmp(action, "get-env") == 0 || strcmp(action, "getenv") == 0 || strcmp(action, "env") == 0) {
+    return handleGetEnv(json);
   }
   
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
@@ -1115,6 +1122,122 @@ bool ModelDreamPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
 #endif
 }
 
+bool ModelDreamPubNubRoutes::handleGetEnv(const JsonObject& json) {
+  (void)json;
+  Serial.println("[PUBNUB-ROUTE] get-env: Lecture temperature, humidite, pression...");
+
+#ifdef HAS_ENV_SENSOR
+  if (!EnvSensorManager::isInitialized() || !EnvSensorManager::isAvailable()) {
+    const char* errJson = "{\"type\":\"env\",\"available\":false,\"error\":\"sensor not available\"}";
+    if (PubNubManager::publish(errJson)) {
+      Serial.println("[PUBNUB-ROUTE] get-env: Capteur non disponible, reponse publiee");
+    }
+    return true;
+  }
+
+  float t = EnvSensorManager::getTemperatureC();
+  float h = EnvSensorManager::getHumidityPercent();
+  float p = EnvSensorManager::getPressurePa();
+
+  // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
+  char tStr[16], hStr[16], pStr[16];
+  if (!isfinite(t) || isnan(t)) {
+    strcpy(tStr, "null");
+  } else {
+    int ti = (int)t;
+    int td = (int)((t - (float)ti) * 10);
+    if (td < 0) td = -td;
+    snprintf(tStr, sizeof(tStr), "%d.%d", ti, td);
+  }
+  if (!isfinite(h) || isnan(h)) {
+    strcpy(hStr, "null");
+  } else {
+    int hi = (int)h;
+    int hd = (int)((h - (float)hi) * 10);
+    if (hd < 0) hd = -hd;
+    snprintf(hStr, sizeof(hStr), "%d.%d", hi, hd);
+  }
+  if (!isfinite(p) || isnan(p) || p < 10000.0f || p > 120000.0f) {
+    strcpy(pStr, "null");
+  } else {
+    snprintf(pStr, sizeof(pStr), "%d", (int)p);
+  }
+
+  char envJson[512];
+  snprintf(envJson, sizeof(envJson),
+    "{\"type\":\"env\",\"available\":true,\"temperatureC\":%s,\"humidityPercent\":%s,\"pressurePa\":%s}",
+    tStr, hStr, pStr);
+
+  if (PubNubManager::publish(envJson)) {
+    Serial.println("[PUBNUB-ROUTE] get-env: Donnees env publiees (temp, humidite, pression)");
+  } else {
+    Serial.println("[PUBNUB-ROUTE] get-env: Erreur publication");
+  }
+  return true;
+#else
+  const char* errJson = "{\"type\":\"env\",\"available\":false,\"error\":\"env sensor not enabled\"}";
+  if (PubNubManager::publish(errJson)) {
+    Serial.println("[PUBNUB-ROUTE] get-env: Capteur non active sur ce firmware");
+  }
+  return true;
+#endif
+}
+
+// Seuils de changement pour publication proactive (évite bruit)
+#define ENV_TEMP_THRESHOLD_C    0.2f
+#define ENV_HUMIDITY_THRESHOLD 1.0f
+#define ENV_PUBLISH_INTERVAL_MS 30000  // Au plus toutes les 30 s
+
+void ModelDreamPubNubRoutes::updateEnvPublisher() {
+#ifdef HAS_ENV_SENSOR
+  if (!EnvSensorManager::isInitialized() || !EnvSensorManager::isAvailable()) return;
+  if (!PubNubManager::isConnected()) return;
+
+  static unsigned long lastPublishMs = 0;
+  static float lastTempC = NAN;
+  static float lastHumPercent = NAN;
+  static bool firstRun = true;
+
+  unsigned long now = millis();
+  if (!firstRun && (now - lastPublishMs) < ENV_PUBLISH_INTERVAL_MS) return;
+
+  float t = EnvSensorManager::getTemperatureC();
+  float h = EnvSensorManager::getHumidityPercent();
+  float p = EnvSensorManager::getPressurePa();
+
+  bool changed = firstRun;
+  if (!firstRun) {
+    if (isfinite(t) && isfinite(lastTempC) && fabsf(t - lastTempC) >= ENV_TEMP_THRESHOLD_C) changed = true;
+    if (isfinite(h) && isfinite(lastHumPercent) && fabsf(h - lastHumPercent) >= ENV_HUMIDITY_THRESHOLD) changed = true;
+    if (isfinite(t) != isfinite(lastTempC) || isfinite(h) != isfinite(lastHumPercent)) changed = true;
+  }
+
+  if (!changed) return;
+
+  firstRun = false;
+  lastPublishMs = now;
+  lastTempC = t;
+  lastHumPercent = h;
+
+  char tStr[16], hStr[16], pStr[16];
+  if (!isfinite(t) || isnan(t)) strcpy(tStr, "null");
+  else { int ti = (int)t; int td = (int)((t - (float)ti) * 10); if (td < 0) td = -td; snprintf(tStr, sizeof(tStr), "%d.%d", ti, td); }
+  if (!isfinite(h) || isnan(h)) strcpy(hStr, "null");
+  else { int hi = (int)h; int hd = (int)((h - (float)hi) * 10); if (hd < 0) hd = -hd; snprintf(hStr, sizeof(hStr), "%d.%d", hi, hd); }
+  if (!isfinite(p) || isnan(p) || p < 10000.0f || p > 120000.0f) strcpy(pStr, "null");
+  else snprintf(pStr, sizeof(pStr), "%d", (int)p);
+
+  char envJson[512];
+  snprintf(envJson, sizeof(envJson),
+    "{\"type\":\"env\",\"available\":true,\"temperatureC\":%s,\"humidityPercent\":%s,\"pressurePa\":%s}",
+    tStr, hStr, pStr);
+
+  if (PubNubManager::publish(envJson)) {
+    Serial.println("[PUBNUB-ROUTE] env: Donnees publiees (temp/humidite change)");
+  }
+#endif
+}
+
 void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("");
   Serial.println("========== Routes PubNub Dream ==========");
@@ -1134,5 +1257,6 @@ void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"stop-test-wakeup\" }");
   Serial.println("{ \"action\": \"set-wakeup-config\", \"params\": { \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100, \"weekdaySchedule\": {...} } }");
   Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
+  Serial.println("{ \"action\": \"get-env\" }");
   Serial.println("==========================================");
 }

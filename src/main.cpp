@@ -232,12 +232,35 @@ void loop() {
   #ifdef KIDOO_MODEL_DREAM
   ModelPubNubRoutes::checkTestBedtimeTimeout();
   ModelPubNubRoutes::checkTestWakeupTimeout();
+  ModelPubNubRoutes::updateEnvPublisher();
 
   // Mettre à jour le gestionnaire bedtime automatique
   BedtimeManager::update();
 
   // Mettre à jour le gestionnaire wake-up automatique
   WakeupManager::update();
+
+  // Touch (TTP223) : hors période → lancer le coucher ; en période bedtime/wakeup → arrêter la routine
+  #ifdef HAS_TOUCH
+  if (HAS_TOUCH && TouchManager::isInitialized()) {
+    static bool dreamTouchLast = false;
+    bool touched = TouchManager::isTouched();
+    if (touched && !dreamTouchLast) {
+      if (BedtimeManager::isBedtimeActive()) {
+        BedtimeManager::stopBedtimeManually();
+        if (Serial) Serial.println("[DREAM] Touch: routine coucher arretee");
+      } else if (WakeupManager::isWakeupActive()) {
+        WakeupManager::stopWakeupManually();
+        if (Serial) Serial.println("[DREAM] Touch: routine reveil arretee");
+      } else {
+        // Idle : lancer la routine de nuit (même si le jour n'est pas activé dans l'app)
+        BedtimeManager::startBedtimeManually();
+        if (Serial) Serial.println("[DREAM] Touch: routine coucher lancee");
+      }
+    }
+    dreamTouchLast = touched;
+  }
+  #endif
   #endif
 
   // Mettre à jour le gestionnaire de vie (modèle Gotchi uniquement)

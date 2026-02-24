@@ -34,7 +34,11 @@ bool InitManager::initWiFi() {
   if (strlen(config.wifi_ssid) > 0) {
     Serial.print("[INIT] Tentative de connexion WiFi a: ");
     Serial.println(config.wifi_ssid);
-    
+
+    // Attendre que le hotspot du téléphone soit prêt (5s pour les hotspots S24)
+    // Important pour les hotspots téléphone qui démarrent en même temps que l'ESP32
+    delay(5000);
+
     if (WiFiManager::connect()) {
       systemStatus.wifi = INIT_SUCCESS;
       Serial.println("[INIT] WiFi connecte");

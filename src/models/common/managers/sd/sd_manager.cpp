@@ -400,10 +400,9 @@ bool SDManager::saveConfig(const SDConfig& config) {
   if (strlen(config.wifi_ssid) > 0) {
     doc["wifi_ssid"] = config.wifi_ssid;
   }
-  
-  if (strlen(config.wifi_password) > 0) {
-    doc["wifi_password"] = config.wifi_password;
-  }
+
+  // Sauvegarder le password MEME s'il est vide (pour supporter les réseaux ouverts)
+  doc["wifi_password"] = config.wifi_password;
   
   doc["led_brightness"] = config.led_brightness;
   doc["sleep_timeout_ms"] = config.sleep_timeout_ms;

@@ -389,12 +389,12 @@ void PubNubManager::processMessages(const char* json) {
       }
     } else if (msg.is<JsonObject>()) {
       JsonObject obj = msg.as<JsonObject>();
-      
+
       // Ignorer nos propres messages (status, response, type)
       if (obj["status"].is<const char*>() || obj["response"].is<const char*>() || obj["type"].is<const char*>()) {
         continue;
       }
-      
+
       // Si c'est une action, utiliser les routes
       // Gérer le cas où action est une string ou un objet (format incorrect)
       JsonObject actionObj = obj;
@@ -504,6 +504,28 @@ bool PubNubManager::publish(const char* message) {
   return true;
 }
 
+// Encode pour URL PubNub (identique au serveur encodeMessage)
+static void urlEncodeMessage(const char* msg, String& out) {
+  out.reserve(strlen(msg) * 3 + 1);
+  out = "";
+  for (const char* p = msg; *p != '\0'; p++) {
+    unsigned char c = (unsigned char)*p;
+    if (c == '"') out += "%22";
+    else if (c == ' ') out += "%20";
+    else if (c == '{') out += "%7B";
+    else if (c == '}') out += "%7D";
+    else if (c == ':') out += "%3A";
+    else if (c == ',') out += "%2C";
+    else if (c == '[') out += "%5B";
+    else if (c == ']') out += "%5D";
+    else if (c == '\\') out += "%5C";
+    else if (c == '%') out += "%25";
+    else if (c == '+') out += "%2B";
+    else if (c >= 128) { char buf[4]; snprintf(buf, sizeof(buf), "%%%02X", c); out += buf; }
+    else out += (char)c;
+  }
+}
+
 bool PubNubManager::publishInternal(const char* message) {
   if (!WiFiManager::isConnected()) {
     return false;
@@ -513,19 +535,10 @@ bool PubNubManager::publishInternal(const char* message) {
     return false;
   }
   
-  HTTPClient http;
-  
-  // Préparer le message JSON
-  String jsonMessage;
-  if (message[0] == '{' || message[0] == '[') {
-    jsonMessage = message;
-  } else {
-    jsonMessage = "\"";
-    jsonMessage += message;
-    jsonMessage += "\"";
-  }
-  
-  // Construire l'URL (sans le message - on utilise POST)
+  // Même format que le serveur : GET avec payload URL-encodé (pas de wrapper {"message":"..."})
+  String encoded;
+  urlEncodeMessage(message, encoded);
+
   String url = "http://";
   url += PUBNUB_ORIGIN;
   url += "/publish/";
@@ -534,21 +547,27 @@ bool PubNubManager::publishInternal(const char* message) {
   url += DEFAULT_PUBNUB_SUBSCRIBE_KEY;
   url += "/0/";
   url += channel;
-  url += "/0";
-  
+  url += "/0/";
+  url += encoded;
+
+  HTTPClient http;
   http.begin(url);
   http.setTimeout(5000);
-  http.addHeader("Content-Type", "application/json");
-  
-  // Utiliser POST pour envoyer le message dans le body (pas de limite URL)
-  int httpCode = http.POST(jsonMessage);
+
+  int httpCode = http.GET();
+  String responseBody = http.getString();
   http.end();
   
   if (httpCode == HTTP_CODE_OK) {
     return true;
   } else {
     Serial.print("[PUBNUB] Erreur publish: ");
-    Serial.println(httpCode);
+    Serial.print(httpCode);
+    if (responseBody.length() > 0 && responseBody.length() < 128) {
+      Serial.print(" - ");
+      Serial.print(responseBody);
+    }
+    Serial.println();
     return false;
   }
 }

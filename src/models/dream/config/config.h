@@ -74,5 +74,24 @@
 #define HAS_BLE true
 #define HAS_RTC true
 #define HAS_PUBNUB true
+#define HAS_TOUCH true
+
+// ============================================
+// Capteur environnement AHT20 + BMP280 (I2C)
+// ============================================
+// Même bus I2C que le RTC : SDA = GPIO 2, SCL = GPIO 3
+// - AHT20 : adresse 0x38 (température + humidité)
+// - BMP280 : adresse 0x76 ou 0x77 (température + pression)
+// Définir HAS_ENV_SENSOR si le module est branché
+#define HAS_ENV_SENSOR true
+#ifndef ENV_BMP280_I2C_ADDR
+#define ENV_BMP280_I2C_ADDR 0x76   // 0x77 si SDO du BMP280 à VCC
+#endif
+
+// ============================================
+// Pin capteur tactile TTP223 (sortie digitale : HIGH = touché)
+// ESP32-C3 : NE PAS utiliser GPIO 9 (strapping pin = mode boot ; LOW = bootloader).
+// Utiliser GPIO 10 (2,3,4,5,6,7,8,1 = RTC, SD, LED, BLE button).
+#define TOUCH_PIN 10
 
 #endif // MODEL_DREAM_CONFIG_H

@@ -35,6 +35,7 @@ struct SystemStatus {
   InitStatus audio;         // Gestionnaire Audio I2S
   InitStatus vibrator;      // Gestionnaire Vibreur PWM
   InitStatus touch;         // Capteur tactile TTP223
+  InitStatus envSensor;     // Capteur environnemental AHT20 + BMP280
   // Ajouter d'autres composants ici
   
   bool isFullyInitialized() const {
@@ -87,6 +88,7 @@ private:
   static bool initLCD();
   static bool initVibrator();
   static bool initTouch();
+  static bool initEnvSensor();
   // Ajouter d'autres méthodes d'initialisation ici
   
   // Variables statiques

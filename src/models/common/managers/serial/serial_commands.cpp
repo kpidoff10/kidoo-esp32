@@ -26,6 +26,9 @@
 #ifdef HAS_TOUCH
 #include "../touch/touch_manager.h"
 #endif
+#ifdef HAS_ENV_SENSOR
+#include "../env_sensor/env_sensor_manager.h"
+#endif
 #include "../../../model_serial_commands.h"
 #ifdef HAS_PUBNUB
 #include "../../../model_pubnub_routes.h"
@@ -171,6 +174,10 @@ void SerialCommands::processCommand(const String& command) {
   } else if (cmd == "touch" || cmd == "tap") {
     cmdTouch(args);
   #endif
+  #ifdef HAS_ENV_SENSOR
+  } else if (cmd == "env" || cmd == "env-status" || cmd == "env-read" || cmd == "temperature" || cmd == "humidity") {
+    cmdEnv(args);
+  #endif
   #ifdef HAS_LED
   } else if (cmd == "led-test" || cmd == "test-led" || cmd == "testleds") {
     cmdLEDTest();
@@ -298,6 +305,12 @@ void SerialCommands::printHelp() {
   #ifdef HAS_TOUCH
   if (HAS_TOUCH) {
     Serial.println("  touch [status|read] - Capteur tactile TTP223 (etat debounce ou lecture brute)");
+  }
+  #endif
+  
+  #ifdef HAS_ENV_SENSOR
+  if (HAS_ENV_SENSOR) {
+    Serial.println("  env [status|read]  - Capteur AHT20+BMP280 (temperature, humidite, pression)");
   }
   #endif
   
@@ -1765,6 +1778,24 @@ void SerialCommands::cmdTouch(const String& args) {
 #else
   (void)args;
   Serial.println("[TOUCH] Capteur tactile non disponible sur ce modele");
+#endif
+}
+
+// ============================================
+// Commandes Capteur environnement (AHT20 + BMP280)
+// ============================================
+
+void SerialCommands::cmdEnv(const String& args) {
+#ifdef HAS_ENV_SENSOR
+  if (!EnvSensorManager::isInitialized()) {
+    Serial.println("[ENV] Capteur non initialise");
+    return;
+  }
+  (void)args;
+  EnvSensorManager::printInfo();
+#else
+  (void)args;
+  Serial.println("[ENV] Capteur environnement (AHT20+BMP280) non disponible sur ce modele");
 #endif
 }
 

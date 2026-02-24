@@ -76,6 +76,9 @@ private:
   // Commandes touch (TTP223)
   static void cmdTouch(const String& args);
   
+  // Commandes capteur environnement (AHT20 + BMP280)
+  static void cmdEnv(const String& args);
+  
   // Commandes audio
   static void cmdAudio();
   static void cmdAudioPlay(const String& args);

@@ -138,8 +138,8 @@ private:
   static bool retryThreadRunning;
   static unsigned long retryStartTime;
   
-  // Timeout de connexion par défaut (15 secondes)
-  static const uint32_t DEFAULT_CONNECT_TIMEOUT_MS = 15000;
+  // Timeout de connexion par défaut (20 s pour hotspots/box lentes)
+  static const uint32_t DEFAULT_CONNECT_TIMEOUT_MS = 20000;
   
   // Configuration du retry (centralisée dans core_config.h)
   static const uint32_t RETRY_MAX_DURATION_MS = 60000;  // 1 minute max
