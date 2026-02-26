@@ -1,11 +1,11 @@
 #include "init_model.h"
 #include "../../model_config.h"
-#include "../../common/managers/init/init_manager.h"
+#include "../../../common/managers/init/init_manager.h"
 #ifdef HAS_LCD
-#include "../../common/managers/lcd/lcd_manager.h"
+#include "../../../common/managers/lcd/lcd_manager.h"
 #endif
 #ifdef HAS_LED
-#include "../../common/managers/led/led_manager.h"
+#include "../../../common/managers/led/led_manager.h"
 #endif
 #ifdef HAS_LCD
 #include "../managers/emotions/emotion_manager.h"
@@ -13,7 +13,7 @@
 #endif
 #include "../managers/life/life_manager.h"
 #ifdef HAS_NFC
-#include "../../common/managers/nfc/nfc_manager.h"
+#include "../../../common/managers/nfc/nfc_manager.h"
 #include "../managers/nfc/gotchi_nfc_handler.h"
 #include "../config/constants.h"
 #endif

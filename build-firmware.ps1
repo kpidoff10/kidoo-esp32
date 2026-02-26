@@ -8,11 +8,14 @@
 
 param(
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("dream", "basic", "mini")]
     [string]$Model = "",
     [Parameter(Position = 1, Mandatory = $false)]
     [string]$Version = ""
 )
+
+# Liste des modèles : répertoires src/models/* sauf common (aligné avec models.yaml)
+$ValidModels = (Get-ChildItem -Path (Join-Path $PSScriptRoot "src\models") -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "common" } | Select-Object -ExpandProperty Name)
+if (-not $ValidModels) { $ValidModels = @("dream", "gotchi") }
 
 $PART_MAX_SIZE_BYTES = 2 * 1024 * 1024   # 2 Mo par part
 
@@ -30,10 +33,17 @@ if (-not (Test-Path $pioPath)) {
 
 # Demander le modèle si non fourni
 if ([string]::IsNullOrWhiteSpace($Model)) {
+    $modelList = $ValidModels -join " / "
     do {
-        $Model = Read-Host "Modele (basic / dream / mini)"
+        $Model = Read-Host "Modele ($modelList)"
         $Model = $Model.Trim().ToLower()
-    } while ($Model -notin @("basic", "dream", "mini"))
+    } while ($Model -notin $ValidModels)
+} else {
+    $Model = $Model.Trim().ToLower()
+    if ($Model -notin $ValidModels) {
+        Write-Error "Modele invalide: $Model. Valides: $($ValidModels -join ', ')"
+        exit 1
+    }
 }
 
 # Chemin du fichier de config par modèle

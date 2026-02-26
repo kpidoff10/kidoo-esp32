@@ -1,0 +1,66 @@
+# Configuration centralisée des modèles Kidoo
+# Source de vérité pour : platformio.ini, dispatchers (model_*.h)
+# Génération : node scripts/generate.js
+
+models:
+  dream:
+    macro: KIDOO_MODEL_DREAM
+    id: dream
+    display_name: Dream
+    board: esp32-c3-devkitm-1
+    board_config:
+      partitions: partitions_dream_ota.csv
+      flash_mode: dio
+      # USB CDC natif : reset via USB au lieu de DTR/RTS (évite boot+reset manuel)
+      before_reset: usb_reset
+    build_flags:
+      - KIDOO_MODEL_DREAM
+      - 'KIDOO_MODEL_ID=\"dream\"'
+      - HAS_WIFI
+      - HAS_SD
+      - ESP32C3
+      - -ffast-math
+    lib_deps: []
+    lib_ignore:
+      - ESP32-audioI2S
+      - Adafruit PN532
+
+  gotchi:
+    macro: KIDOO_MODEL_GOTCHI
+    id: gotchi
+    display_name: Gotchi
+    board: esp32-s3-devkitc-1
+    board_config:
+      partitions: default_16MB.csv
+      flash_mode: qio
+      upload_flash_size: 16MB
+      memory_type: qio_opi
+      upload_speed: 460800
+    build_flags:
+      - KIDOO_MODEL_GOTCHI
+      - 'KIDOO_MODEL_ID=\"gotchi\"'
+      - HAS_WIFI
+      - HAS_SD
+      - BOARD_HAS_PSRAM
+      - BUILTIN_RGB_LED_PIN=48
+    lib_deps:
+      - lovyan03/LovyanGFX
+      - bitbank2/JPEGDEC@^1.4.1
+      - adafruit/Adafruit PN532@^1.3.4
+    lib_ignore: []
+
+# Config pour les dispatchers (chemins relatifs à src/models/)
+dispatcher_config:
+  init:
+    path_template: "{model}/init/init_model.h"
+    define_template: "InitModel InitModel{DisplayName}"
+  pubnub:
+    path_template: "{model}/pubnub/model_pubnub_routes.h"
+    typedef_template: "Model{DisplayName}PubNubRoutes"
+  serial:
+    path_template: "{model}/serial/model_serial_commands.h"
+    define_template: "ModelSerialCommands Model{DisplayName}SerialCommands"
+  config_sync:
+    # type: "include" = inclut un fichier, "inline" = classe vide inline
+    dream: { type: include, path: "dream/config_sync/model_config_sync_routes.h", typedef: "ModelDreamConfigSyncRoutes" }
+    gotchi: { type: inline }

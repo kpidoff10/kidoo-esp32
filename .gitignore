@@ -1,3 +1,4 @@
 .pio
 .vscode/
+node_modules/
 # Binaires générés par build-firmware.ps1 → déposés dans firmware/ (versionnés)

@@ -1,5 +1,24 @@
 # Générer le .bin et le publier pour l’OTA
 
+## Prérequis : configuration centralisée
+
+Le projet utilise **models.yaml** comme source de vérité. Pour modifier les modèles ou ajouter un nouveau : éditer `models.yaml` puis `npm run generate` (ou `node scripts/generate.js`). Cela régénère `platformio.ini` et les dispatchers `model_*.h`.
+
+### Conventions des chemins d'include
+
+Le projet utilise `-I $PROJECT_DIR/src` et `-I $PROJECT_DIR` dans `platformio.ini`. Tous les includes doivent être **relatifs à ces répertoires** :
+
+| Chemin | Exemple |
+|--------|---------|
+| `models/` | `#include "models/model_config.h"` |
+| `common/` | `#include "common/config/core_config.h"` |
+| `color/` (racine) | `#include "color/colors.h"` |
+| `certificats/` (racine) | `#include "certificats/ota-cert.h"` |
+
+Éviter les chemins relatifs `../../` pour ces fichiers ; utiliser les chemins absolus ci-dessus.
+
+---
+
 ## 0. Premier flash Dream (obligatoire pour que l'OTA fonctionne)
 
 L'OTA Dream utilise la table de partitions **partitions_dream_ota.csv** (ota_0 + ota_1). Si le périphérique a été flashé avec une ancienne table (ex. huge_app, une seule partition app), les mises à jour OTA échouent avec « Update.begin() échoué » ou erreur « begin ».
@@ -36,16 +55,17 @@ Dans le dossier **kidoo-esp32** :
 
 Le script :
 
-1. **Demande la version** (ex: `1.0.2`) ou utilise la version actuelle si tu appuies sur Entrée.
-2. **Met à jour** `src/models/common/config/default_config.h` → `#define FIRMWARE_VERSION "1.0.2"`.
-3. **Lance le build** PlatformIO (env **dream** par défaut).
-4. **Copie** `.pio/build/dream/firmware.bin` vers **`firmware_1_0_2.bin`** à la racine du projet.
+1. **Demande le modèle** (dream / gotchi) si non fourni.
+2. **Demande la version** (ex: `1.0.2`) ou utilise la version actuelle du modèle si tu appuies sur Entrée.
+3. **Met à jour** `src/models/{model}/config/default_config.h` → `#define FIRMWARE_VERSION "1.0.2"` (chaque modèle a sa propre version).
+4. **Lance le build** PlatformIO pour l'environnement choisi.
+5. **Découpe** le firmware en parts (max 2 Mo) et crée un zip dans `firmware/{model}/firmware_{version}.zip`.
 
 Avec paramètres :
 
 ```powershell
-.\build-firmware.ps1 -Version 1.0.2
-.\build-firmware.ps1 -Version 1.0.2 -Env basic   # build Basic au lieu de Dream
+.\build-firmware.ps1 -Model dream -Version 1.0.2
+.\build-firmware.ps1 -Model gotchi -Version 1.0.1   # build Gotchi au lieu de Dream
 ```
 
 ---
@@ -56,18 +76,14 @@ Avec paramètres :
 # Dream (ESP32-C3, OTA)
 pio run -e dream
 
-# Basic (ESP32-S3)
-pio run -e basic
-
-# Mini
-pio run -e mini
+# Gotchi (ESP32-S3)
+pio run -e gotchi
 ```
 
 Le binaire est dans :
 
 - **Dream** : `.pio/build/dream/firmware.bin`
-- **Basic** : `.pio/build/basic/firmware.bin`
-- **Mini** : `.pio/build/mini/firmware.bin`
+- **Gotchi** : `.pio/build/gotchi/firmware.bin`
 
 ---
 

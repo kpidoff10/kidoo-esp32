@@ -1,5 +1,5 @@
 #include "gotchi_nfc_handler.h"
-#include "../../../common/managers/nfc/nfc_manager.h"
+#include "../../../../common/managers/nfc/nfc_manager.h"
 #include "../emotions/emotion_manager.h"
 #include "../emotions/trigger_manager.h"
 #include "../life/life_manager.h"

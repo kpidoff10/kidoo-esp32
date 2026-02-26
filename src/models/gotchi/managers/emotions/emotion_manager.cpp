@@ -1,12 +1,12 @@
 #include "emotion_manager.h"
 #include "anim_format.h"
 #include "../../../model_config.h"
-#include "../../../common/managers/lcd/lcd_manager.h"
+#include "../../../../common/managers/lcd/lcd_manager.h"
 #if defined(HAS_LED)
-#include "../../../common/managers/led/led_manager.h"
+#include "../../../../common/managers/led/led_manager.h"
 #endif
 #if defined(HAS_VIBRATOR)
-#include "../../../common/managers/vibrator/vibrator_manager.h"
+#include "../../../../common/managers/vibrator/vibrator_manager.h"
 #endif
 
 // Mettre à 1 pour debug détaillé (attention: flood Serial, accès console difficile)

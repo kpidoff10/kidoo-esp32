@@ -1,4 +1,5 @@
 #include "wakeup_manager.h"
+#include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
 #include <limits.h>  // Pour ULONG_MAX
 #include "../bedtime/bedtime_manager.h"
@@ -42,8 +43,6 @@ bool WakeupManager::init() {
   if (initialized) {
     return true;
   }
-  
-  Serial.println("[WAKEUP] Initialisation du gestionnaire wake-up...");
   
   // Vérifier que le RTC est disponible
   if (!RTCManager::isAvailable()) {
@@ -95,7 +94,6 @@ bool WakeupManager::init() {
         ? (currentMinutes >= wStart && currentMinutes < wEnd)
         : ((currentMinutes >= wStart) || (currentMinutes < wEnd));
       if (inWakeupWindow) {
-        Serial.println("[WAKEUP] Demarrage: heure dans la fenetre wakeup, activation de la routine wakeup");
         startWakeup();
         lastTriggeredHour = now.hour;
         lastTriggeredMinute = now.minute;
@@ -140,12 +138,6 @@ bool WakeupManager::loadConfig() {
   // Charger la couleur de coucher depuis la config bedtime
   loadBedtimeColor();
   
-  Serial.println("[WAKEUP] Configuration chargee depuis la SD");
-  Serial.printf("[WAKEUP] Couleur RGB(%d, %d, %d), Brightness: %d%%\n",
-                config.colorR, config.colorG, config.colorB, config.brightness);
-  Serial.printf("[WAKEUP] Couleur de depart (bedtime) RGB(%d, %d, %d)\n",
-                startColorR, startColorG, startColorB);
-  
   return true;
 }
 
@@ -165,14 +157,10 @@ void WakeupManager::loadBedtimeColor() {
     startColorR = bedtimeConfig.colorR;
     startColorG = bedtimeConfig.colorG;
     startColorB = bedtimeConfig.colorB;
-    Serial.printf("[WAKEUP] Couleur de depart (config bedtime): RGB(%d, %d, %d)\n",
-                  startColorR, startColorG, startColorB);
   }
 }
 
 bool WakeupManager::reloadConfig() {
-  Serial.println("[WAKEUP] Rechargement de la configuration...");
-  
   // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
   lastTriggeredHour = 255;
   lastTriggeredMinute = 255;
@@ -187,13 +175,6 @@ bool WakeupManager::reloadConfig() {
       
       // Réinitialiser lastCheckTime pour recalculer l'intervalle avec la nouvelle config
       lastCheckTime = millis();
-      
-      // Afficher le nouvel intervalle de vérification
-      if (checkingEnabled) {
-        unsigned long interval = calculateNextCheckInterval();
-        Serial.printf("[WAKEUP] Nouvel intervalle de verification: %lu ms (%.1f heures)\n",
-                      interval, interval / 3600000.0f);
-      }
       
       // Si maintenant activé pour aujourd'hui, vérifier immédiatement
       if (checkingEnabled) {
@@ -217,8 +198,6 @@ void WakeupManager::checkNow() {
     return;
   }
   
-  Serial.println("[WAKEUP] Vérification immédiate après mise à jour de la configuration");
-  
   // Vérifier immédiatement si c'est l'heure de déclencher le wake-up
   checkWakeupTrigger();
 }
@@ -236,7 +215,7 @@ void WakeupManager::parseWeekdaySchedule(const char* jsonStr) {
   
   DeserializationError error = deserializeJson(doc, jsonStr);
   if (error) {
-    Serial.print("[WAKEUP] Erreur parsing weekdaySchedule: ");
+    Serial.print("[WAKEUP] ERREUR parsing weekdaySchedule: ");
     Serial.println(error.c_str());
     return;
   }
@@ -259,10 +238,6 @@ void WakeupManager::parseWeekdaySchedule(const char* jsonStr) {
         config.schedules[i].activated = daySchedule["activated"].as<bool>();
       } else {
         config.schedules[i].activated = (h >= 0 && m >= 0);
-      }
-      if (config.schedules[i].activated) {
-        Serial.printf("[WAKEUP] %s: %02d:%02d (active)\n", weekdays[i],
-                      config.schedules[i].hour, config.schedules[i].minute);
       }
     }
   }
@@ -305,7 +280,6 @@ void WakeupManager::update() {
   
   // Vérifier si le jour a changé
   if (lastCheckedDay != now.dayOfWeek) {
-    Serial.printf("[WAKEUP] Changement de jour detecte: %d -> %d\n", lastCheckedDay, now.dayOfWeek);
     lastCheckedDay = now.dayOfWeek;
     updateCheckingState();  // Mettre à jour l'état de vérification pour le nouveau jour
   }
@@ -407,12 +381,6 @@ void WakeupManager::updateCheckingState() {
       // Réinitialiser lastCheckTime quand on active la vérification
       lastCheckTime = millis();
     }
-    unsigned long interval = calculateNextCheckInterval();
-    Serial.printf("[WAKEUP] Routine activee pour aujourd'hui (%s), verification adaptative activee (intervalle: %lu ms = %.1f heures)\n",
-                  indexToWeekday(dayIndex), interval, interval / 3600000.0f);
-  } else {
-    Serial.printf("[WAKEUP] Routine non activee pour aujourd'hui (%s), verification desactivee jusqu'au jour suivant\n",
-                  indexToWeekday(dayIndex));
   }
 }
 
@@ -528,13 +496,9 @@ void WakeupManager::checkWakeupTrigger() {
   
   // Vérifier si c'est l'heure de déclenchement (dans la minute, secondes 0-59)
   if (now.hour == triggerHour && now.minute == triggerMinute) {
-    Serial.printf("[WAKEUP] Heure correspondante détectée! Wake-up actif: %s, Last triggered: %02d:%02d\n",
-                  wakeupActive ? "Oui" : "Non", lastTriggeredHour, lastTriggeredMinute);
-    
     // Déclencher le wake-up si pas déjà actif et qu'on n'a pas déjà déclenché cette minute
     if (!wakeupActive && 
         (lastTriggeredHour != now.hour || lastTriggeredMinute != now.minute)) {
-      Serial.println("[WAKEUP] >>> DÉCLENCHEMENT DU WAKE-UP <<<");
       startWakeup();
       lastTriggeredHour = now.hour;
       lastTriggeredMinute = now.minute;
@@ -563,8 +527,8 @@ void WakeupManager::checkWakeupTrigger() {
 }
 
 void WakeupManager::startWakeup() {
-  Serial.println("[WAKEUP] Démarrage du wake-up automatique");
-  
+  ModelDreamPubNubRoutes::publishRoutineState("wakeup", "started");
+
   wakeupActive = true;
   wakeupStartTime = millis();
   fadeInActive = true;
@@ -597,12 +561,6 @@ void WakeupManager::startWakeup() {
   lastColorG = startColorG;
   lastColorB = startColorB;
   lastBrightness = startBrightness;
-  
-  Serial.printf("[WAKEUP] Transition progressive: RGB(%d,%d,%d) -> RGB(%d,%d,%d)\n",
-                startColorR, startColorG, startColorB,
-                config.colorR, config.colorG, config.colorB);
-  Serial.printf("[WAKEUP] Brightness: %d -> %d%% (%d)\n",
-                startBrightness, config.brightness, (config.brightness * 255 + 50) / 100);
 }
 
 void WakeupManager::updateFadeIn() {
@@ -633,8 +591,6 @@ void WakeupManager::updateFadeIn() {
       LEDManager::setBrightness(brightnessValue);
       lastBrightness = brightnessValue;
     }
-    
-    Serial.println("[WAKEUP] Fade-in termine");
   } else {
     // Interpolation linéaire de la brightness et de la couleur
     float progress = (float)elapsed / (float)FADE_IN_DURATION_MS;
@@ -678,8 +634,8 @@ void WakeupManager::updateFadeOut() {
     // Fade-out terminé, éteindre complètement et arrêter le wake-up
     fadeOutActive = false;
     LEDManager::clear();
+    ModelDreamPubNubRoutes::publishRoutineState("wakeup", "stopped");
     wakeupActive = false; // Arrêter le wake-up après le fade-out
-    Serial.println("[WAKEUP] Fade-out termine, LEDs eteintes, wake-up arrete");
   } else {
     // Interpolation linéaire de la brightness vers 0
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
@@ -692,7 +648,11 @@ void WakeupManager::updateFadeOut() {
 
 void WakeupManager::stopWakeup() {
   Serial.println("[WAKEUP] Arrêt du wake-up");
-  
+
+  if (wakeupActive) {
+    ModelDreamPubNubRoutes::publishRoutineState("wakeup", "stopped");
+  }
+
   wakeupActive = false;
   fadeInActive = false;
   fadeOutActive = false;
@@ -724,8 +684,6 @@ bool WakeupManager::isWakeupActive() {
 }
 
 void WakeupManager::stopWakeupManually() {
-  Serial.println("[WAKEUP] Arrêt manuel du wake-up");
-  
   // Arrêter le wake-up (qui réinitialisera aussi les états)
   stopWakeup();
 }

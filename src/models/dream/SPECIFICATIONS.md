@@ -280,7 +280,7 @@ Si aucune configuration n'est définie :
 
 ### SleepRitualManager
 
-Créer un manager `SleepRitualManager` dans `models/common/managers/sleep_ritual/` :
+Créer un manager `SleepRitualManager` dans `common/managers/sleep_ritual/` :
 - Gestion de l'état du rituel
 - Vérification périodique de l'heure (dans `update()`)
 - Transitions de couleur et brightness

@@ -1,10 +1,10 @@
 #include "model_config_sync_routes.h"
-#include "../../common/managers/wifi/wifi_manager.h"
-#include "../../common/managers/sd/sd_manager.h"
-#include "../../common/config/default_config.h"
-#include "../../common/utils/mac_utils.h"
-#include "../managers/bedtime/bedtime_manager.h"
-#include "../managers/wakeup/wakeup_manager.h"
+#include "common/managers/wifi/wifi_manager.h"
+#include "common/managers/sd/sd_manager.h"
+#include "common/config/default_config.h"
+#include "common/utils/mac_utils.h"
+#include "models/dream/managers/bedtime/bedtime_manager.h"
+#include "models/dream/managers/wakeup/wakeup_manager.h"
 
 #ifdef HAS_WIFI
 #include <HTTPClient.h>
@@ -31,15 +31,9 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     return false;
   }
 
-  Serial.print("[CONFIG-SYNC] Adresse MAC: ");
-  Serial.println(macStr);
-
   // Construire l'URL de l'API
   char url[256];
   snprintf(url, sizeof(url), "%s/api/kidoos/config/%s", API_BASE_URL, macStr);
-
-  Serial.print("[CONFIG-SYNC] URL: ");
-  Serial.println(url);
 
   HTTPClient http;
   http.begin(url);
@@ -63,9 +57,11 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     return false;
   }
 
+  #if ENABLE_VERBOSE_LOGS
   Serial.print("[CONFIG-SYNC] Reponse recue (");
   Serial.print(payload.length());
   Serial.println(" bytes)");
+  #endif
 
   // Parser le JSON de la réponse
   // Format attendu: {"success": true, "data": {"bedtime": {...}, "wakeup": {...}}}
@@ -129,7 +125,6 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
       strcpy(config.bedtime_weekdaySchedule, "{}");
     }
 
-    Serial.println("[CONFIG-SYNC] Configuration bedtime mise a jour");
   }
 
   // Mettre à jour la configuration wakeup si présente
@@ -162,13 +157,10 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
       strcpy(config.wakeup_weekdaySchedule, "{}");
     }
 
-    Serial.println("[CONFIG-SYNC] Configuration wakeup mise a jour");
   }
 
   // Sauvegarder la configuration mise à jour dans la SD
   if (SDManager::saveConfig(config)) {
-    Serial.println("[CONFIG-SYNC] Configuration sauvegardee dans la SD");
-
     // Recharger les configurations dans les managers
     BedtimeManager::reloadConfig();
     WakeupManager::reloadConfig();

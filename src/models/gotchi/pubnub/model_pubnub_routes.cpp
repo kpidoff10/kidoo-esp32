@@ -1,10 +1,10 @@
 #include "model_pubnub_routes.h"
-#include "../../common/managers/led/led_manager.h"
-#include "../../common/managers/init/init_manager.h"
-#include "../../common/managers/wifi/wifi_manager.h"
-#include "../../common/managers/pubnub/pubnub_manager.h"
-#include "../../common/managers/sd/sd_manager.h"
-#include "../../common/managers/ota/ota_manager.h"
+#include "../../../common/managers/led/led_manager.h"
+#include "../../../common/managers/init/init_manager.h"
+#include "../../../common/managers/wifi/wifi_manager.h"
+#include "../../../common/managers/pubnub/pubnub_manager.h"
+#include "../../../common/managers/sd/sd_manager.h"
+#include "../../../common/managers/ota/ota_manager.h"
 
 /**
  * Routes PubNub spécifiques au modèle Kidoo Gotchi

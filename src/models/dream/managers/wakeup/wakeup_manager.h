@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include "../../../common/managers/rtc/rtc_manager.h"
-#include "../../../common/managers/sd/sd_manager.h"
-#include "../../../common/managers/led/led_manager.h"
+#include "common/managers/rtc/rtc_manager.h"
+#include "common/managers/sd/sd_manager.h"
+#include "common/managers/led/led_manager.h"
 
 /**
  * Gestionnaire automatique du wake-up pour le modèle Dream

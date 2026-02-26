@@ -1,4 +1,5 @@
 #include "bedtime_manager.h"
+#include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
 #include <limits.h>  // Pour ULONG_MAX
 
@@ -32,8 +33,6 @@ bool BedtimeManager::init() {
     return true;
   }
   
-  Serial.println("[BEDTIME] Initialisation du gestionnaire bedtime...");
-  
   // Vérifier que le RTC est disponible
   if (!RTCManager::isAvailable()) {
     Serial.println("[BEDTIME] ERREUR: RTC non disponible");
@@ -65,32 +64,21 @@ bool BedtimeManager::init() {
       bool hasWakeup = getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute);
       if (hasWakeup && isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
         if (!isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
-          Serial.println("[BEDTIME] Demarrage: heure dans la plage coucher->lever (hors fenetre wakeup), activation routine bedtime");
           startBedtime();
           fadeInActive = false;  // Pas de fade-in au boot, affichage direct
           uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
           LEDManager::setBrightness(brightnessValue);
           lastTriggeredHour = config.schedules[dayIndex].hour;
           lastTriggeredMinute = config.schedules[dayIndex].minute;
-        } else {
-          Serial.println("[BEDTIME] Demarrage: dans la fenetre wakeup (15 min avant lever -> 35 min apres), routine wakeup sera demarree");
         }
       }
     }
     
-    // Afficher l'intervalle de vérification calculé
-    if (checkingEnabled && !bedtimeActive) {
-      unsigned long interval = calculateNextCheckInterval();
-      Serial.printf("[BEDTIME] Intervalle de verification initial: %lu ms (%.1f heures)\n",
-                    interval, interval / 3600000.0f);
-    }
   } else {
     checkingEnabled = false;
     lastCheckedDay = 0;
     lastCheckTime = millis();
   }
-  
-  Serial.println("[BEDTIME] Gestionnaire initialise");
   
   return true;
 }
@@ -129,17 +117,10 @@ bool BedtimeManager::loadConfig() {
     parseWeekdaySchedule(sdConfig.bedtime_weekdaySchedule);
   }
   
-  Serial.println("[BEDTIME] Configuration chargee depuis la SD");
-  Serial.printf("[BEDTIME] Couleur RGB(%d, %d, %d), Brightness: %d%%, AllNight: %s, Effect: %s\n",
-                config.colorR, config.colorG, config.colorB, config.brightness,
-                config.allNight ? "true" : "false", config.effect);
-  
   return true;
 }
 
 bool BedtimeManager::reloadConfig() {
-  Serial.println("[BEDTIME] Rechargement de la configuration...");
-  
   // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
   lastTriggeredHour = 255;
   lastTriggeredMinute = 255;
@@ -149,20 +130,8 @@ bool BedtimeManager::reloadConfig() {
   // Si la config a changé, vérifier si la routine est activée pour aujourd'hui
   if (result && initialized && RTCManager::isAvailable()) {
     if (configChanged()) {
-      Serial.println("[BEDTIME] Configuration modifiee, verification de l'etat pour aujourd'hui");
       updateCheckingState();
-      
-      // Réinitialiser lastCheckTime pour recalculer l'intervalle avec la nouvelle config
       lastCheckTime = millis();
-      
-      // Afficher le nouvel intervalle de vérification
-      if (checkingEnabled) {
-        unsigned long interval = calculateNextCheckInterval();
-        Serial.printf("[BEDTIME] Nouvel intervalle de verification: %lu ms (%.1f heures)\n",
-                      interval, interval / 3600000.0f);
-      }
-      
-      // Si maintenant activé pour aujourd'hui, vérifier immédiatement
       if (checkingEnabled) {
         checkNow();
       }
@@ -183,9 +152,6 @@ void BedtimeManager::checkNow() {
   if (!initialized || !RTCManager::isAvailable()) {
     return;
   }
-  
-  Serial.println("[BEDTIME] Vérification immédiate après mise à jour de la configuration");
-  
   // Vérifier immédiatement si c'est l'heure de déclencher le bedtime
   checkBedtimeTrigger();
 }
@@ -203,8 +169,6 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
   
   DeserializationError error = deserializeJson(doc, jsonStr);
   if (error) {
-    Serial.print("[BEDTIME] Erreur parsing weekdaySchedule: ");
-    Serial.println(error.c_str());
     return;
   }
   
@@ -226,10 +190,6 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
         config.schedules[i].activated = daySchedule["activated"].as<bool>();
       } else {
         config.schedules[i].activated = (h >= 0 && m >= 0);
-      }
-      if (config.schedules[i].activated) {
-        Serial.printf("[BEDTIME] %s: %02d:%02d (active)\n", weekdays[i],
-                      config.schedules[i].hour, config.schedules[i].minute);
       }
     }
   }
@@ -340,7 +300,6 @@ void BedtimeManager::update() {
   
   // Vérifier si le jour a changé
   if (lastCheckedDay != now.dayOfWeek) {
-    Serial.printf("[BEDTIME] Changement de jour detecte: %d -> %d\n", lastCheckedDay, now.dayOfWeek);
     lastCheckedDay = now.dayOfWeek;
     updateCheckingState();  // Mettre à jour l'état de vérification pour le nouveau jour
   }
@@ -373,7 +332,6 @@ void BedtimeManager::update() {
       if (getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute) &&
           isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute) &&
           !isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
-        Serial.println("[BEDTIME] Heure dans la plage coucher->lever (rattrapage), activation de la routine bedtime");
         startBedtime();
         fadeInActive = false;
         uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
@@ -406,10 +364,8 @@ void BedtimeManager::update() {
     }
     
     if (elapsedSinceStart >= BEDTIME_DURATION_MS) {
-      // Démarrer le fade-out après 30 minutes
       fadeOutActive = true;
       fadeStartTime = currentTime;
-      Serial.println("[BEDTIME] 30 minutes écoulées, démarrage du fade-out (5 minutes de fade-out)");
     }
   }
   
@@ -433,15 +389,8 @@ void BedtimeManager::updateCheckingState() {
   
   if (checkingEnabled) {
     if (!wasEnabled) {
-      // Réinitialiser lastCheckTime quand on active la vérification
       lastCheckTime = millis();
     }
-    unsigned long interval = calculateNextCheckInterval();
-    Serial.printf("[BEDTIME] Routine activee pour aujourd'hui (%s), verification adaptative activee (intervalle: %lu ms = %.1f heures)\n",
-                  indexToWeekday(dayIndex), interval, interval / 3600000.0f);
-  } else {
-    Serial.printf("[BEDTIME] Routine non activee pour aujourd'hui (%s), verification desactivee jusqu'au jour suivant\n",
-                  indexToWeekday(dayIndex));
   }
 }
 
@@ -517,19 +466,8 @@ void BedtimeManager::checkBedtimeTrigger() {
   DateTime now = RTCManager::getDateTime();
   uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
   
-  // Log de débogage pour chaque vérification
-  Serial.printf("[BEDTIME] Vérification: Heure actuelle %02d:%02d:%02d, Jour de la semaine: %d (index: %d)\n",
-                now.hour, now.minute, now.second, now.dayOfWeek, dayIndex);
-  Serial.printf("[BEDTIME] Configuration pour ce jour: %02d:%02d, Activé: %s\n",
-                config.schedules[dayIndex].hour, config.schedules[dayIndex].minute,
-                config.schedules[dayIndex].activated ? "Oui" : "Non");
-  
-  // Vérifier si le bedtime est activé pour aujourd'hui
   if (!config.schedules[dayIndex].activated) {
-    Serial.println("[BEDTIME] Le bedtime n'est pas activé pour aujourd'hui");
-    // Si le bedtime était actif mais le jour n'est plus activé, l'arrêter
     if (bedtimeActive) {
-      Serial.println("[BEDTIME] Arrêt du bedtime car le jour n'est plus activé");
       stopBedtime();
     }
     return;
@@ -543,11 +481,6 @@ void BedtimeManager::checkBedtimeTrigger() {
   // Vérifier si c'est l'heure de coucher exacte (dans la minute, secondes 0-59)
   // On vérifie toutes les minutes, donc on déclenche si on est dans la bonne minute
   if (now.hour == targetHour && now.minute == targetMinute) {
-    Serial.printf("[BEDTIME] Heure correspondante détectée! Bedtime actif: %s, Last triggered: %02d:%02d\n",
-                  bedtimeActive ? "Oui" : "Non", lastTriggeredHour, lastTriggeredMinute);
-
-    // Déclencher le bedtime si pas déjà actif et qu'on n'a pas déjà déclenché cette minute
-    // ET que le bedtime n'a pas été démarré manuellement
     if (!bedtimeActive &&
         !manuallyStarted &&
         (lastTriggeredHour != now.hour || lastTriggeredMinute != now.minute)) {
@@ -591,8 +524,8 @@ void BedtimeManager::checkBedtimeTrigger() {
 }
 
 void BedtimeManager::startBedtime() {
-  Serial.println("[BEDTIME] Démarrage du bedtime automatique");
-  
+  ModelDreamPubNubRoutes::publishRoutineState("bedtime", "started");
+
   bedtimeActive = true;
   bedtimeStartTime = millis();
   fadeInActive = true;
@@ -634,18 +567,11 @@ void BedtimeManager::startBedtime() {
   }
   
   if (useEffect) {
-    // Mode effet animé
     LEDManager::setEffect(effect);
-    // Définir aussi la couleur pour les effets qui l'utilisent (comme ROTATE)
     LEDManager::setColor(config.colorR, config.colorG, config.colorB);
-    Serial.printf("[BEDTIME] Effet: %s, Couleur RGB(%d, %d, %d), Brightness cible: %d%%\n",
-                  config.effect, config.colorR, config.colorG, config.colorB, config.brightness);
   } else {
-    // Mode couleur fixe
     LEDManager::setEffect(LED_EFFECT_NONE);
     LEDManager::setColor(config.colorR, config.colorG, config.colorB);
-    Serial.printf("[BEDTIME] Couleur RGB(%d, %d, %d), Brightness cible: %d%%\n",
-                  config.colorR, config.colorG, config.colorB, config.brightness);
   }
 }
 
@@ -678,9 +604,9 @@ void BedtimeManager::updateFadeOut() {
     // Fade-out terminé, éteindre complètement et arrêter le bedtime
     fadeOutActive = false;
     LEDManager::clear();
-    bedtimeActive = false; // Arrêter le bedtime après le fade-out
-    manuallyStarted = false; // Réinitialiser le flag manuel
-    Serial.println("[BEDTIME] Fade-out termine, LEDs eteintes, bedtime arrete");
+    ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
+    bedtimeActive = false;
+    manuallyStarted = false;
   } else {
     // Interpolation linéaire de la brightness vers 0
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
@@ -692,8 +618,10 @@ void BedtimeManager::updateFadeOut() {
 }
 
 void BedtimeManager::stopBedtime(bool clearDisplay) {
-  Serial.println("[BEDTIME] Arrêt du bedtime");
-  
+  if (bedtimeActive) {
+    ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
+  }
+
   bedtimeActive = false;
   fadeInActive = false;
   fadeOutActive = false;
@@ -728,8 +656,6 @@ bool BedtimeManager::isBedtimeActive() {
 }
 
 void BedtimeManager::startBedtimeManually() {
-  Serial.println("[BEDTIME] Démarrage manuel du bedtime (force remise en route selon la config)");
-  
   // Si le bedtime est déjà marqué actif (même si les LEDs ne le reflètent pas), arrêter proprement
   // pour repartir sur une base saine et réappliquer la config
   if (bedtimeActive || fadeInActive || fadeOutActive) {
@@ -789,5 +715,4 @@ void BedtimeManager::restoreDisplayFromConfig() {
     LEDManager::setColor(config.colorR, config.colorG, config.colorB);
   }
   LEDManager::setBrightness(brightnessValue);
-  Serial.println("[BEDTIME] Affichage restaure selon la config (retour mode bedtime)");
 }

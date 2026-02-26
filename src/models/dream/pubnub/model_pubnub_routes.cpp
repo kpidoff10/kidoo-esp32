@@ -1,18 +1,18 @@
 #include "model_pubnub_routes.h"
-#include "../../common/config/default_config.h"
-#include "../../common/managers/led/led_manager.h"
-#include "../../common/managers/init/init_manager.h"
-#include "../../common/managers/wifi/wifi_manager.h"
-#include "../../common/managers/pubnub/pubnub_manager.h"
-#include "../../common/managers/sd/sd_manager.h"
-#include "../../common/managers/nfc/nfc_manager.h"
-#include "../../common/managers/ota/ota_manager.h"
-#include "../../common/utils/mac_utils.h"
-#include "../managers/bedtime/bedtime_manager.h"
-#include "../managers/wakeup/wakeup_manager.h"
-#include "../../model_config.h"
+#include "common/config/default_config.h"
+#include "common/managers/led/led_manager.h"
+#include "common/managers/init/init_manager.h"
+#include "common/managers/wifi/wifi_manager.h"
+#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/sd/sd_manager.h"
+#include "common/managers/nfc/nfc_manager.h"
+#include "common/managers/ota/ota_manager.h"
+#include "common/utils/mac_utils.h"
+#include "models/dream/managers/bedtime/bedtime_manager.h"
+#include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "models/model_config.h"
 #ifdef HAS_ENV_SENSOR
-#include "../../common/managers/env_sensor/env_sensor_manager.h"
+#include "common/managers/env_sensor/env_sensor_manager.h"
 #endif
 #include <limits.h>   // Pour ULONG_MAX
 #include <math.h>     // isnan, isfinite
@@ -1184,7 +1184,7 @@ bool ModelDreamPubNubRoutes::handleGetEnv(const JsonObject& json) {
 }
 
 // Seuils de changement pour publication proactive (évite bruit)
-#define ENV_TEMP_THRESHOLD_C    0.2f
+#define ENV_TEMP_THRESHOLD_C    0.5f  // Envoyer seulement si température change d'au moins 0.5°C
 #define ENV_HUMIDITY_THRESHOLD 1.0f
 #define ENV_PUBLISH_INTERVAL_MS 30000  // Au plus toutes les 30 s
 
@@ -1233,9 +1233,18 @@ void ModelDreamPubNubRoutes::updateEnvPublisher() {
     tStr, hStr, pStr);
 
   if (PubNubManager::publish(envJson)) {
-    Serial.println("[PUBNUB-ROUTE] env: Donnees publiees (temp/humidite change)");
+    // Publication proactive env - pas de log pour réduire le bruit
   }
 #endif
+}
+
+void ModelDreamPubNubRoutes::publishRoutineState(const char* routine, const char* state) {
+  if (!PubNubManager::isConnected()) return;
+  char json[128];
+  snprintf(json, sizeof(json), "{\"type\":\"routine\",\"routine\":\"%s\",\"state\":\"%s\"}", routine, state);
+  if (PubNubManager::publish(json)) {
+    Serial.printf("[PUBNUB-ROUTE] routine: %s %s publie\n", routine, state);
+  }
 }
 
 void ModelDreamPubNubRoutes::printRoutes() {

@@ -8,16 +8,16 @@
 #include "../managers/life/life_manager.h"
 #include "../config/constants.h"
 #ifdef HAS_NFC
-#include "../../common/managers/nfc/nfc_manager.h"
+#include "../../../common/managers/nfc/nfc_manager.h"
 #endif
 #if defined(HAS_SD) && defined(HAS_WIFI)
 #include <SD.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "../../common/managers/wifi/wifi_manager.h"
-#include "../../common/managers/sd/sd_manager.h"
-#include "../../common/managers/download/download_manager.h"
-#include "../../common/config/default_config.h"
+#include "../../../common/managers/wifi/wifi_manager.h"
+#include "../../../common/managers/sd/sd_manager.h"
+#include "../../../common/managers/download/download_manager.h"
+#include "../../../common/config/default_config.h"
 #endif
 
 /**

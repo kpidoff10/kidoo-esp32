@@ -1,23 +1,18 @@
 #include <Arduino.h>
-#include "models/common/managers/init/init_manager.h"
-#include "models/common/managers/serial/serial_commands.h"
-#include "models/common/managers/pubnub/pubnub_manager.h"
-#include "models/common/managers/ota/ota_manager.h"
-#include "models/common/managers/potentiometer/potentiometer_manager.h"
+#include "common/managers/init/init_manager.h"
+#include "common/managers/serial/serial_commands.h"
+#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/ota/ota_manager.h"
+#include "common/managers/potentiometer/potentiometer_manager.h"
 #include "models/model_config.h"
-#include "models/common/config/core_config.h"
+#include "common/config/core_config.h"
 
 #ifdef HAS_WIFI
-#include "models/common/managers/wifi/wifi_manager.h"
+#include "common/managers/wifi/wifi_manager.h"
 #endif
 
 #ifdef HAS_BLE
-#include "models/common/managers/ble_config/ble_config_manager.h"
-#endif
-
-// Handler NFC spécifique au modèle Basic uniquement
-#ifdef KIDOO_MODEL_BASIC
-#include "models/basic/nfc/nfc_tag_handler.h"
+#include "common/managers/ble_config/ble_config_manager.h"
 #endif
 
 // Routes PubNub (modèle Dream uniquement)
@@ -25,6 +20,8 @@
 #include "models/model_pubnub_routes.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "common/managers/led/led_manager.h"
+#include "color/colors.h"
 #endif
 
 // Gestionnaire de vie (modèle Gotchi uniquement)
@@ -32,7 +29,7 @@
 #include "models/gotchi/managers/life/life_manager.h"
 #include "models/gotchi/managers/nfc/gotchi_nfc_handler.h"
 #ifdef HAS_NFC
-#include "models/common/managers/nfc/nfc_manager.h"
+#include "common/managers/nfc/nfc_manager.h"
 #endif
 #ifdef HAS_LCD
 #include "models/gotchi/managers/emotions/emotion_manager.h"
@@ -42,15 +39,15 @@
 
 // RTC pour synchronisation automatique lors de la connexion WiFi
 #ifdef HAS_RTC
-#include "models/common/managers/rtc/rtc_manager.h"
+#include "common/managers/rtc/rtc_manager.h"
 #endif
 
 #ifdef HAS_TOUCH
-#include "models/common/managers/touch/touch_manager.h"
+#include "common/managers/touch/touch_manager.h"
 #endif
 
 #ifdef HAS_LCD
-#include "models/common/managers/lcd/lcd_manager.h"
+#include "common/managers/lcd/lcd_manager.h"
 #endif
 
 /**
@@ -186,11 +183,6 @@ void loop() {
   PotentiometerManager::update();
   #endif
   
-  // Mettre à jour le gestionnaire de tags NFC (détection retrait tag)
-  #ifdef KIDOO_MODEL_BASIC
-  NFCTagHandler::update();
-  #endif
-  
   // Mettre à jour le gestionnaire BLE Config (détection appui bouton)
   #ifdef HAS_BLE
   if (HAS_BLE) {
@@ -244,7 +236,15 @@ void loop() {
   #ifdef HAS_TOUCH
   if (HAS_TOUCH && TouchManager::isInitialized()) {
     static bool dreamTouchLast = false;
+    static unsigned long noRoutineFeedbackUntil = 0;  // Feedback "pas de routine" (respiration rouge rapide)
     bool touched = TouchManager::isTouched();
+
+    // Fin du feedback "pas de routine" après 3 secondes → fade-out progressif puis extinction
+    if (noRoutineFeedbackUntil > 0 && millis() >= noRoutineFeedbackUntil) {
+      noRoutineFeedbackUntil = 0;
+      LEDManager::startFadeOutAndClear();
+    }
+
     if (touched && !dreamTouchLast) {
       if (BedtimeManager::isBedtimeActive()) {
         BedtimeManager::stopBedtimeManually();
@@ -253,9 +253,19 @@ void loop() {
         WakeupManager::stopWakeupManually();
         if (Serial) Serial.println("[DREAM] Touch: routine reveil arretee");
       } else {
-        // Idle : lancer la routine de nuit (même si le jour n'est pas activé dans l'app)
-        BedtimeManager::startBedtimeManually();
-        if (Serial) Serial.println("[DREAM] Touch: routine coucher lancee");
+        // Idle : vérifier si une routine est configurée pour aujourd'hui
+        if (BedtimeManager::isBedtimeEnabled()) {
+          BedtimeManager::startBedtimeManually();
+          if (Serial) Serial.println("[DREAM] Touch: routine coucher lancee");
+        } else {
+          // Pas de routine pour aujourd'hui → respiration rouge rapide (feedback visuel)
+          LEDManager::preventSleep();
+          LEDManager::wakeUp();
+          LEDManager::setColor(COLOR_RED);
+          LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
+          noRoutineFeedbackUntil = millis() + 3000;  // 3 secondes
+          if (Serial) Serial.println("[DREAM] Touch: pas de routine pour aujourd'hui");
+        }
       }
     }
     dreamTouchLast = touched;

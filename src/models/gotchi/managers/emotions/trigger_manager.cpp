@@ -5,7 +5,7 @@
 #include <set>
 
 #if defined(HAS_TOUCH)
-#include "../../../common/managers/touch/touch_manager.h"
+#include "../../../../common/managers/touch/touch_manager.h"
 #endif
 
 // Mettre à 1 pour debug (attention: flood Serial, accès console difficile)

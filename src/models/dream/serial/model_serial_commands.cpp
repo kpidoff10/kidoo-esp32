@@ -1,11 +1,11 @@
 #include "model_serial_commands.h"
-#include "../../model_config.h"
-#include "../managers/bedtime/bedtime_manager.h"
-#include "../managers/wakeup/wakeup_manager.h"
-#include "../../common/managers/led/led_manager.h"
-#include "../../common/managers/wifi/wifi_manager.h"
+#include "models/model_config.h"
+#include "models/dream/managers/bedtime/bedtime_manager.h"
+#include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "common/managers/led/led_manager.h"
+#include "common/managers/wifi/wifi_manager.h"
 #ifdef HAS_BLE
-#include "../../common/managers/ble_config/ble_config_manager.h"
+#include "common/managers/ble_config/ble_config_manager.h"
 #endif
 #include <Arduino.h>
 #ifdef HAS_WIFI

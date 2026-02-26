@@ -76,6 +76,14 @@ public:
    * Publier env via PubNub si température ou humidité a changé (à appeler périodiquement dans loop)
    */
   static void updateEnvPublisher();
+
+  /**
+   * Publier un changement d'état de routine (bedtime/wakeup) pour mise à jour temps réel de l'app.
+   * À appeler depuis BedtimeManager/WakeupManager quand une routine démarre ou s'arrête.
+   * @param routine "bedtime" ou "wakeup"
+   * @param state "started" ou "stopped"
+   */
+  static void publishRoutineState(const char* routine, const char* state);
   
   /**
    * Vérifier si le test de wakeup est actif

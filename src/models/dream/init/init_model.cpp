@@ -1,7 +1,7 @@
 #include "init_model.h"
-#include "../../common/managers/init/init_manager.h"
-#include "../managers/bedtime/bedtime_manager.h"
-#include "../managers/wakeup/wakeup_manager.h"
+#include "common/managers/init/init_manager.h"
+#include "models/dream/managers/bedtime/bedtime_manager.h"
+#include "models/dream/managers/wakeup/wakeup_manager.h"
 
 /**
  * Initialisation spécifique au modèle Kidoo Dream
@@ -9,18 +9,11 @@
 
 bool InitModelDream::configure() {
   // Configuration spécifique au Dream avant l'initialisation
-  Serial.println("[INIT] Configuration modele Dream");
-  
   return true;
 }
 
 bool InitModelDream::init() {
   // Initialisation spécifique au Dream après l'initialisation des composants communs
-  Serial.println("");
-  Serial.println("========================================");
-  Serial.println("[INIT-DREAM] Initialisation modele Dream");
-  Serial.println("========================================");
-  
   // Note: Dream n'a pas de NFC, donc pas d'initialisation du handler NFC
   
   // Initialiser le gestionnaire bedtime automatique

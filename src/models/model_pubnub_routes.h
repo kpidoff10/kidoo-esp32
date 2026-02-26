@@ -3,25 +3,18 @@
 
 /**
  * Inclusion des routes PubNub spécifiques au modèle
- * 
- * Ce fichier inclut automatiquement le bon fichier de routes
- * selon le modèle compilé (Basic, Mini, etc.)
+ * Généré par: node scripts/generate.js
+ * Source: models.yaml
  */
 
-#ifdef KIDOO_MODEL_BASIC
-  #include "basic/pubnub/model_pubnub_routes.h"
-  typedef ModelBasicPubNubRoutes ModelPubNubRoutes;
-#elif defined(KIDOO_MODEL_MINI)
-  #include "mini/pubnub/model_pubnub_routes.h"
-  typedef ModelMiniPubNubRoutes ModelPubNubRoutes;
-#elif defined(KIDOO_MODEL_DREAM)
+#ifdef KIDOO_MODEL_DREAM
   #include "dream/pubnub/model_pubnub_routes.h"
   typedef ModelDreamPubNubRoutes ModelPubNubRoutes;
 #elif defined(KIDOO_MODEL_GOTCHI)
   #include "gotchi/pubnub/model_pubnub_routes.h"
   typedef ModelGotchiPubNubRoutes ModelPubNubRoutes;
 #else
-  #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_BASIC, KIDOO_MODEL_MINI, KIDOO_MODEL_DREAM ou KIDOO_MODEL_GOTCHI"
+  #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
 #endif
 
 #endif // MODEL_PUBNUB_ROUTES_H

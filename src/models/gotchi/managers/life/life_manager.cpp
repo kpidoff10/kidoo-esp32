@@ -1,9 +1,9 @@
 #include "life_manager.h"
 #include "../../config/config.h"
 #include "../../config/constants.h"
-#include "../../../common/managers/sd/sd_manager.h"
+#include "../../../../common/managers/sd/sd_manager.h"
 #if defined(HAS_NFC) && HAS_NFC
-#include "../../../common/managers/nfc/nfc_manager.h"
+#include "../../../../common/managers/nfc/nfc_manager.h"
 #endif
 #ifdef HAS_LCD
 #include "../emotions/trigger_manager.h"

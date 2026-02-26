@@ -1,0 +1,10 @@
+{
+  "name": "kidoo-esp32",
+  "private": true,
+  "scripts": {
+    "generate": "node scripts/generate.js"
+  },
+  "devDependencies": {
+    "yaml": "^2.6.0"
+  }
+}
