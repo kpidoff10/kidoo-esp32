@@ -1,7 +1,9 @@
 #include "init_model.h"
 #include "common/managers/init/init_manager.h"
+#include "models/model_pubnub_routes.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "models/dream/managers/touch/dream_touch_handler.h"
 
 /**
  * Initialisation spécifique au modèle Kidoo Dream
@@ -29,4 +31,19 @@ bool InitModelDream::init() {
   }
   
   return true;
+}
+
+void InitModelDream::update() {
+  ModelPubNubRoutes::checkTestBedtimeTimeout();
+  ModelPubNubRoutes::checkTestWakeupTimeout();
+  ModelPubNubRoutes::updateEnvPublisher();
+
+  BedtimeManager::update();
+  WakeupManager::update();
+
+#ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    DreamTouchHandler::update();
+  }
+#endif
 }

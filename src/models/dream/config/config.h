@@ -69,6 +69,9 @@
 // ESP32-C3 : Single-core, pas de PSRAM, GPIO limités
 // On désactive les composants gourmands en ressources
 
+#ifndef HAS_WIFI
+#define HAS_WIFI true
+#endif
 #define HAS_SD_CARD true
 #define HAS_LED true
 #define HAS_BLE true

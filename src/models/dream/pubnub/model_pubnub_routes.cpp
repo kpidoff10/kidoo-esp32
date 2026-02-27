@@ -1,10 +1,12 @@
 #include "model_pubnub_routes.h"
+#include "app_config.h"
 #include "common/config/default_config.h"
 #include "common/managers/led/led_manager.h"
 #include "common/managers/init/init_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/pubnub/pubnub_manager.h"
 #include "common/managers/sd/sd_manager.h"
+#include "../config/dream_config.h"
 #include "common/managers/nfc/nfc_manager.h"
 #include "common/managers/ota/ota_manager.h"
 #include "common/utils/mac_utils.h"
@@ -16,6 +18,9 @@
 #endif
 #include <limits.h>   // Pour ULONG_MAX
 #include <math.h>     // isnan, isfinite
+#ifdef HAS_WIFI
+#include <HTTPClient.h>
+#endif
 
 /**
  * Routes PubNub spécifiques au modèle Kidoo Dream
@@ -85,6 +90,9 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   }
   else if (strcmp(action, "get-env") == 0 || strcmp(action, "getenv") == 0 || strcmp(action, "env") == 0) {
     return handleGetEnv(json);
+  }
+  else if (strcmp(action, "set-nighttime-alert") == 0) {
+    return handleSetNighttimeAlert(json);
   }
   
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
@@ -1183,6 +1191,38 @@ bool ModelDreamPubNubRoutes::handleGetEnv(const JsonObject& json) {
 #endif
 }
 
+bool ModelDreamPubNubRoutes::handleSetNighttimeAlert(const JsonObject& json) {
+  // Format: { "action": "set-nighttime-alert", "params": { "enabled": true } }
+  // Ou: { "action": "set-nighttime-alert", "enabled": true }
+  // Sauvegarde la config Dream (clé "dream") via DreamConfigManager
+
+  bool enabled = false;
+
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["enabled"].is<bool>()) {
+      enabled = params["enabled"].as<bool>();
+    }
+  } else if (json["enabled"].is<bool>()) {
+    enabled = json["enabled"].as<bool>();
+  }
+
+  if (!SDManager::isAvailable()) {
+    Serial.println("[PUBNUB-ROUTE] set-nighttime-alert: Carte SD non disponible");
+    return false;
+  }
+
+  DreamConfig config = DreamConfigManager::getConfig();
+  config.nighttime_alert_enabled = enabled;
+  if (DreamConfigManager::saveConfig(config)) {
+    Serial.print("[PUBNUB-ROUTE] Alerte reveil nocturne: ");
+    Serial.println(enabled ? "activee" : "desactivee");
+    return true;
+  }
+  Serial.println("[PUBNUB-ROUTE] set-nighttime-alert: Erreur sauvegarde");
+  return false;
+}
+
 // Seuils de changement pour publication proactive (évite bruit)
 #define ENV_TEMP_THRESHOLD_C    0.5f  // Envoyer seulement si température change d'au moins 0.5°C
 #define ENV_HUMIDITY_THRESHOLD 1.0f
@@ -1247,6 +1287,15 @@ void ModelDreamPubNubRoutes::publishRoutineState(const char* routine, const char
   }
 }
 
+void ModelDreamPubNubRoutes::publishNighttimeAlertToggled(bool enabled) {
+  if (!PubNubManager::isConnected()) return;
+  char json[64];
+  snprintf(json, sizeof(json), "{\"type\":\"nighttime-alert-toggled\",\"enabled\":%s}", enabled ? "true" : "false");
+  if (PubNubManager::publish(json)) {
+    Serial.printf("[PUBNUB-ROUTE] nighttime-alert-toggled: %s\n", enabled ? "on" : "off");
+  }
+}
+
 void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("");
   Serial.println("========== Routes PubNub Dream ==========");
@@ -1267,5 +1316,6 @@ void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"set-wakeup-config\", \"params\": { \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100, \"weekdaySchedule\": {...} } }");
   Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
   Serial.println("{ \"action\": \"get-env\" }");
+  Serial.println("{ \"action\": \"set-nighttime-alert\", \"params\": { \"enabled\": true|false } }");
   Serial.println("==========================================");
 }

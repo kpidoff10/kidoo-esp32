@@ -17,6 +17,9 @@
 #include "../managers/nfc/gotchi_nfc_handler.h"
 #include "../config/constants.h"
 #endif
+#ifdef HAS_TOUCH
+#include "../../../common/managers/touch/touch_manager.h"
+#endif
 
 /**
  * Initialisation spécifique au modèle Kidoo Gotchi
@@ -185,4 +188,23 @@ bool InitModelGotchi::init() {
 #endif
 
   return true;
+}
+
+void InitModelGotchi::update() {
+#ifdef HAS_NFC
+  NFCManager::processTagEvents();
+#endif
+  GotchiNFCHandler::update();
+  LifeManager::update();
+
+#ifdef HAS_TOUCH
+  if (HAS_TOUCH) {
+    TouchManager::update();
+  }
+#endif
+
+#ifdef HAS_LCD
+  EmotionManager::update();
+  TriggerManager::update();
+#endif
 }

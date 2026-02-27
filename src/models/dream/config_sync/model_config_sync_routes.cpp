@@ -3,6 +3,7 @@
 #include "common/managers/sd/sd_manager.h"
 #include "common/config/default_config.h"
 #include "common/utils/mac_utils.h"
+#include "../config/dream_config.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
 
@@ -159,8 +160,15 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 
   }
 
-  // Sauvegarder la configuration mise à jour dans la SD
+  // Sauvegarder la configuration commune (bedtime, wakeup) dans la SD
   if (SDManager::saveConfig(config)) {
+    // Config Dream spécifique : alerte réveil nocturne (stockée sous clé "dream")
+    if (data["nighttimeAlertEnabled"].is<bool>()) {
+      DreamConfig dreamConfig = DreamConfigManager::getConfig();
+      dreamConfig.nighttime_alert_enabled = data["nighttimeAlertEnabled"].as<bool>();
+      DreamConfigManager::saveConfig(dreamConfig);
+    }
+
     // Recharger les configurations dans les managers
     BedtimeManager::reloadConfig();
     WakeupManager::reloadConfig();

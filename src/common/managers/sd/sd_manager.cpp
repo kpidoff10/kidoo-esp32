@@ -330,7 +330,7 @@ SDConfig SDManager::getConfig() {
     strncpy(config.wakeup_weekdaySchedule, scheduleStr.c_str(), sizeof(config.wakeup_weekdaySchedule) - 1);
     config.wakeup_weekdaySchedule[sizeof(config.wakeup_weekdaySchedule) - 1] = '\0';
   }
-  
+
   config.valid = true;
   return config;
 }
@@ -424,7 +424,7 @@ bool SDManager::saveConfig(const SDConfig& config) {
   } else {
     doc["wakeup_weekdaySchedule"] = "{}";
   }
-  
+
   // Ouvrir le fichier en mode écriture (écrase le contenu mais doc contient déjà tout : merge)
   File configFile = SD.open(CONFIG_FILE_PATH, FILE_WRITE);
   if (!configFile) {

@@ -84,6 +84,11 @@ public:
    * @param state "started" ou "stopped"
    */
   static void publishRoutineState(const char* routine, const char* state);
+
+  /**
+   * Publier le changement d'état de l'alerte nocturne (activée/désactivée via l'app).
+   */
+  static void publishNighttimeAlertToggled(bool enabled);
   
   /**
    * Vérifier si le test de wakeup est actif
@@ -108,6 +113,7 @@ private:
   static bool handleSetWakeupConfig(const JsonObject& json);
   static bool handleFirmwareUpdate(const JsonObject& json);
   static bool handleGetEnv(const JsonObject& json);
+  static bool handleSetNighttimeAlert(const JsonObject& json);
 };
 
 #endif // MODEL_DREAM_PUBNUB_ROUTES_H

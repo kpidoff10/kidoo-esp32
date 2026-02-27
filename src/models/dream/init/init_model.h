@@ -27,6 +27,12 @@ public:
    * @return true si la configuration est réussie, false sinon
    */
   static bool configure();
+
+  /**
+   * Mise à jour du modèle Dream à chaque cycle de loop()
+   * Bedtime, Wakeup, Touch (alerte veilleuse, routine)
+   */
+  static void update();
 };
 
 #endif // INIT_MODEL_DREAM_H

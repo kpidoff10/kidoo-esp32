@@ -5,6 +5,7 @@
 #include "common/managers/ota/ota_manager.h"
 #include "common/managers/potentiometer/potentiometer_manager.h"
 #include "models/model_config.h"
+#include "models/model_init.h"
 #include "common/config/core_config.h"
 
 #ifdef HAS_WIFI
@@ -13,28 +14,6 @@
 
 #ifdef HAS_BLE
 #include "common/managers/ble_config/ble_config_manager.h"
-#endif
-
-// Routes PubNub (modèle Dream uniquement)
-#ifdef KIDOO_MODEL_DREAM
-#include "models/model_pubnub_routes.h"
-#include "models/dream/managers/bedtime/bedtime_manager.h"
-#include "models/dream/managers/wakeup/wakeup_manager.h"
-#include "common/managers/led/led_manager.h"
-#include "color/colors.h"
-#endif
-
-// Gestionnaire de vie (modèle Gotchi uniquement)
-#ifdef KIDOO_MODEL_GOTCHI
-#include "models/gotchi/managers/life/life_manager.h"
-#include "models/gotchi/managers/nfc/gotchi_nfc_handler.h"
-#ifdef HAS_NFC
-#include "common/managers/nfc/nfc_manager.h"
-#endif
-#ifdef HAS_LCD
-#include "models/gotchi/managers/emotions/emotion_manager.h"
-#include "models/gotchi/managers/emotions/trigger_manager.h"
-#endif
 #endif
 
 // RTC pour synchronisation automatique lors de la connexion WiFi
@@ -220,82 +199,8 @@ void loop() {
   }
   #endif
   
-  // Vérifier le timeout du test de bedtime (modèle Dream uniquement)
-  #ifdef KIDOO_MODEL_DREAM
-  ModelPubNubRoutes::checkTestBedtimeTimeout();
-  ModelPubNubRoutes::checkTestWakeupTimeout();
-  ModelPubNubRoutes::updateEnvPublisher();
-
-  // Mettre à jour le gestionnaire bedtime automatique
-  BedtimeManager::update();
-
-  // Mettre à jour le gestionnaire wake-up automatique
-  WakeupManager::update();
-
-  // Touch (TTP223) : hors période → lancer le coucher ; en période bedtime/wakeup → arrêter la routine
-  #ifdef HAS_TOUCH
-  if (HAS_TOUCH && TouchManager::isInitialized()) {
-    static bool dreamTouchLast = false;
-    static unsigned long noRoutineFeedbackUntil = 0;  // Feedback "pas de routine" (respiration rouge rapide)
-    bool touched = TouchManager::isTouched();
-
-    // Fin du feedback "pas de routine" après 3 secondes → fade-out progressif puis extinction
-    if (noRoutineFeedbackUntil > 0 && millis() >= noRoutineFeedbackUntil) {
-      noRoutineFeedbackUntil = 0;
-      LEDManager::startFadeOutAndClear();
-    }
-
-    if (touched && !dreamTouchLast) {
-      if (BedtimeManager::isBedtimeActive()) {
-        BedtimeManager::stopBedtimeManually();
-        if (Serial) Serial.println("[DREAM] Touch: routine coucher arretee");
-      } else if (WakeupManager::isWakeupActive()) {
-        WakeupManager::stopWakeupManually();
-        if (Serial) Serial.println("[DREAM] Touch: routine reveil arretee");
-      } else {
-        // Idle : vérifier si une routine est configurée pour aujourd'hui
-        if (BedtimeManager::isBedtimeEnabled()) {
-          BedtimeManager::startBedtimeManually();
-          if (Serial) Serial.println("[DREAM] Touch: routine coucher lancee");
-        } else {
-          // Pas de routine pour aujourd'hui → respiration rouge rapide (feedback visuel)
-          LEDManager::preventSleep();
-          LEDManager::wakeUp();
-          LEDManager::setColor(COLOR_RED);
-          LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
-          noRoutineFeedbackUntil = millis() + 3000;  // 3 secondes
-          if (Serial) Serial.println("[DREAM] Touch: pas de routine pour aujourd'hui");
-        }
-      }
-    }
-    dreamTouchLast = touched;
-  }
-  #endif
-  #endif
-
-  // Mettre à jour le gestionnaire de vie (modèle Gotchi uniquement)
-  #ifdef KIDOO_MODEL_GOTCHI
-  // Traiter les événements NFC dans la loop principale (évite accès SD concurrent → corruption carte / écran figé)
-  #ifdef HAS_NFC
-  NFCManager::processTagEvents();
-  #endif
-  // Avant LifeManager : détecter le retrait du tag NFC pour arrêter l'effet biberon tout de suite
-  GotchiNFCHandler::update();
-  LifeManager::update();
-
-  // Mettre à jour le capteur tactile TTP223 (debounce) avant les triggers pour lecture à jour
-  #ifdef HAS_TOUCH
-  if (HAS_TOUCH) {
-    TouchManager::update();
-  }
-  #endif
-
-  // Mettre à jour le gestionnaire d'émotions (système asynchrone)
-  #ifdef HAS_LCD
-  EmotionManager::update();  // Avance la state machine d'une frame par cycle
-  TriggerManager::update();  // Évalue et enqueue les triggers automatiques (dont touch head_caress)
-  #endif
-  #endif
+  // Mise à jour du modèle (Dream : bedtime, wakeup, touch | Gotchi : NFC, life, touch, emotions)
+  InitModel::update();
   
   // ====================================================================
   // Threads indépendants (gérés par FreeRTOS, ne pas appeler ici) :

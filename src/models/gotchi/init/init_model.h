@@ -13,6 +13,12 @@ public:
   static bool configure();
   /** Affiche l'écran de démarrage (Kidoo Gotchi Demarrage...) - appelé après re-init LCD différée */
   static void showStartupScreen();
+
+  /**
+   * Mise à jour du modèle Gotchi à chaque cycle de loop()
+   * NFC, Life, Touch, Emotions, Triggers
+   */
+  static void update();
 };
 
 #endif // INIT_MODEL_GOTCHI_H
