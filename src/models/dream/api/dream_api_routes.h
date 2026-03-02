@@ -9,7 +9,7 @@
 class DreamApiRoutes {
 public:
   /**
-   * Envoyer l'alerte veilleuse au serveur (POST /api/device/nighttime-alert).
+   * Envoyer l'alerte veilleuse au serveur (GET /api/devices/[mac]/nighttime-alert).
    * Le serveur envoie la notification Expo Push.
    * Nécessite HAS_WIFI (no-op sinon).
    * @return true si succès (200), false sinon

@@ -1,4 +1,5 @@
 #include "wakeup_manager.h"
+#include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
 #include <limits.h>  // Pour ULONG_MAX
@@ -307,6 +308,13 @@ void WakeupManager::update() {
     checkWakeupTrigger();
   }
   
+  // Ne pas écraser le feedback alerte (vert/rouge pulsé)
+#ifdef HAS_TOUCH
+  if (DreamTouchHandler::s_alertFeedbackUntil > 0 && currentTime < DreamTouchHandler::s_alertFeedbackUntil) {
+    return;
+  }
+#endif
+
   // Mettre à jour les animations de fade si actives (avec throttling pour éviter les appels trop fréquents)
   if (fadeInActive) {
     unsigned long timeSinceLastFadeUpdate;
@@ -586,7 +594,7 @@ void WakeupManager::updateFadeIn() {
       lastColorB = config.colorB;
     }
     
-    uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+    uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
     if (lastBrightness != brightnessValue) {
       LEDManager::setBrightness(brightnessValue);
       lastBrightness = brightnessValue;
@@ -596,7 +604,7 @@ void WakeupManager::updateFadeIn() {
     float progress = (float)elapsed / (float)FADE_IN_DURATION_MS;
     
     // Brightness: startBrightness → targetBrightness (ne pas repartir de 0)
-    uint8_t targetBrightness = (config.brightness * 255 + 50) / 100;
+    uint8_t targetBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness + (targetBrightness - startBrightness) * progress);
     
     // Couleur: interpolation linéaire RGB de startColor vers config.color
@@ -639,7 +647,7 @@ void WakeupManager::updateFadeOut() {
   } else {
     // Interpolation linéaire de la brightness vers 0
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
-    uint8_t startBrightness = (config.brightness * 255 + 50) / 100;
+    uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
     
     LEDManager::setBrightness(currentBrightness);

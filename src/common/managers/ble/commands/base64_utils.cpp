@@ -118,3 +118,27 @@ bool isBase64(const String& str) {
   
   return len > 0 && (len % 4 == 0 || len % 4 == 1 || len % 4 == 2 || len % 4 == 3);
 }
+
+/**
+ * Encode des bytes en base64
+ */
+bool encodeBase64(const uint8_t* input, size_t inputLen, char* output, size_t outputSize) {
+  if (!input || !output || outputSize < 5) return false;
+  size_t outLen = ((inputLen + 2) / 3) * 4;
+  if (outLen + 1 > outputSize) return false;
+
+  size_t j = 0;
+  for (size_t i = 0; i < inputLen; i += 3) {
+    uint32_t b0 = input[i];
+    uint32_t b1 = (i + 1 < inputLen) ? input[i + 1] : 0;
+    uint32_t b2 = (i + 2 < inputLen) ? input[i + 2] : 0;
+    uint32_t triple = (b0 << 16) | (b1 << 8) | b2;
+
+    output[j++] = base64_chars[(triple >> 18) & 0x3F];
+    output[j++] = base64_chars[(triple >> 12) & 0x3F];
+    output[j++] = (i + 1 < inputLen) ? base64_chars[(triple >> 6) & 0x3F] : '=';
+    output[j++] = (i + 2 < inputLen) ? base64_chars[triple & 0x3F] : '=';
+  }
+  output[j] = '\0';
+  return true;
+}

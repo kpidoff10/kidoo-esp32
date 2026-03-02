@@ -7,20 +7,27 @@
  * Gestionnaire du touch (TTP223) pour le modèle Dream
  *
  * Gestuelle :
- * - Tap court (< 1 s) : alerte veilleuse si activée (notification aux parents)
- * - Main posée 3 s : arrêter ou lancer la routine (bedtime/wakeup)
+ * - Simple tap (80-600ms) : démarre ou arrête la routine coucher/réveil
+ * - Appui maintenu 2s+ (sans relâcher) : envoi alerte veilleuse (notification aux parents)
  *
  * Feedback lumineux :
- * - Vert pulsé 2 s après envoi alerte = message envoyé
- * - Rouge pulsé 3 s = pas de routine configurée pour aujourd'hui
+ * - Vert/rouge pulsé 3s après envoi alerte, puis reprise du mode actuel (bedtime/wakeup)
+ * - Rouge pulsé 3s = pas de routine configurée pour aujourd'hui
  */
 
 class DreamTouchHandler {
 public:
+  /** Timer pour le feedback alerte (utilisé par update() et triggerAlertFeedback) */
+  static unsigned long s_alertFeedbackUntil;
   /**
    * Mettre à jour le handler (à appeler dans loop() quand HAS_TOUCH et KIDOO_MODEL_DREAM)
    */
   static void update();
+
+  /**
+   * Déclencher le feedback LED après envoi alerte (vert=ok, rouge=échec)
+   */
+  static void triggerAlertFeedback(bool success);
 };
 
 #endif // DREAM_TOUCH_HANDLER_H

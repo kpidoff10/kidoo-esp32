@@ -385,7 +385,7 @@ void SerialCommands::cmdBrightness(const String& args) {
     }
     
     // Convertir % en valeur brute (0-255) avec arrondi correct
-    uint8_t brightness = (uint8_t)((percent * 255 + 50) / 100);
+    uint8_t brightness = LEDManager::brightnessPercentTo255((uint8_t)percent);
     
     // Réveiller les LEDs pour désactiver le sleep mode lors des tests
     LEDManager::wakeUp();
@@ -826,7 +826,7 @@ void SerialCommands::cmdRTCSync() {
   }
   
   // Synchroniser avec le fuseau horaire français (GMT+1/+2)
-  if (RTCManager::syncWithNTPFrance()) {
+  if (RTCManager::syncWithNTP(0, 0)) {
     Serial.println("[RTC] Synchronisation NTP reussie");
   } else {
     Serial.println("[RTC] Echec synchronisation NTP");

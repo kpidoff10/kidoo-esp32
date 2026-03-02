@@ -2,10 +2,15 @@
 #include "models/model_config.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "models/dream/managers/touch/dream_touch_handler.h"
+#include "models/dream/api/dream_api_routes.h"
 #include "common/managers/led/led_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
 #ifdef HAS_BLE
 #include "common/managers/ble_config/ble_config_manager.h"
+#endif
+#ifdef HAS_SD
+#include "common/managers/device_key/device_key_manager.h"
 #endif
 #include <Arduino.h>
 #ifdef HAS_WIFI
@@ -221,6 +226,30 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
       return true;
     }
   }
+  else if (cmd == "alert" || cmd == "send-alert" || cmd == "nighttime-alert") {
+#ifdef HAS_WIFI
+    Serial.println("[DREAM] Envoi alerte veilleuse au serveur...");
+    bool ok = DreamApiRoutes::postNighttimeAlert();
+    Serial.printf("[DREAM] Alerte %s\n", ok ? "envoyee" : "echec");
+    DreamTouchHandler::triggerAlertFeedback(ok);
+#else
+    Serial.println("[DREAM] Alerte: WiFi non disponible");
+    DreamTouchHandler::triggerAlertFeedback(false);
+#endif
+    return true;
+  }
+#ifdef HAS_SD
+  else if (cmd == "device-key" || cmd == "public-key" || cmd == "cle-device") {
+    char pubKey[48] = {0};
+    if (DeviceKeyManager::getOrCreatePublicKeyBase64(pubKey, sizeof(pubKey))) {
+      Serial.println("[DREAM] Cle publique Ed25519 (a mettre dans la DB si signature invalide):");
+      Serial.println(pubKey);
+    } else {
+      Serial.println("[DREAM] Cle device non disponible (SD?)");
+    }
+    return true;
+  }
+#endif
   else if (cmd == "wifi-scan" || cmd == "scan-wifi") {
     // Scanner les réseaux WiFi disponibles
     Serial.println("");
@@ -275,6 +304,10 @@ void ModelDreamSerialCommands::printHelp() {
   Serial.println("  rainbow off        - Desactiver l'effet arc-en-ciel doux");
   Serial.println("  breathe on         - Activer l'effet respiration (respiration avec changement de couleur)");
   Serial.println("  breathe off        - Desactiver l'effet respiration");
+#ifdef HAS_SD
+  Serial.println("  device-key         - Afficher la cle publique Ed25519 (auth device)");
+#endif
+  Serial.println("  alert              - Envoyer alerte veilleuse (test)");
   Serial.println("========================================");
   Serial.println("");
 }

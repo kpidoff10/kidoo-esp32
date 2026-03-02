@@ -11,6 +11,16 @@
 
 #include <esp_mac.h>
 
+// Convertir MAC AA:BB:CC:DD:EE:FF -> AABBCCDDEEFF (sans séparateurs)
+static void macToPathFormat(const char* macStr, char* out, size_t outSize) {
+  for (size_t i = 0, j = 0; macStr[i] && j < outSize - 1; i++) {
+    if (macStr[i] != ':' && macStr[i] != '-') {
+      out[j++] = (macStr[i] >= 'a' && macStr[i] <= 'z') ? macStr[i] - 32 : macStr[i];
+    }
+  }
+  out[outSize - 1] = '\0';
+}
+
 bool DreamApiRoutes::postNighttimeAlert() {
   char macStr[18];
   if (!getMacAddressString(macStr, sizeof(macStr), ESP_MAC_WIFI_STA)) {
@@ -18,15 +28,18 @@ bool DreamApiRoutes::postNighttimeAlert() {
     return false;
   }
 
-  char body[64];
-  snprintf(body, sizeof(body), "{\"mac\":\"%s\"}", macStr);
+  char macClean[13] = {0};
+  macToPathFormat(macStr, macClean, sizeof(macClean));
+
+  char path[80];
+  snprintf(path, sizeof(path), "/api/devices/%s/nighttime-alert", macClean);
 
   const int maxRetries = 3;
   const int timeoutMs = 8000;
   int code = -1;
 
   for (int attempt = 1; attempt <= maxRetries; attempt++) {
-    code = ApiManager::postJson("/api/device/nighttime-alert", body, timeoutMs);
+    code = ApiManager::getJsonWithDeviceAuth(path, timeoutMs);
     if (code == 200) {
       Serial.println("[DREAM] nighttime-alert -> OK");
       return true;

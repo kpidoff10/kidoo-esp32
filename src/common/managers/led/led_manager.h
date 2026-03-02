@@ -68,6 +68,9 @@ public:
   // Envoyer une commande au thread LED
   static bool sendCommand(const LEDCommand& cmd);
   
+  /** Convertir luminosité 0-100 vers 0-255 (arrondi correct) */
+  static uint8_t brightnessPercentTo255(uint8_t percent);
+
   // Méthodes pratiques pour envoyer des commandes
   static bool setColor(uint8_t r, uint8_t g, uint8_t b);
   static bool setBrightness(uint8_t brightness);
@@ -83,6 +86,10 @@ public:
   /** Déclencher un fade-out progressif puis clear (pour feedback "pas de routine", etc.) */
   static void startFadeOutAndClear();
   
+  /** Feedback alerte en cours (ex: vert/rouge pulsé) - ne pas écraser (ex: BLE disable) */
+  static void setAlertFeedbackActive(bool active);
+  static bool isAlertFeedbackActive();
+
   // Obtenir l'état actuel
   static bool isInitialized();
   static uint8_t getCurrentBrightness();
@@ -136,6 +143,7 @@ private:
   // Fade-out pour feedback (pas de routine)
   static bool feedbackFadeOutActive;
   static unsigned long feedbackFadeOutStartTime;
+  static bool s_alertFeedbackActive;
   
   // Variables pour le test séquentiel
   static bool testSequentialActive;  // Test séquentiel en cours

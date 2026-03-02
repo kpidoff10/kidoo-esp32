@@ -75,7 +75,9 @@
 #define HAS_SD_CARD true
 #define HAS_LED true
 #define HAS_BLE true
+#ifndef HAS_RTC
 #define HAS_RTC true
+#endif
 #define HAS_PUBNUB true
 #define HAS_TOUCH true
 

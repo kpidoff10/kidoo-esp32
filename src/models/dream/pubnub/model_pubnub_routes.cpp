@@ -215,10 +215,8 @@ bool ModelDreamPubNubRoutes::handleBrightness(const JsonObject& json) {
   if (value < 0) value = 0;
   if (value > 100) value = 100;
   
-  // Convertir en 0-255 avec arrondi correct
-  // Formule: (value * 255 + 50) / 100 pour arrondir correctement
-  // 0% → 0, 50% → 127, 100% → 255
-  uint8_t brightness = (value * 255 + 50) / 100;
+  // Convertir en 0-255 avec arrondi correct (0% → 0, 50% → 127, 100% → 255)
+  uint8_t brightness = LEDManager::brightnessPercentTo255((uint8_t)value);
   
   if (LEDManager::setBrightness(brightness)) {
     Serial.print("[PUBNUB-ROUTE] Luminosite: ");
@@ -920,7 +918,7 @@ bool ModelDreamPubNubRoutes::handleStartTestWakeup(const JsonObject& json) {
   }
   
   // Convertir brightness de 0-100 vers 0-255
-  uint8_t brightnessValue = (brightness * 255 + 50) / 100;
+  uint8_t brightnessValue = LEDManager::brightnessPercentTo255((uint8_t)brightness);
   
   // Sortir du mode sommeil avant d'appliquer le test
   LEDManager::wakeUp();

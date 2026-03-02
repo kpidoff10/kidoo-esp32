@@ -24,4 +24,14 @@ bool decodeBase64(const String& input, char* output, size_t& outputLen);
  */
 bool isBase64(const String& str);
 
+/**
+ * Encode des bytes en base64
+ * @param input Données à encoder
+ * @param inputLen Longueur des données
+ * @param output Buffer de sortie (doit être assez grand: (inputLen+2)/3*4 + 1)
+ * @param outputSize Taille du buffer
+ * @return true si succès
+ */
+bool encodeBase64(const uint8_t* input, size_t inputLen, char* output, size_t outputSize);
+
 #endif // BASE64_UTILS_H

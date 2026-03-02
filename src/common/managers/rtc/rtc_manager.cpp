@@ -200,6 +200,11 @@ uint32_t RTCManager::getUnixTime() {
   return days * 86400UL + dt.hour * 3600UL + dt.minute * 60UL + dt.second;
 }
 
+// RTC stocke toujours UTC (sync NTP avec configTime(0,0)) - valable partout dans le monde
+uint32_t RTCManager::getUnixTimeUTC() {
+  return getUnixTime();
+}
+
 bool RTCManager::setUnixTime(uint32_t timestamp) {
   // Convertir le timestamp en DateTime
   DateTime dt;
@@ -356,24 +361,13 @@ bool RTCManager::syncWithNTP(long gmtOffsetSec, int daylightOffsetSec) {
   dt.dayOfWeek = (timeinfo.tm_wday == 0) ? 7 : timeinfo.tm_wday; // Dimanche = 7
   
   if (setDateTime(dt)) {
-    LogManager::debug("[RTC] Heure synchronisee: %s", getDateTimeString().c_str());
+    ntpSynced = true;
+    LogManager::debug("[RTC] Heure synchronisee (UTC): %s", getDateTimeString().c_str());
     return true;
   } else {
     LogManager::error("[RTC] Echec mise a jour RTC");
     return false;
   }
-}
-
-bool RTCManager::syncWithNTPFrance() {
-  // France: GMT+1 (hiver) ou GMT+2 (été)
-  // On utilise GMT+1 avec détection automatique de l'heure d'été
-  // gmtOffsetSec = 3600 (1 heure)
-  // daylightOffsetSec = 3600 (1 heure supplémentaire en été)
-  bool result = syncWithNTP(3600, 3600);
-  if (result) {
-    ntpSynced = true;
-  }
-  return result;
 }
 
 bool RTCManager::isTimeValid() {
@@ -430,8 +424,8 @@ bool RTCManager::autoSyncIfNeeded() {
   }
   
   if (needsSync) {
-    LogManager::debug("[RTC] Synchronisation NTP automatique...");
-    bool result = syncWithNTPFrance();
+    LogManager::debug("[RTC] Synchronisation NTP automatique (UTC)...");
+    bool result = syncWithNTP(0, 0);
     if (result) {
       ntpSynced = true;
     }

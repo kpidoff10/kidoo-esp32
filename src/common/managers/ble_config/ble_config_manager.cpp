@@ -361,9 +361,9 @@ void BLEConfigManager::handleBLEDeactivation(bool fullShutdown) {
   }
   #endif
   
-  // Feedback visuel : LED éteinte
+  // Feedback visuel : LED éteinte (sauf si feedback alerte en cours, ex: vert/rouge pulsé)
   #ifdef HAS_LED
-  if (HAS_LED) {
+  if (HAS_LED && !LEDManager::isAlertFeedbackActive()) {
     LEDManager::setEffect(LED_EFFECT_NONE);
     LEDManager::setColor(0, 0, 0);
     LEDManager::clear();

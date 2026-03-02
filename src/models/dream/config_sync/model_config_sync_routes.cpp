@@ -1,6 +1,7 @@
 #include "model_config_sync_routes.h"
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/sd/sd_manager.h"
+#include "common/managers/api/api_manager.h"
 #include "common/config/default_config.h"
 #include "common/utils/mac_utils.h"
 #include "../config/dream_config.h"
@@ -8,7 +9,6 @@
 #include "models/dream/managers/wakeup/wakeup_manager.h"
 
 #ifdef HAS_WIFI
-#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_mac.h>  // Pour ESP_MAC_WIFI_STA
 #endif
@@ -25,33 +25,30 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     return false;
   }
 
-  // Obtenir l'adresse MAC WiFi formatée
+  // Obtenir l'adresse MAC WiFi (format AABBCCDDEEFF pour l'URL)
   char macStr[18];
   if (!getMacAddressString(macStr, sizeof(macStr), ESP_MAC_WIFI_STA)) {
     Serial.println("[CONFIG-SYNC] Erreur lors de la recuperation de l'adresse MAC");
     return false;
   }
-
-  // Construire l'URL de l'API
-  char url[256];
-  snprintf(url, sizeof(url), "%s/api/kidoos/config/%s", API_BASE_URL, macStr);
-
-  HTTPClient http;
-  http.begin(url);
-  http.setConnectTimeout(5000);
-  http.setTimeout(10000);
-
-  int httpCode = http.GET();
-
-  if (httpCode != HTTP_CODE_OK) {
-    Serial.print("[CONFIG-SYNC] Erreur HTTP: ");
-    Serial.println(httpCode);
-    http.end();
-    return false;
+  char macClean[13] = {0};
+  for (size_t i = 0, j = 0; macStr[i] && j < sizeof(macClean) - 1; i++) {
+    if (macStr[i] != ':' && macStr[i] != '-') {
+      macClean[j++] = (macStr[i] >= 'a' && macStr[i] <= 'z') ? macStr[i] - 32 : macStr[i];
+    }
   }
 
-  String payload = http.getString();
-  http.end();
+  char path[64];
+  snprintf(path, sizeof(path), "/api/devices/%s/config", macClean);
+
+  String payload;
+  int httpCode = ApiManager::getJsonWithDeviceAuth(path, &payload, 10000);
+
+  if (httpCode != 200) {
+    Serial.print("[CONFIG-SYNC] Erreur HTTP: ");
+    Serial.println(httpCode);
+    return false;
+  }
 
   if (payload.length() == 0) {
     Serial.println("[CONFIG-SYNC] Reponse vide");

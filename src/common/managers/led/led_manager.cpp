@@ -70,6 +70,11 @@ int LEDManager::testSequentialIndex = 0;
 unsigned long LEDManager::testSequentialLastUpdate = 0;
 bool LEDManager::feedbackFadeOutActive = false;
 unsigned long LEDManager::feedbackFadeOutStartTime = 0;
+bool LEDManager::s_alertFeedbackActive = false;
+
+uint8_t LEDManager::brightnessPercentTo255(uint8_t percent) {
+  return (percent * 255 + 50) / 100;
+}
 
 bool LEDManager::init() {
   LogManager::info("[LED] Debut init...");
@@ -262,6 +267,14 @@ bool LEDManager::clear() {
   LEDCommand cmd;
   cmd.type = LED_CMD_CLEAR;
   return sendCommand(cmd);
+}
+
+void LEDManager::setAlertFeedbackActive(bool active) {
+  s_alertFeedbackActive = active;
+}
+
+bool LEDManager::isAlertFeedbackActive() {
+  return s_alertFeedbackActive;
 }
 
 bool LEDManager::isInitialized() {

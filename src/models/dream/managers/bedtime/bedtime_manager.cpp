@@ -1,4 +1,5 @@
 #include "bedtime_manager.h"
+#include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
 #include <limits.h>  // Pour ULONG_MAX
@@ -66,7 +67,7 @@ bool BedtimeManager::init() {
         if (!isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
           startBedtime();
           fadeInActive = false;  // Pas de fade-in au boot, affichage direct
-          uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+          uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
           LEDManager::setBrightness(brightnessValue);
           lastTriggeredHour = config.schedules[dayIndex].hour;
           lastTriggeredMinute = config.schedules[dayIndex].minute;
@@ -334,7 +335,7 @@ void BedtimeManager::update() {
           !isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
         startBedtime();
         fadeInActive = false;
-        uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+        uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
         LEDManager::setBrightness(brightnessValue);
         lastTriggeredHour = config.schedules[dayIndex].hour;
         lastTriggeredMinute = config.schedules[dayIndex].minute;
@@ -346,6 +347,13 @@ void BedtimeManager::update() {
     }
   }
   
+  // Ne pas écraser le feedback alerte (vert/rouge pulsé)
+#ifdef HAS_TOUCH
+  if (DreamTouchHandler::s_alertFeedbackUntil > 0 && currentTime < DreamTouchHandler::s_alertFeedbackUntil) {
+    return;
+  }
+#endif
+
   // Mettre à jour les animations de fade si actives
   if (fadeInActive) {
     updateFadeIn();
@@ -533,7 +541,7 @@ void BedtimeManager::startBedtime() {
   fadeStartTime = millis();
   
   // Convertir brightness de 0-100 vers 0-255
-  uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+  uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
   
   // Empêcher le sleep mode pendant le bedtime
   LEDManager::preventSleep();
@@ -583,14 +591,14 @@ void BedtimeManager::updateFadeIn() {
     fadeInActive = false;
     
     // Appliquer la brightness finale
-    uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+    uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
     LEDManager::setBrightness(brightnessValue);
     
     Serial.println("[BEDTIME] Fade-in termine");
   } else {
     // Interpolation linéaire de la brightness
     float progress = (float)elapsed / (float)FADE_IN_DURATION_MS;
-    uint8_t targetBrightness = (config.brightness * 255 + 50) / 100;
+    uint8_t targetBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(progress * targetBrightness);
     
     LEDManager::setBrightness(currentBrightness);
@@ -610,7 +618,7 @@ void BedtimeManager::updateFadeOut() {
   } else {
     // Interpolation linéaire de la brightness vers 0
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
-    uint8_t startBrightness = (config.brightness * 255 + 50) / 100;
+    uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
     
     LEDManager::setBrightness(currentBrightness);
@@ -688,7 +696,7 @@ void BedtimeManager::restoreDisplayFromConfig() {
   LEDManager::preventSleep();
   LEDManager::wakeUp();
 
-  uint8_t brightnessValue = (config.brightness * 255 + 50) / 100;
+  uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
   LEDEffect effect = LED_EFFECT_NONE;
   bool useEffect = false;
 

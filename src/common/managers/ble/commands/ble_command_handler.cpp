@@ -12,6 +12,9 @@
 #include "common/managers/init/init_manager.h"
 #include "common/managers/sd/sd_manager.h"  // Pour la définition complète de SDConfig
 #include "common/config/default_config.h"  // Pour FIRMWARE_VERSION
+#ifdef HAS_SD
+#include "common/managers/device_key/device_key_manager.h"
+#endif
 #include <ESP.h>
 
 #ifdef HAS_BLE
@@ -338,7 +341,12 @@ bool BLECommandHandler::handleCommand(const String& data) {
         responseDoc["brightness"] = brightnessPercent;
         responseDoc["sleepTimeout"] = config.sleep_timeout_ms;
         responseDoc["firmwareVersion"] = firmwareVersion;
-        
+#ifdef HAS_SD
+        char pubKeyB64[48] = {0};
+        if (DeviceKeyManager::getOrCreatePublicKeyBase64(pubKeyB64, sizeof(pubKeyB64))) {
+          responseDoc["publicKey"] = pubKeyB64;
+        }
+#endif
         String responseJson;
         serializeJson(responseDoc, responseJson);
         

@@ -13,6 +13,11 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 
+#if defined(HAS_SD) && defined(HAS_RTC)
+#include "common/managers/device_key/device_key_manager.h"
+#include "common/managers/rtc/rtc_manager.h"
+#endif
+
 int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
   if (!WiFiManager::isConnected()) {
     Serial.println("[API] WiFi non connecte, requete annulee");
@@ -31,6 +36,75 @@ int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
   http.end();
   client.stop();
   return code;
+}
+
+int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, int timeoutMs) {
+  if (!WiFiManager::isConnected()) {
+    Serial.println("[API] WiFi non connecte, requete annulee");
+    return -1;
+  }
+
+#if defined(HAS_SD) && defined(HAS_RTC)
+  if (!RTCManager::isAvailable()) {
+    Serial.println("[API] RTC non disponible pour signature");
+    return -1;
+  }
+
+  // RTC stocke UTC (sync NTP avec configTime(0,0)) - getUnixTime() retourne déjà l'UTC
+  uint32_t timestamp = RTCManager::getUnixTime();
+  char timestampStr[12];
+  snprintf(timestampStr, sizeof(timestampStr), "%lu", (unsigned long)timestamp);
+
+  // Message: GET\nPATH\nTIMESTAMP (identique au serveur)
+  char message[512];
+  snprintf(message, sizeof(message), "GET\n%s\n%s", path, timestampStr);
+
+  char signatureB64[96] = {0};
+  if (!DeviceKeyManager::signMessageBase64((const uint8_t*)message, strlen(message), signatureB64, sizeof(signatureB64))) {
+    Serial.println("[API] Erreur signature device");
+    return -1;
+  }
+
+  char url[256];
+  snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("x-kidoo-timestamp", timestampStr);
+  http.addHeader("x-kidoo-signature", signatureB64);
+  http.setConnectTimeout(5000);
+  http.setTimeout(timeoutMs);
+  int code = http.GET();
+  if (code > 0 && responseBody) {
+    *responseBody = http.getString();
+  }
+  http.end();
+  client.stop();
+  return code;
+#else
+  // Fallback : GET simple sans signature (rétrocompatibilité si Kidoo sans publicKey en DB)
+  (void)responseBody;
+  char url[256];
+  snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.setConnectTimeout(5000);
+  http.setTimeout(timeoutMs);
+  int code = http.GET();
+  if (code > 0 && responseBody) {
+    *responseBody = http.getString();
+  }
+  http.end();
+  client.stop();
+  return code;
+#endif
+}
+
+int ApiManager::getJsonWithDeviceAuth(const char* path, int timeoutMs) {
+  return getJsonWithDeviceAuth(path, nullptr, timeoutMs);
 }
 
 #endif // HAS_WIFI

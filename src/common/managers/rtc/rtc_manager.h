@@ -78,10 +78,17 @@ public:
   static String getDateTimeString();
   
   /**
-   * Obtenir le timestamp Unix (secondes depuis 01/01/1970)
-   * @return Timestamp Unix
+   * Obtenir le timestamp Unix (secondes depuis 01/01/1970).
+   * Le RTC stocke toujours UTC (sync NTP avec configTime(0,0)) - valable partout dans le monde.
+   * @return Timestamp Unix UTC
    */
   static uint32_t getUnixTime();
+
+  /**
+   * Alias de getUnixTime() - retourne le timestamp UTC pour l'auth device.
+   * @return Timestamp Unix UTC
+   */
+  static uint32_t getUnixTimeUTC();
   
   /**
    * Définir l'heure depuis un timestamp Unix
@@ -109,19 +116,13 @@ public:
   static void printInfo();
   
   /**
-   * Synchroniser l'heure avec un serveur NTP (nécessite WiFi)
-   * @param gmtOffsetSec Décalage GMT en secondes (ex: 3600 pour GMT+1)
-   * @param daylightOffsetSec Décalage heure d'été en secondes (ex: 3600)
+   * Synchroniser l'heure avec un serveur NTP (nécessite WiFi).
+   * Stocke UTC/GMT dans le RTC - pas de gestion par pays.
+   * @param gmtOffsetSec Décalage en secondes (0 = UTC par défaut)
+   * @param daylightOffsetSec Décalage heure d'été (0 par défaut)
    * @return true si la synchronisation a réussi, false sinon
    */
   static bool syncWithNTP(long gmtOffsetSec = 0, int daylightOffsetSec = 0);
-  
-  /**
-   * Synchroniser l'heure avec NTP en utilisant le fuseau horaire français
-   * GMT+1 en hiver, GMT+2 en été (détection automatique)
-   * @return true si la synchronisation a réussi, false sinon
-   */
-  static bool syncWithNTPFrance();
   
   /**
    * Vérifier si l'heure semble valide (année >= 2026)
