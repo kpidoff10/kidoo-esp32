@@ -12,7 +12,7 @@
  */
 
 #ifndef API_BASE_URL
-#define API_BASE_URL "http://192.168.1.6:3001"
+#define API_BASE_URL "https://www.kidoo-box.com"
 #endif
 
 #endif // APP_CONFIG_H

@@ -15,26 +15,31 @@ bool InitManager::initBLE() {
     return true;  // Pas une erreur, juste désactivé
   }
 
-  // IMPORTANT: Initialisé complètement en lazy (lazy initialization)
-  // BLE ne sera initialisé que lorsqu'il est vraiment nécessaire :
-  // - Appui long sur le bouton BLE
-  // - Sortie d'usine (pas de config.json)
-  // - WiFi non connecté après l'attente (auto-activation)
+  // IMPORTANT: Initialisé en lazy (lazy initialization)
+  // BLEManager (structures BLE, tasks) ne sera créé que lorsqu'il est vraiment nécessaire
+  // BLEConfigManager (bouton) s'initialise au boot pour détecter les appuis
   //
-  // Cela économise ~60KB de RAM au démarrage, tout en gardant BLE disponible pour :
-  // - Configuration initiale (appareillage)
-  // - Changement de WiFi (si WiFi se déconnecte)
+  // Cela économise ~60KB de RAM au démarrage, tout en gardant le bouton détectable dès le boot
+  //
+  // Activation BLE seulement sur :
+  // - Appui long sur le bouton BLE (3 secondes)
 
-  // Stocker le nom du device pour la réinitialisation lazy (sans initialiser rien)
-  // Cela permettra à BLEConfigManager::enableBLE() d'initialiser BLE à la demande
+  // Stocker le nom du device pour la réinitialisation lazy
   BLEManager::setDeviceNameForReinit(DEFAULT_DEVICE_NAME);
 
-  // IMPORTANT: NE PAS initialiser BLEConfigManager ici pour économiser la RAM
-  // BLEConfigManager sera initialisé en lazy lors de la première activation BLE
-  // La détection du bouton BLE sera actif une fois BLE activé
+  // Initialiser UNIQUEMENT BLEConfigManager (très petit - détection bouton)
+  // Ne PAS initialiser BLEManager ici - sera fait en lazy au premier appui bouton
+  #ifdef BLE_CONFIG_BUTTON_PIN
+  if (!BLEConfigManager::init(BLE_CONFIG_BUTTON_PIN)) {
+    Serial.println("[INIT] WARNING: Echec initialisation BLEConfigManager");
+    // Ne pas faire échouer l'init si le bouton n'est pas disponible
+  }
+  #else
+  Serial.println("[INIT] WARNING: BLE_CONFIG_BUTTON_PIN non defini dans config.h");
+  #endif
 
-  Serial.println("[INIT] BLE completement desactive au boot (lazy mode)");
-  Serial.println("[INIT] BLE sera active a la demande (bouton, setup, WiFi change)");
+  Serial.println("[INIT] BLE desactive au boot (lazy mode)");
+  Serial.println("[INIT] Appui long (3s) sur bouton pour activer le BLE");
 
   systemStatus.ble = INIT_SUCCESS;
 

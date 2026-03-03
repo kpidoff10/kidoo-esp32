@@ -18,6 +18,11 @@ public:
    */
   static void onWiFiConnected();
 
+  /**
+   * Réessayer de récupérer la configuration (utilisé après RTC sync)
+   */
+  static void retryFetchConfig();
+
 private:
   /**
    * Récupérer la configuration depuis l'API serveur via l'adresse MAC

@@ -156,52 +156,35 @@ bool InitManager::init() {
   if (HAS_WIFI) {
     initWiFi();  // Tente de se connecter au WiFi configuré dans config.json
     
-    // Sortie d'usine (pas de config.json) : pas d'attente WiFi, BLE + mode cercle bleu direct
-    if (!configFileExists) {
-      #ifdef HAS_BLE
-      if (HAS_BLE) {
-        if (serialAvailable) {
-          LogManager::debug("[INIT] Sortie d'usine - Activation BLE pour configuration");
-        }
-        BLEConfigManager::enableBLE(0, true);  // Avec feedback = cercle bleu (reconnaissance)
-        // enableBLE() initialisera BLEConfigManager si nécessaire (lazy init)
-        bleAutoActivated = true;
-      }
-      #endif
-    } else {
-      // Config existante : attendre 8 s pour voir si le WiFi se connecte
-      if (serialAvailable) {
-        LogManager::debug("[INIT] Attente de connexion WiFi (8 secondes)...");
-      }
-      unsigned long wifiWaitStart = millis();
-      const unsigned long WIFI_WAIT_TIMEOUT_MS = 8000;  // 8 secondes
-      
-      while ((millis() - wifiWaitStart) < WIFI_WAIT_TIMEOUT_MS) {
-        if (WiFiManager::isConnected()) {
-          break;
-        }
-        delay(500);  // Vérifier toutes les 500ms
-      }
-      
-      delay(100);
-      
-      // Si le WiFi n'est toujours pas connecté après l'attente, activer le BLE SANS cercle bleu
-      #ifdef HAS_BLE
-      if (HAS_BLE && !WiFiManager::isConnected()) {
-        if (serialAvailable) {
-          LogManager::info("");
-          LogManager::info("[INIT] ========================================");
-          LogManager::info("[INIT] WiFi non connecte apres attente");
-          LogManager::info("[INIT] Activation automatique du BLE pour configuration");
-          LogManager::info("[INIT] BLE actif pendant 15 minutes (timeout automatique)");
-          LogManager::info("[INIT] ========================================");
-        }
-        BLEConfigManager::enableBLE(0, false);  // SANS feedback lumineux
-        // enableBLE() initialisera BLEConfigManager si nécessaire (lazy init)
-        bleAutoActivated = true;
-      }
-      #endif
+    // Attendre 8 s pour voir si le WiFi se connecte (avec ou sans config.json)
+    if (serialAvailable) {
+      LogManager::debug("[INIT] Attente de connexion WiFi (8 secondes)...");
     }
+    unsigned long wifiWaitStart = millis();
+    const unsigned long WIFI_WAIT_TIMEOUT_MS = 8000;  // 8 secondes
+
+    while ((millis() - wifiWaitStart) < WIFI_WAIT_TIMEOUT_MS) {
+      if (WiFiManager::isConnected()) {
+        break;
+      }
+      delay(500);  // Vérifier toutes les 500ms
+    }
+
+    delay(100);
+
+    // Après l'attente WiFi, pas d'activation BLE automatique
+    // L'utilisateur peut appuyer sur le bouton BLE (3 secondes) pour activer BLE si nécessaire
+    #ifdef HAS_BLE
+    if (!WiFiManager::isConnected()) {
+      if (serialAvailable) {
+        LogManager::info("");
+        LogManager::info("[INIT] ========================================");
+        LogManager::info("[INIT] WiFi non connecte apres attente");
+        LogManager::info("[INIT] Appuyez sur le bouton BLE (3 sec) pour configurer");
+        LogManager::info("[INIT] ========================================");
+      }
+    }
+    #endif
   }
   #endif
   

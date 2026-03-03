@@ -18,12 +18,25 @@ void ModelDreamConfigSyncRoutes::onWiFiConnected() {
   fetchConfigFromAPI();
 }
 
+void ModelDreamConfigSyncRoutes::retryFetchConfig() {
+  Serial.println("[CONFIG-SYNC] Retry avec signature (RTC disponible)");
+  fetchConfigFromAPI();
+}
+
 bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 #ifdef HAS_WIFI
   if (!WiFiManager::isConnected()) {
     Serial.println("[CONFIG-SYNC] WiFi non connecte, impossible de recuperer la configuration");
     return false;
   }
+
+#ifdef HAS_RTC
+  // Ne pas faire config-sync si RTC n'est pas synced (attendre que RTC soit prêt)
+  if (!RTCManager::isAvailable()) {
+    Serial.println("[CONFIG-SYNC] RTC non disponible - requete differee");
+    return false;
+  }
+#endif
 
   // Obtenir l'adresse MAC WiFi (format AABBCCDDEEFF pour l'URL)
   char macStr[18];
@@ -49,6 +62,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     Serial.println(httpCode);
     return false;
   }
+
+  Serial.println("[CONFIG-SYNC] ✓ HTTP 200 - Réponse reçue");
 
   if (payload.length() == 0) {
     Serial.println("[CONFIG-SYNC] Reponse vide");
@@ -178,4 +193,9 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 #else
   return false;
 #endif
+}
+
+// Wrapper function - évite dépendance circulaire d'includes
+extern "C" void retryConfigSync() {
+  ModelDreamConfigSyncRoutes::retryFetchConfig();
 }

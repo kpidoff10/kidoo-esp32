@@ -175,38 +175,11 @@ void loop() {
   #endif
   
   // Mettre à jour le gestionnaire BLE Config (détection appui bouton)
+  // BLE s'active seulement sur appui long bouton (3 secondes)
   #ifdef HAS_BLE
-  if (HAS_BLE) {
+  if (HAS_BLE && BLEConfigManager::isInitialized()) {
     #ifdef BLE_CONFIG_BUTTON_PIN
     BLEConfigManager::update();
-    
-    // Si le BLE est activé automatiquement (sans WiFi) et que le WiFi se connecte maintenant,
-    // désactiver le BLE automatiquement car il n'est plus nécessaire
-    #ifdef HAS_WIFI
-    if (HAS_WIFI && BLEConfigManager::isBLEEnabled()) {
-      // Vérifier si le BLE a été activé automatiquement (on peut le détecter en vérifiant
-      // si le WiFi est maintenant connecté alors que le BLE était activé)
-      static bool wasWifiDisconnected = false;
-      static unsigned long lastWifiCheck = 0;
-      
-      // Vérifier périodiquement (toutes les 2 secondes pour ne pas surcharger)
-      if (millis() - lastWifiCheck > 2000) {
-        lastWifiCheck = millis();
-        
-        if (!WiFiManager::isConnected()) {
-          wasWifiDisconnected = true;
-        } else if (wasWifiDisconnected && WiFiManager::isConnected()) {
-          // Le WiFi s'est connecté alors qu'il était déconnecté
-          // Désactiver le BLE automatiquement car il n'est plus nécessaire
-          if (Serial) {
-            Serial.println("[MAIN] WiFi connecte - Desactivation automatique du BLE");
-          }
-          BLEConfigManager::disableBLE();
-          wasWifiDisconnected = false;
-        }
-      }
-    }
-    #endif
     #endif
   }
   #endif

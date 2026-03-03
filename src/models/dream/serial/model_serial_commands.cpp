@@ -17,6 +17,9 @@
 #include <WiFi.h>
 #endif
 
+// Forward declaration pour retry config-sync
+extern "C" void retryConfigSync();
+
 /**
  * Commandes Serial spécifiques au modèle Kidoo Dream
  */
@@ -238,6 +241,16 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
 #endif
     return true;
   }
+  else if (cmd == "config-retry" || cmd == "retry-config") {
+#ifdef HAS_WIFI
+    Serial.println("[DREAM] Test: Retry config-sync avec signature RTC...");
+    retryConfigSync();
+    Serial.println("[DREAM] Retry lance");
+#else
+    Serial.println("[DREAM] WiFi non disponible");
+#endif
+    return true;
+  }
 #ifdef HAS_SD
   else if (cmd == "device-key" || cmd == "public-key" || cmd == "cle-device") {
     char pubKey[48] = {0};
@@ -308,6 +321,7 @@ void ModelDreamSerialCommands::printHelp() {
   Serial.println("  device-key         - Afficher la cle publique Ed25519 (auth device)");
 #endif
   Serial.println("  alert              - Envoyer alerte veilleuse (test)");
+  Serial.println("  config-retry       - Tester retry sync config (avec signature RTC)");
   Serial.println("========================================");
   Serial.println("");
 }

@@ -26,7 +26,8 @@ int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
 
   char url[256];
   snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
@@ -45,62 +46,65 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
   }
 
 #if defined(HAS_SD) && defined(HAS_RTC)
-  if (!RTCManager::isAvailable()) {
-    Serial.println("[API] RTC non disponible pour signature");
-    return -1;
-  }
+  bool rtcAvailable = RTCManager::isAvailable();
 
-  // RTC stocke UTC (sync NTP avec configTime(0,0)) - getUnixTime() retourne déjà l'UTC
-  uint32_t timestamp = RTCManager::getUnixTime();
-  char timestampStr[12];
-  snprintf(timestampStr, sizeof(timestampStr), "%lu", (unsigned long)timestamp);
+  if (rtcAvailable) {
+    // RTC disponible: faire requête AVEC signature
+    uint32_t timestamp = RTCManager::getUnixTime();
+    char timestampStr[12];
+    snprintf(timestampStr, sizeof(timestampStr), "%lu", (unsigned long)timestamp);
 
-  // Message: GET\nPATH\nTIMESTAMP (identique au serveur)
-  char message[512];
-  snprintf(message, sizeof(message), "GET\n%s\n%s", path, timestampStr);
+    // Message: GET\nPATH\nTIMESTAMP (identique au serveur)
+    char message[512];
+    snprintf(message, sizeof(message), "GET\n%s\n%s", path, timestampStr);
 
-  char signatureB64[96] = {0};
-  if (!DeviceKeyManager::signMessageBase64((const uint8_t*)message, strlen(message), signatureB64, sizeof(signatureB64))) {
-    Serial.println("[API] Erreur signature device");
-    return -1;
-  }
+    char signatureB64[96] = {0};
+    if (!DeviceKeyManager::signMessageBase64((const uint8_t*)message, strlen(message), signatureB64, sizeof(signatureB64))) {
+      Serial.println("[API] Erreur signature device");
+      return -1;
+    }
 
-  char url[256];
-  snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-kidoo-timestamp", timestampStr);
-  http.addHeader("x-kidoo-signature", signatureB64);
-  http.setConnectTimeout(5000);
-  http.setTimeout(timeoutMs);
-  int code = http.GET();
-  if (code > 0 && responseBody) {
-    *responseBody = http.getString();
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-kidoo-timestamp", timestampStr);
+    http.addHeader("x-kidoo-signature", signatureB64);
+    http.setConnectTimeout(5000);
+    http.setTimeout(timeoutMs);
+    int code = http.GET();
+    if (code > 0 && responseBody) {
+      *responseBody = http.getString();
+    }
+    http.end();
+    client.stop();
+    return code;
+  } else {
+    // RTC non disponible: faire requête SANS signature
+    Serial.println("[API] RTC non disponible - requete sans signature");
   }
-  http.end();
-  client.stop();
-  return code;
-#else
-  // Fallback : GET simple sans signature (rétrocompatibilité si Kidoo sans publicKey en DB)
-  (void)responseBody;
-  char url[256];
-  snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.setConnectTimeout(5000);
-  http.setTimeout(timeoutMs);
-  int code = http.GET();
-  if (code > 0 && responseBody) {
-    *responseBody = http.getString();
-  }
-  http.end();
-  client.stop();
-  return code;
 #endif
+
+  // Fallback : GET simple sans signature (RTC non dispo ou HAS_SD/HAS_RTC non définis)
+  char url[256];
+  snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.setConnectTimeout(5000);
+  http.setTimeout(timeoutMs);
+  int code = http.GET();
+  if (code > 0 && responseBody) {
+    *responseBody = http.getString();
+  }
+  http.end();
+  client.stop();
+  return code;
 }
 
 int ApiManager::getJsonWithDeviceAuth(const char* path, int timeoutMs) {
