@@ -156,12 +156,14 @@ void loop() {
     // Note: La synchronisation de configuration est gérée automatiquement
     // par WiFiManager via ModelConfigSyncRoutes::onWiFiConnected()
 
-    // Initialiser PubNub (lazy init)
+    // Initialiser PubNub (lazy init) - seulement s'il n'est pas déjà initialisé
     #ifdef HAS_PUBNUB
-    if (Serial) {
-      Serial.println("[MAIN] WiFi connecte - Initialisation PubNub");
+    if (HAS_PUBNUB && !PubNubManager::isInitialized()) {
+      if (Serial) {
+        Serial.println("[MAIN] WiFi connecte - Initialisation PubNub");
+      }
+      PubNubManager::init();
     }
-    InitManager::initPubNub();
     #endif
   }
   lastWiFiState = WiFiManager::isConnected();
