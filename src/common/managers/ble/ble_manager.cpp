@@ -346,6 +346,10 @@ const char* BLEManager::getDeviceNameForReinit() {
   return deviceNameForReinit;
 }
 
+void BLEManager::setDeviceNameForReinit(const char* deviceName) {
+  deviceNameForReinit = deviceName;
+}
+
 bool BLEManager::isConnected() {
 #ifdef HAS_BLE
   if (!available || pServer == nullptr) {

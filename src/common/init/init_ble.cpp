@@ -5,7 +5,7 @@
 
 bool InitManager::initBLE() {
   systemStatus.ble = INIT_IN_PROGRESS;
-  
+
 #ifndef HAS_BLE
   systemStatus.ble = INIT_NOT_STARTED;
   return true;  // Pas une erreur, juste désactivé
@@ -14,41 +14,30 @@ bool InitManager::initBLE() {
     systemStatus.ble = INIT_NOT_STARTED;
     return true;  // Pas une erreur, juste désactivé
   }
-  
-  // Utiliser DEFAULT_DEVICE_NAME pour le nom BLE
-  // DEFAULT_DEVICE_NAME est défini dans le fichier default_config.h du modèle
-  const char* deviceName = DEFAULT_DEVICE_NAME;
-  
-  // Initialiser le BLEManager (mais ne pas démarrer l'advertising)
-  if (!BLEManager::init(deviceName)) {
-    systemStatus.ble = INIT_FAILED;
-    Serial.println("[INIT] ERREUR: Echec initialisation BLE");
-    return false;
-  }
-  
-  if (!BLEManager::isAvailable()) {
-    systemStatus.ble = INIT_FAILED;
-    Serial.println("[INIT] WARNING: BLE non disponible");
-    return false;
-  }
-  
-  // Initialiser le BLEConfigManager avec le pin du bouton depuis la config
-  #ifdef BLE_CONFIG_BUTTON_PIN
-  if (!BLEConfigManager::init(BLE_CONFIG_BUTTON_PIN)) {
-    Serial.println("[INIT] WARNING: Echec initialisation BLEConfigManager");
-    // Ne pas faire échouer l'init BLE si le bouton n'est pas disponible
-  }
-  #else
-  Serial.println("[INIT] WARNING: BLE_CONFIG_BUTTON_PIN non defini dans config.h");
-  #endif
-  
-  // IMPORTANT: Ne PAS démarrer l'advertising automatiquement
-  // Le BLE sera activé uniquement via appui long sur le bouton
-  Serial.println("[INIT] BLE initialise (advertising desactive par defaut)");
-  Serial.println("[INIT] Appui long sur bouton pour activer le BLE");
-  
+
+  // IMPORTANT: Initialisé complètement en lazy (lazy initialization)
+  // BLE ne sera initialisé que lorsqu'il est vraiment nécessaire :
+  // - Appui long sur le bouton BLE
+  // - Sortie d'usine (pas de config.json)
+  // - WiFi non connecté après l'attente (auto-activation)
+  //
+  // Cela économise ~60KB de RAM au démarrage, tout en gardant BLE disponible pour :
+  // - Configuration initiale (appareillage)
+  // - Changement de WiFi (si WiFi se déconnecte)
+
+  // Stocker le nom du device pour la réinitialisation lazy (sans initialiser rien)
+  // Cela permettra à BLEConfigManager::enableBLE() d'initialiser BLE à la demande
+  BLEManager::setDeviceNameForReinit(DEFAULT_DEVICE_NAME);
+
+  // IMPORTANT: NE PAS initialiser BLEConfigManager ici pour économiser la RAM
+  // BLEConfigManager sera initialisé en lazy lors de la première activation BLE
+  // La détection du bouton BLE sera actif une fois BLE activé
+
+  Serial.println("[INIT] BLE completement desactive au boot (lazy mode)");
+  Serial.println("[INIT] BLE sera active a la demande (bouton, setup, WiFi change)");
+
   systemStatus.ble = INIT_SUCCESS;
-  
+
   return true;
 #endif
 }

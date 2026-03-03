@@ -108,8 +108,18 @@ bool BLEConfigManager::isBLEEnabled() {
 }
 
 bool BLEConfigManager::enableBLE(uint32_t durationMs, bool enableFeedback) {
+  // Initialisation lazy de BLEConfigManager si pas déjà fait
+  // Cela permet de garder BLE complètement désactivé au boot
   if (!initialized) {
+    #ifdef BLE_CONFIG_BUTTON_PIN
+    if (!BLEConfigManager::init(BLE_CONFIG_BUTTON_PIN)) {
+      LogManager::warning("[BLE-CONFIG] Initialisation lazy de BLEConfigManager a echoue");
+      return false;
+    }
+    #else
+    LogManager::warning("[BLE-CONFIG] BLE_CONFIG_BUTTON_PIN non defini");
     return false;
+    #endif
   }
   
   if (durationMs == 0) {

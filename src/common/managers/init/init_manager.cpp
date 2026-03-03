@@ -159,11 +159,12 @@ bool InitManager::init() {
     // Sortie d'usine (pas de config.json) : pas d'attente WiFi, BLE + mode cercle bleu direct
     if (!configFileExists) {
       #ifdef HAS_BLE
-      if (HAS_BLE && BLEConfigManager::isInitialized()) {
+      if (HAS_BLE) {
         if (serialAvailable) {
           LogManager::debug("[INIT] Sortie d'usine - Activation BLE pour configuration");
         }
         BLEConfigManager::enableBLE(0, true);  // Avec feedback = cercle bleu (reconnaissance)
+        // enableBLE() initialisera BLEConfigManager si nécessaire (lazy init)
         bleAutoActivated = true;
       }
       #endif
@@ -186,19 +187,18 @@ bool InitManager::init() {
       
       // Si le WiFi n'est toujours pas connecté après l'attente, activer le BLE SANS cercle bleu
       #ifdef HAS_BLE
-      if (HAS_BLE && BLEConfigManager::isInitialized()) {
-        if (!WiFiManager::isConnected()) {
-          if (serialAvailable) {
-            LogManager::info("");
-            LogManager::info("[INIT] ========================================");
-            LogManager::info("[INIT] WiFi non connecte apres attente");
-            LogManager::info("[INIT] Activation automatique du BLE pour configuration");
-            LogManager::info("[INIT] BLE actif pendant 15 minutes (timeout automatique)");
-            LogManager::info("[INIT] ========================================");
-          }
-          BLEConfigManager::enableBLE(0, false);  // SANS feedback lumineux
-          bleAutoActivated = true;
+      if (HAS_BLE && !WiFiManager::isConnected()) {
+        if (serialAvailable) {
+          LogManager::info("");
+          LogManager::info("[INIT] ========================================");
+          LogManager::info("[INIT] WiFi non connecte apres attente");
+          LogManager::info("[INIT] Activation automatique du BLE pour configuration");
+          LogManager::info("[INIT] BLE actif pendant 15 minutes (timeout automatique)");
+          LogManager::info("[INIT] ========================================");
         }
+        BLEConfigManager::enableBLE(0, false);  // SANS feedback lumineux
+        // enableBLE() initialisera BLEConfigManager si nécessaire (lazy init)
+        bleAutoActivated = true;
       }
       #endif
     }

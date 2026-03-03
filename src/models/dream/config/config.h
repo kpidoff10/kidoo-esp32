@@ -74,7 +74,7 @@
 #endif
 #define HAS_SD_CARD true
 #define HAS_LED true
-#define HAS_BLE true
+#define HAS_BLE true            // Activé mais initialisé en lazy (seulement si nécessaire)
 #ifndef HAS_RTC
 #define HAS_RTC true
 #endif

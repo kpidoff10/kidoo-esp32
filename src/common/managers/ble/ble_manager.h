@@ -53,6 +53,14 @@ public:
    * @return Pointeur vers le nom, ou nullptr si jamais initialisé
    */
   static const char* getDeviceNameForReinit();
+
+  /**
+   * Définir le nom du device pour réinitialisation tardive (lazy init)
+   * Utilisé lors de l'initialisation BLE lazy pour stocker le device name
+   * avant la vraie initialisation BLE
+   * @param deviceName Pointeur vers le nom du device
+   */
+  static void setDeviceNameForReinit(const char* deviceName);
   
   /**
    * Vérifier si un client BLE est connecté
