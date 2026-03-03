@@ -205,11 +205,15 @@ bool InitManager::init() {
   }
   #endif
   
-  // ÉTAPE 6 : Initialiser PubNub (après WiFi)
+  // ÉTAPE 6 : Initialiser PubNub (LAZY - seulement quand WiFi connecté)
+  // PubNub sera initialisé dans main.cpp lors de la connexion WiFi
+  // Cela économise ~15-20KB RAM au boot
   #ifdef HAS_PUBNUB
   if (HAS_PUBNUB) {
-    initPubNub();  // Tente de se connecter à PubNub
-    delay(100);
+    systemStatus.pubnub = INIT_NOT_STARTED;  // Sera initialisé en lazy
+    if (serialAvailable) {
+      LogManager::debug("[INIT] PubNub mode lazy (initialisation a la connexion WiFi)");
+    }
   }
   #endif
   

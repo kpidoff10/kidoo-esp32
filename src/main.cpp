@@ -139,22 +139,32 @@ void loop() {
   }
   #endif
   
-  // Synchroniser l'heure RTC via NTP quand le WiFi se connecte
-  #ifdef HAS_RTC
+  // Gérer les initialisations lazy quand le WiFi se connecte
   #ifdef HAS_WIFI
   static bool lastWiFiState = false;
   if (WiFiManager::isConnected() && !lastWiFiState) {
-    // WiFi vient de se connecter, synchroniser l'heure
+    // WiFi vient de se connecter
+
+    // Synchroniser l'heure RTC via NTP
+    #ifdef HAS_RTC
     if (Serial) {
       Serial.println("[MAIN] WiFi connecte - Synchronisation RTC via NTP");
     }
     RTCManager::autoSyncIfNeeded();
-    
+    #endif
+
     // Note: La synchronisation de configuration est gérée automatiquement
     // par WiFiManager via ModelConfigSyncRoutes::onWiFiConnected()
+
+    // Initialiser PubNub (lazy init)
+    #ifdef HAS_PUBNUB
+    if (Serial) {
+      Serial.println("[MAIN] WiFi connecte - Initialisation PubNub");
+    }
+    InitManager::initPubNub();
+    #endif
   }
   lastWiFiState = WiFiManager::isConnected();
-  #endif
   #endif
   
   // Mettre à jour le potentiomètre (détection de changement)
