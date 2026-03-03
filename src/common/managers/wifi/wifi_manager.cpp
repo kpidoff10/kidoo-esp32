@@ -155,8 +155,8 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
       WiFi.begin(ssid, password);
       lastRetryTime = millis();
     }
-    
-    delay(500);
+
+    delay(50);  // Réduit de 500ms pour ne pas bloquer les LEDs
     if (Serial) Serial.print(".");
     dotCount++;
     

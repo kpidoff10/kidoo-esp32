@@ -7,7 +7,7 @@
  * Gestionnaire du touch (TTP223) pour le modèle Dream
  *
  * Gestuelle :
- * - Simple tap (80-600ms) : démarre ou arrête la routine coucher/réveil
+ * - Tout touche (50ms à 2s) : démarre ou arrête la routine coucher/réveil
  * - Appui maintenu 2s+ (sans relâcher) : envoi alerte veilleuse (notification aux parents)
  *
  * Feedback lumineux :

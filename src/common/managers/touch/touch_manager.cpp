@@ -14,7 +14,7 @@ bool TouchManager::initialized = false;
 bool TouchManager::debouncedState = false;
 bool TouchManager::lastRawState = false;
 uint32_t TouchManager::lastChangeTime = 0;
-uint32_t TouchManager::debounceMs = 50;
+uint32_t TouchManager::debounceMs = 30;
 
 bool TouchManager::init() {
   if (initialized) {

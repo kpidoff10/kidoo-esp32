@@ -70,7 +70,6 @@ int LEDManager::testSequentialIndex = 0;
 unsigned long LEDManager::testSequentialLastUpdate = 0;
 bool LEDManager::feedbackFadeOutActive = false;
 unsigned long LEDManager::feedbackFadeOutStartTime = 0;
-bool LEDManager::s_alertFeedbackActive = false;
 
 uint8_t LEDManager::brightnessPercentTo255(uint8_t percent) {
   return (percent * 255 + 50) / 100;
@@ -192,19 +191,19 @@ bool LEDManager::sendCommand(const LEDCommand& cmd) {
 
 bool LEDManager::setColor(uint8_t r, uint8_t g, uint8_t b) {
   LogManager::debug("[LED] setColor: RGB(%d, %d, %d), sleepState=%d\n", r, g, b, getSleepState() ? 1 : 0);
-  
+
   bool isTurningOff = (r == 0 && g == 0 && b == 0);
-  
+
   // Ne pas faire clear() ici car cela effacerait la couleur avant qu'elle soit appliquée
   // Le clear() sera fait dans setEffect() si nécessaire lors d'un changement d'effet
-  
+
   LEDCommand cmd;
   cmd.type = LED_CMD_SET_COLOR;
   cmd.data.color.r = r;
   cmd.data.color.g = g;
   cmd.data.color.b = b;
   bool result = sendCommand(cmd);
-  
+
   // Réveiller automatiquement les LEDs pour tous les changements de couleur (sauf éteindre)
   // Cela permet de sortir du mode sommeil à chaque changement
   if (result && !isTurningOff) {
@@ -267,14 +266,6 @@ bool LEDManager::clear() {
   LEDCommand cmd;
   cmd.type = LED_CMD_CLEAR;
   return sendCommand(cmd);
-}
-
-void LEDManager::setAlertFeedbackActive(bool active) {
-  s_alertFeedbackActive = active;
-}
-
-bool LEDManager::isAlertFeedbackActive() {
-  return s_alertFeedbackActive;
 }
 
 bool LEDManager::isInitialized() {

@@ -2,6 +2,7 @@
 #define LED_MANAGER_H
 
 #include <Arduino.h>
+#include <cstdint>
 #include <Adafruit_NeoPixel.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -86,10 +87,6 @@ public:
   /** Déclencher un fade-out progressif puis clear (pour feedback "pas de routine", etc.) */
   static void startFadeOutAndClear();
   
-  /** Feedback alerte en cours (ex: vert/rouge pulsé) - ne pas écraser (ex: BLE disable) */
-  static void setAlertFeedbackActive(bool active);
-  static bool isAlertFeedbackActive();
-
   // Obtenir l'état actuel
   static bool isInitialized();
   static uint8_t getCurrentBrightness();
@@ -143,7 +140,6 @@ private:
   // Fade-out pour feedback (pas de routine)
   static bool feedbackFadeOutActive;
   static unsigned long feedbackFadeOutStartTime;
-  static bool s_alertFeedbackActive;
   
   // Variables pour le test séquentiel
   static bool testSequentialActive;  // Test séquentiel en cours

@@ -1,6 +1,6 @@
 /**
  * Gestionnaire du touch Dream - plus fluide pour un enfant
- * - Simple tap (80-600ms) : démarre ou arrête routine coucher/réveil
+ * - Tout touche (50ms à 2s) : démarre ou arrête routine coucher/réveil au relâchement
  * - Appui maintenu 2s+ (sans relâcher) : envoi notification alerte
  */
 
@@ -25,7 +25,6 @@ static uint8_t getBrightnessFromConfig() {
   return LEDManager::brightnessPercentTo255(SDManager::getConfig().bedtime_brightness);
 }
 
-static const unsigned long TAP_MAX_MS = 600;      // Max pour un tap (enfant = appui un peu plus long)
 static const unsigned long HOLD_ALERT_MS = 2000; // Appui 2s+ = envoi alerte (sans relâcher)
 static const unsigned long ALERT_FEEDBACK_MS = 3000; // Durée du feedback alerte avant reprise du mode
 
@@ -48,7 +47,6 @@ void DreamTouchHandler::update() {
   }
   if (s_alertFeedbackUntil > 0 && now >= s_alertFeedbackUntil) {
     s_alertFeedbackUntil = 0;
-    LEDManager::setAlertFeedbackActive(false);
     if (BedtimeManager::isBedtimeActive()) {
       BedtimeManager::restoreDisplayFromConfig();
     } else if (WakeupManager::isWakeupActive()) {
@@ -77,15 +75,23 @@ void DreamTouchHandler::update() {
     DreamConfig dreamConfig = DreamConfigManager::getConfig();
     if (dreamConfig.nighttime_alert_enabled) {
 #ifdef HAS_WIFI
-      bool ok = DreamApiRoutes::postNighttimeAlert();
       LEDManager::preventSleep();
       LEDManager::wakeUp();
-      LEDManager::setAlertFeedbackActive(true);
-      // IMPORTANT: setColor AVANT setEffect pour que PULSE_FAST ait la couleur (sinon currentColor=0 → brightness=0)
-      LEDManager::setColor(ok ? COLOR_GREEN : COLOR_RED);
       LEDManager::setBrightness(getBrightnessFromConfig());
-      LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
       s_alertFeedbackUntil = now + ALERT_FEEDBACK_MS;
+      bool ok = DreamApiRoutes::postNighttimeAlert();
+      // Nettoyer d'abord pour éviter les couleurs résiduelles
+      LEDManager::clear();
+      delay(50);
+      // Vert si succès, rouge si erreur
+      if (ok) {
+        LEDManager::setColor(COLOR_GREEN);  // Vert
+      } else {
+        LEDManager::setColor(COLOR_RED);  // Rouge
+      }
+      delay(50);  // Laisser la couleur bien définie avant l'effet
+      LEDManager::setEffect(LED_EFFECT_PULSE_FAST);  // Pulse avec la bonne couleur
+      if (ok) delay(100);
       if (Serial) Serial.printf("[DREAM] Appui 2s: alerte %s\n", ok ? "envoyee" : "echec");
 #else
       if (Serial) Serial.println("[DREAM] Appui 2s: alerte (WiFi non dispo)");
@@ -97,8 +103,9 @@ void DreamTouchHandler::update() {
   if (!touched && dreamTouchLast) {
     unsigned long releaseDuration = now - dreamTouchStartMs;
 
-    // Simple tap (80-600ms) : démarre ou arrête routine coucher/réveil
-    if (releaseDuration >= 80 && releaseDuration <= TAP_MAX_MS) {
+    // Tout touche < 2s : démarre ou arrête routine coucher/réveil au relâchement immédiatement
+    // (appui 2s+ = alerte déjà gérée pendant l'appui, pas au relâchement)
+    if (releaseDuration < HOLD_ALERT_MS && !alertHoldFired) {
       if (BedtimeManager::isBedtimeActive()) {
         BedtimeManager::stopBedtimeManually();
         if (Serial) Serial.println("[DREAM] Tap: routine coucher arretee");
@@ -112,7 +119,7 @@ void DreamTouchHandler::update() {
         } else {
           LEDManager::preventSleep();
           LEDManager::wakeUp();
-          LEDManager::setColor(COLOR_RED);
+          LEDManager::setColor(255, 0, 0);  // Rouge
           LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
           noRoutineFeedbackUntil = now + 3000;
           if (Serial) Serial.println("[DREAM] Tap: pas de routine pour aujourd'hui");
@@ -124,11 +131,19 @@ void DreamTouchHandler::update() {
 }
 
 void DreamTouchHandler::triggerAlertFeedback(bool success) {
-  LEDManager::setAlertFeedbackActive(true);
   LEDManager::preventSleep();
   LEDManager::wakeUp();
   LEDManager::setBrightness(getBrightnessFromConfig());
-  LEDManager::setColor(success ? COLOR_GREEN : COLOR_RED);
+  // Nettoyer d'abord pour éviter les couleurs résiduelles
+  LEDManager::clear();
+  delay(50);
+  // Vert si success, rouge sinon
+  if (success) {
+    LEDManager::setColor(COLOR_GREEN);  // Vert
+  } else {
+    LEDManager::setColor(COLOR_RED);  // Rouge
+  }
+  delay(50);  // Laisser la couleur bien définie avant l'effet
   LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
   s_alertFeedbackUntil = millis() + ALERT_FEEDBACK_MS;
 }
