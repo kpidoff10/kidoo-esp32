@@ -64,6 +64,11 @@ unsigned long LEDManager::rotateActivationTime = 0;  // Temps d'activation de l'
 uint32_t LEDManager::sleepTimeoutMs = 0;
 bool LEDManager::sleepPrevented = false;
 bool LEDManager::pulseNeedsReset = false;
+bool LEDManager::rainbowNeedsReset = false;
+bool LEDManager::rainbowSoftNeedsReset = false;
+bool LEDManager::rotateNeedsReset = false;
+bool LEDManager::nightlightNeedsReset = false;
+bool LEDManager::breatheNeedsReset = false;
 bool LEDManager::hardwareInitialized = false;
 bool LEDManager::testSequentialActive = false;
 int LEDManager::testSequentialIndex = 0;
@@ -554,6 +559,8 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
       LogManager::debug("[LED] processCommand SET_EFFECT: %s (ancien: %s)\n", 
                     getEffectName(cmd.data.effect), getEffectName(currentEffect));
       
+      feedbackFadeOutActive = false;  // Annuler le fade-out "pas de routine" pour permettre un nouveau feedback (ex: alerte)
+      
       // IMPORTANT: Réinitialiser le timer d'activité IMMÉDIATEMENT au début du traitement
       // Cela évite que checkSleepMode() (appelé dans la boucle principale) entre en sleep mode
       // pendant le traitement de la commande
@@ -571,7 +578,18 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
       }
       LEDEffect previousEffect = currentEffect;
       currentEffect = cmd.data.effect;
-      
+
+      // Réinitialiser les drapeaux des effets pour forcer une réinitialisation des variables statiques
+      // Cela évite les flashes quand on bascule entre les effets
+      if (previousEffect != currentEffect) {
+        rainbowNeedsReset = true;
+        rainbowSoftNeedsReset = true;
+        rotateNeedsReset = true;
+        nightlightNeedsReset = true;
+        breatheNeedsReset = true;
+        pulseNeedsReset = true;  // Réinitialiser PULSE aussi
+      }
+
       // Note: rotateActivationTime sera défini explicitement lors du passage au vert (SUCCESS)
       // pour que le décompte ne commence qu'après la disparition de l'orange
       if (currentEffect != LED_EFFECT_ROTATE) {
@@ -622,6 +640,7 @@ void LEDManager::processCommand(const LEDCommand& cmd) {
       currentColor = 0;  // Noir
       currentEffect = LED_EFFECT_NONE;
       testSequentialActive = false;  // Arrêter le test si en cours
+      feedbackFadeOutActive = false;  // Annuler le fade-out "pas de routine" pour permettre un nouveau feedback (ex: alerte)
       // IMPORTANT: Éteindre complètement toutes les LEDs
       if (strip != nullptr) {
         for (int i = 0; i < NUM_LEDS; i++) {
@@ -971,15 +990,38 @@ void LEDManager::updateEffects() {
       break;
       
     case LED_EFFECT_RAINBOW: {
-      // Effet arc-en-ciel qui défile
-      static uint8_t hue = 0;
+      // Effet arc-en-ciel qui défile - basé sur le temps pour éviter les problèmes de timing
+      static unsigned long rainbowStartTime = 0;
+
+      // Réinitialiser si l'effet vient d'être activé
+      if (rainbowNeedsReset || rainbowStartTime == 0) {
+        rainbowStartTime = currentTime;
+        rainbowNeedsReset = false;
+      }
+
+      // Cycle complet de l'arc-en-ciel : ~3 secondes pour un tour complet
+      const uint32_t RAINBOW_CYCLE_MS = 3000;  // 3 secondes (plus rapide que SOFT qui est 30s)
+
+      // Gérer le wrap-around de millis()
+      uint32_t elapsed;
+      if (currentTime >= rainbowStartTime) {
+        elapsed = (currentTime - rainbowStartTime) % RAINBOW_CYCLE_MS;
+      } else {
+        elapsed = (ULONG_MAX - rainbowStartTime + currentTime) % RAINBOW_CYCLE_MS;
+      }
+
+      // Calculer la teinte de base avec précision (0 à 255)
+      uint16_t baseHue = (elapsed * 256) / RAINBOW_CYCLE_MS;
+
       if (strip != nullptr) {
+        // Répartir l'arc-en-ciel sur toute la bande LED
         for (int i = 0; i < NUM_LEDS; i++) {
-          uint32_t color = hsvToRgb((hue + i * 2) % 256, 255, 255);
+          // Calculer la teinte pour cette LED (dégradé sur toute la bande)
+          uint16_t ledHue = (baseHue + (i * 256) / NUM_LEDS) % 256;
+          uint32_t color = hsvToRgb((uint8_t)ledHue, 255, 255);
           strip->setPixelColor(i, color);
         }
       }
-      hue = (hue + 2) % 256;
       break;
     }
     

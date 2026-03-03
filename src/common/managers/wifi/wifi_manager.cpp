@@ -9,6 +9,7 @@
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_wifi.h>
 #endif
 
 #ifdef HAS_PUBNUB
@@ -50,6 +51,10 @@ bool WiFiManager::init() {
 #else
   // Configurer le WiFi en mode Station (client)
   WiFi.mode(WIFI_STA);
+  // Forcer WiFi 2.4GHz pour meilleure compatibilité avec ESP32
+  // (évite les problèmes "Association refused" sur WiFi 5GHz)
+  // Restrict to 2.4GHz protocols only (11b, 11g, 11n)
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
   WiFi.disconnect();
   delay(100);
   

@@ -135,6 +135,11 @@ private:
   static uint32_t sleepTimeoutMs;  // Timeout configuré pour le sleep mode
   static bool sleepPrevented;  // Flag pour empêcher le sleep mode (bedtime, etc.)
   static bool pulseNeedsReset;  // Flag pour réinitialiser l'effet PULSE
+  static bool rainbowNeedsReset;  // Flag pour réinitialiser l'effet RAINBOW
+  static bool rainbowSoftNeedsReset;  // Flag pour réinitialiser l'effet RAINBOW_SOFT
+  static bool rotateNeedsReset;  // Flag pour réinitialiser l'effet ROTATE
+  static bool nightlightNeedsReset;  // Flag pour réinitialiser l'effet NIGHTLIGHT
+  static bool breatheNeedsReset;  // Flag pour réinitialiser l'effet BREATHE
   static bool hardwareInitialized;  // Init NeoPixel faite dans la tâche LED
   
   // Fade-out pour feedback (pas de routine)

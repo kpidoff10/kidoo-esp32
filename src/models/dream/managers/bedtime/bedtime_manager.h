@@ -92,6 +92,12 @@ public:
   static bool isBedtimeActive();
 
   /**
+   * Vérifier si le bedtime a été démarré manuellement (app ou tap)
+   * @return true si démarré manuellement, false sinon
+   */
+  static bool isManuallyStarted();
+
+  /**
    * Démarrer le bedtime manuellement (via PubNub)
    * Empêche le déclenchement automatique programmé
    */

@@ -36,6 +36,8 @@ bool InitModelDream::init() {
 void InitModelDream::update() {
   ModelPubNubRoutes::checkTestBedtimeTimeout();
   ModelPubNubRoutes::checkTestWakeupTimeout();
+  ModelPubNubRoutes::checkTestDefaultConfigTimeout();
+  ModelPubNubRoutes::checkNighttimeAlertAckTimeout();
   ModelPubNubRoutes::updateEnvPublisher();
 
   BedtimeManager::update();

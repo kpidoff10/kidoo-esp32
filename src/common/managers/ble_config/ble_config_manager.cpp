@@ -268,23 +268,34 @@ void BLEConfigManager::printInfo() {
 void BLEConfigManager::handleButtonPress() {
   bool pressed = isButtonPressed();
   unsigned long currentTime = millis();
-  
+
+  // Vérifier si on est en période de refroidissement (ignorer appuis pendant cooldown)
+  bool inCooldown = false;
+  if (buttonCooldownUntil > 0) {
+    if (currentTime >= buttonCooldownUntil) {
+      // Période de refroidissement terminée
+      buttonCooldownUntil = 0;
+    } else {
+      // Encore en période de refroidissement, ignorer les changements d'état
+      inCooldown = true;
+    }
+  }
+
   switch (buttonState) {
     case BUTTON_IDLE:
-      if (pressed) {
-        // Début d'appui détecté
+      if (pressed && !inCooldown) {
+        // Début d'appui détecté (en dehors de la période de refroidissement)
         buttonState = BUTTON_PRESSED;
         pressStartTime = currentTime;
         LogManager::info("[BLE-CONFIG] Appui detecte...");
       }
       break;
-      
+
     case BUTTON_PRESSED:
       if (!pressed) {
         // Bouton relâché avant le seuil
         buttonState = BUTTON_IDLE;
         // Activer une période de refroidissement pour éviter les détections multiples
-        unsigned long currentTime = millis();
         buttonCooldownUntil = currentTime + COOLDOWN_DELAY;
         LogManager::info("[BLE-CONFIG] Appui annule (trop court)");
       } else {
@@ -303,7 +314,7 @@ void BLEConfigManager::handleButtonPress() {
         // Pas de feedback visuel pendant l'appui - le bleu apparaîtra uniquement après activation
       }
       break;
-      
+
     case BUTTON_LONG_PRESS:
       if (!pressed) {
         // Bouton relâché après activation
@@ -317,7 +328,7 @@ void BLEConfigManager::handleButtonPress() {
         }
       }
       break;
-      
+
     case BUTTON_RELEASED:
       buttonState = BUTTON_IDLE;
       break;
@@ -393,26 +404,14 @@ void BLEConfigManager::updateFeedback() {
 
 bool BLEConfigManager::isButtonPressed() {
   // Bouton en INPUT_PULLUP : LOW = pressé, HIGH = relâché
-  // Anti-rebond amélioré avec période de refroidissement
+  // Anti-rebond simple sans cooldown (le cooldown est géré dans handleButtonPress)
   static unsigned long lastDebounceTime = 0;
   static bool lastButtonState = HIGH;
   static bool debouncedState = HIGH;
-  
+
   unsigned long currentTime = millis();
   bool reading = digitalRead(buttonPin);
-  
-  // Vérifier si on est en période de refroidissement
-  if (buttonCooldownUntil > 0) {
-    unsigned long cooldownElapsed;
-    if (currentTime >= buttonCooldownUntil) {
-      // Période de refroidissement terminée
-      buttonCooldownUntil = 0;
-    } else {
-      // Encore en période de refroidissement, ignorer les changements
-      return false;
-    }
-  }
-  
+
   // Gérer le wrap-around de millis()
   unsigned long debounceElapsed;
   if (currentTime >= lastDebounceTime) {
@@ -420,21 +419,21 @@ bool BLEConfigManager::isButtonPressed() {
   } else {
     debounceElapsed = (ULONG_MAX - lastDebounceTime) + currentTime + 1;
   }
-  
+
   // Si l'état a changé, réinitialiser le timer de debounce
   if (reading != lastButtonState) {
     lastDebounceTime = currentTime;
   }
-  
+
   // Si le délai de debounce est écoulé, mettre à jour l'état débouncé
   if (debounceElapsed > DEBOUNCE_DELAY) {
     if (reading != debouncedState) {
       debouncedState = reading;
     }
   }
-  
+
   lastButtonState = reading;
-  
+
   // Retourner true si le bouton est pressé (LOW) et stable
   return (debouncedState == LOW);
 }

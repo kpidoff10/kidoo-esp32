@@ -155,19 +155,23 @@ bool InitManager::init() {
   #ifdef HAS_WIFI
   if (HAS_WIFI) {
     initWiFi();  // Tente de se connecter au WiFi configuré dans config.json
-    
-    // Attendre 8 s pour voir si le WiFi se connecte (avec ou sans config.json)
-    if (serialAvailable) {
-      LogManager::debug("[INIT] Attente de connexion WiFi (8 secondes)...");
-    }
-    unsigned long wifiWaitStart = millis();
-    const unsigned long WIFI_WAIT_TIMEOUT_MS = 8000;  // 8 secondes
 
-    while ((millis() - wifiWaitStart) < WIFI_WAIT_TIMEOUT_MS) {
-      if (WiFiManager::isConnected()) {
-        break;
+    // Attendre 8 s pour voir si le WiFi se connecte UNIQUEMENT si un SSID est configuré
+    // Sans SSID : pas d'attente pour ne pas bloquer le boot (ex: carte neuve, config à faire)
+    const SDConfig& config = InitManager::getConfig();
+    if (strlen(config.wifi_ssid) > 0) {
+      if (serialAvailable) {
+        LogManager::debug("[INIT] Attente de connexion WiFi (8 secondes)...");
       }
-      delay(500);  // Vérifier toutes les 500ms
+      unsigned long wifiWaitStart = millis();
+      const unsigned long WIFI_WAIT_TIMEOUT_MS = 8000;  // 8 secondes
+
+      while ((millis() - wifiWaitStart) < WIFI_WAIT_TIMEOUT_MS) {
+        if (WiFiManager::isConnected()) {
+          break;
+        }
+        delay(500);  // Vérifier toutes les 500ms
+      }
     }
 
     delay(100);
@@ -280,8 +284,8 @@ bool InitManager::init() {
 #ifdef KIDOO_MODEL_DREAM
         if (!BedtimeManager::isBedtimeActive() && !WakeupManager::isWakeupActive()) {
 #endif
+          // Change couleur sans réinitialiser l'effet (evite interruption du ROTATE)
           LEDManager::setColor(COLOR_GREEN);
-          LEDManager::setEffect(LED_EFFECT_ROTATE);
 #ifdef KIDOO_MODEL_DREAM
         }
 #endif

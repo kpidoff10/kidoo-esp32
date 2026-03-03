@@ -532,7 +532,9 @@ void BedtimeManager::checkBedtimeTrigger() {
 }
 
 void BedtimeManager::startBedtime() {
-  ModelDreamPubNubRoutes::publishRoutineState("bedtime", "started");
+  // "manual" = démarré manuellement (app ou tap) → affichage "Manuel" dans l'app
+  const char* state = isManuallyStarted() ? "manual" : "started";
+  ModelDreamPubNubRoutes::publishRoutineState("bedtime", state);
 
   bedtimeActive = true;
   bedtimeStartTime = millis();
@@ -663,6 +665,10 @@ bool BedtimeManager::isBedtimeActive() {
   return bedtimeActive;
 }
 
+bool BedtimeManager::isManuallyStarted() {
+  return manuallyStarted;
+}
+
 void BedtimeManager::startBedtimeManually() {
   // Si le bedtime est déjà marqué actif (même si les LEDs ne le reflètent pas), arrêter proprement
   // pour repartir sur une base saine et réappliquer la config
@@ -673,8 +679,16 @@ void BedtimeManager::startBedtimeManually() {
   // Marquer comme démarré manuellement pour empêcher le déclenchement automatique
   manuallyStarted = true;
   
-  // Démarrer le bedtime selon la config (LEDs, effet, fade-in, etc.)
+  // Démarrer le bedtime selon la config (LEDs, effet)
   startBedtime();
+  
+  Serial.printf("[BEDTIME] startBedtimeManually: bedtimeActive=%d manuallyStarted=%d\n",
+    bedtimeActive, manuallyStarted);
+  
+  // Allumage direct sans fade quand démarrage manuel (tap ou app)
+  fadeInActive = false;
+  uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
+  LEDManager::setBrightness(brightnessValue);
 }
 
 void BedtimeManager::stopBedtimeManually() {

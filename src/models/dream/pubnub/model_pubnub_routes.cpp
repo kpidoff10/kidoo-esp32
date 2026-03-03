@@ -6,12 +6,15 @@
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/pubnub/pubnub_manager.h"
 #include "common/managers/sd/sd_manager.h"
+#include "common/managers/rtc/rtc_manager.h"
+#include "common/managers/timezone/timezone_manager.h"
 #include "../config/dream_config.h"
 #include "common/managers/nfc/nfc_manager.h"
 #include "common/managers/ota/ota_manager.h"
 #include "common/utils/mac_utils.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
+#include "models/dream/managers/touch/dream_touch_handler.h"
 #include "models/model_config.h"
 #ifdef HAS_ENV_SENSOR
 #include "common/managers/env_sensor/env_sensor_manager.h"
@@ -25,6 +28,35 @@
 /**
  * Routes PubNub spécifiques au modèle Kidoo Dream
  */
+
+/** Parse l'effet par défaut depuis la config (string → LEDEffect enum) */
+static LEDEffect parseDefaultEffect(const char* effectStr) {
+  if (!effectStr || effectStr[0] == '\0') {
+    return LED_EFFECT_NONE;  // Empty string = solid color
+  }
+  if (strcmp(effectStr, "pulse_fast") == 0) {
+    return LED_EFFECT_PULSE_FAST;
+  }
+  if (strcmp(effectStr, "pulse") == 0) {
+    return LED_EFFECT_PULSE;
+  }
+  if (strcmp(effectStr, "rainbow_soft") == 0) {
+    return LED_EFFECT_RAINBOW_SOFT;
+  }
+  if (strcmp(effectStr, "rotate") == 0) {
+    return LED_EFFECT_ROTATE;
+  }
+  if (strcmp(effectStr, "nightlight") == 0) {
+    return LED_EFFECT_NIGHTLIGHT;
+  }
+  if (strcmp(effectStr, "breathe") == 0) {
+    return LED_EFFECT_BREATHE;
+  }
+  return LED_EFFECT_NONE;  // Unknown effect = solid color
+}
+
+// Déclaration anticipée pour handleGetInfo (définition complète plus bas)
+static bool testBedtimeActive = false;
 
 bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   // Vérifier que l'action est présente
@@ -94,7 +126,22 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   else if (strcmp(action, "set-nighttime-alert") == 0) {
     return handleSetNighttimeAlert(json);
   }
-  
+  else if (strcmp(action, "nighttime-alert-ack") == 0) {
+    return handleNighttimeAlertAck(json);
+  }
+  else if (strcmp(action, "set-default-config") == 0) {
+    return handleSetDefaultConfig(json);
+  }
+  else if (strcmp(action, "start-test-default-config") == 0) {
+    return handleStartTestDefaultConfig(json);
+  }
+  else if (strcmp(action, "stop-test-default-config") == 0) {
+    return handleStopTestDefaultConfig(json);
+  }
+  else if (strcmp(action, "set-timezone") == 0) {
+    return handleSetTimezone(json);
+  }
+
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
   Serial.println(action);
   return false;
@@ -126,13 +173,22 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     strcpy(macStr, "00:00:00:00:00:00"); // Valeur par défaut en cas d'erreur
   }
   
-  // État courant du device (Dream: bedtime, wakeup, idle) pour get-info
+  // État courant du device (Dream: bedtime, wakeup, idle, manual) pour get-info
+  // "manual" = routine démarrée manuellement (app ou tap) OU test en cours (config sauvegardée) OU couleur par défaut affichée par tap
   const char* deviceState = "idle";
   if (BedtimeManager::isBedtimeActive()) {
-    deviceState = "bedtime";
+    deviceState = BedtimeManager::isManuallyStarted() ? "manual" : "bedtime";
   } else if (WakeupManager::isWakeupActive()) {
     deviceState = "wakeup";
+  } else if (testBedtimeActive) {
+    // Test bedtime actif (après sauvegarde config) → affichage "Manuel" dans l'app
+    deviceState = "manual";
+  } else if (DreamTouchHandler::isDefaultColorDisplayed()) {
+    // Couleur par défaut affichée (via tap sans routine) → affichage "Manuel" dans l'app
+    deviceState = "manual";
   }
+  Serial.printf("[PUBNUB-ROUTE] get-info: deviceState=%s (bedtimeActive=%d, manuallyStarted=%d, testBedtimeActive=%d, defaultColorDisplayed=%d)\n",
+    deviceState, BedtimeManager::isBedtimeActive(), BedtimeManager::isManuallyStarted(), testBedtimeActive, DreamTouchHandler::isDefaultColorDisplayed());
 
   // Construire le JSON de réponse
   char infoJson[600];
@@ -386,13 +442,22 @@ bool ModelDreamPubNubRoutes::handleLed(const JsonObject& json) {
   return handled;
 }
 
-// Variables statiques pour gérer l'état du test de bedtime
-static bool testBedtimeActive = false;
+// Variables statiques pour gérer l'état du test de bedtime (testBedtimeActive déclaré en haut)
 static unsigned long testBedtimeStartTime = 0;
 static bool bedtimeWasActiveBeforeTest = false;  // Pour restaurer le mode bedtime à la sortie du test
 static bool testWakeupActive = false;
 static unsigned long testWakeupStartTime = 0;
 static const unsigned long TEST_BEDTIME_TIMEOUT_MS = 15000; // 15 secondes
+
+// "J'arrive" : signal envoyé par l'app quand le parent tape sur la notification d'alerte nocturne
+static bool nighttimeAlertAckActive = false;
+static unsigned long nighttimeAlertAckStartTime = 0;
+static bool nighttimeAlertAckBedtimeWasActive = false;
+static const unsigned long NIGHTTIME_ALERT_ACK_DURATION_MS = 5000; // 5 secondes de rotate rainbow
+
+static bool testDefaultConfigActive = false;
+static unsigned long testDefaultConfigStartTime = 0;
+static const unsigned long TEST_DEFAULT_CONFIG_TIMEOUT_MS = 15000; // 15 secondes
 
 bool ModelDreamPubNubRoutes::handleStartTestBedtime(const JsonObject& json) {
   // Format: { "action": "start-test-bedtime", "params": { "colorR": 255, "colorG": 107, "colorB": 107, "brightness": 50 } }
@@ -543,16 +608,18 @@ bool ModelDreamPubNubRoutes::handleStartBedtime(const JsonObject& json) {
   
   Serial.println("[PUBNUB-ROUTE] start-bedtime: Démarrage manuel de la routine de coucher");
   
-  // Vérifier que BedtimeManager est initialisé
-  if (!BedtimeManager::isBedtimeEnabled()) {
-    Serial.println("[PUBNUB-ROUTE] start-bedtime: ERREUR - Bedtime non configuré ou non activé");
+  // Vérifier que BedtimeManager est initialisé (config chargée)
+  // Pas besoin de schedule activé : le manuel fonctionne même sans horaire programmé
+  if (!BedtimeManager::init()) {
+    Serial.println("[PUBNUB-ROUTE] start-bedtime: ERREUR - BedtimeManager non initialisé");
     return false;
   }
   
   // Démarrer (ou forcer le redémarrage) du bedtime selon la config
   BedtimeManager::startBedtimeManually();
   
-  Serial.println("[PUBNUB-ROUTE] start-bedtime: Routine de coucher démarrée manuellement");
+  Serial.printf("[PUBNUB-ROUTE] start-bedtime: OK - bedtimeActive=%d manuallyStarted=%d\n",
+    BedtimeManager::isBedtimeActive(), BedtimeManager::isManuallyStarted());
   return true;
 }
 
@@ -661,6 +728,27 @@ void ModelDreamPubNubRoutes::checkTestBedtimeTimeout() {
   }
 }
 
+void ModelDreamPubNubRoutes::checkTestDefaultConfigTimeout() {
+  if (testDefaultConfigActive) {
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime;
+    if (currentTime >= testDefaultConfigStartTime) {
+      elapsedTime = currentTime - testDefaultConfigStartTime;
+    } else {
+      elapsedTime = (ULONG_MAX - testDefaultConfigStartTime) + currentTime;
+    }
+    if (elapsedTime >= TEST_DEFAULT_CONFIG_TIMEOUT_MS) {
+      Serial.println("[PUBNUB-ROUTE] Test default-config: Timeout de 15 secondes atteint, arrêt automatique");
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+      StaticJsonDocument<1> doc;
+      #pragma GCC diagnostic pop
+      JsonObject emptyJson = doc.to<JsonObject>();
+      handleStopTestDefaultConfig(emptyJson);
+    }
+  }
+}
+
 void ModelDreamPubNubRoutes::checkTestWakeupTimeout() {
   // Vérifier si le timeout est dépassé
   // Utiliser une comparaison sécurisée pour gérer le wrap-around de millis()
@@ -698,6 +786,275 @@ bool ModelDreamPubNubRoutes::isTestWakeupActive() {
 
 bool ModelDreamPubNubRoutes::isTestBedtimeActive() {
   return testBedtimeActive;
+}
+
+bool ModelDreamPubNubRoutes::handleNighttimeAlertAck(const JsonObject& json) {
+  // Format: { "action": "nighttime-alert-ack" }
+  // Envoyé par l'app quand le parent tape "J'arrive" sur la notification d'alerte nocturne.
+  // Joue l'effet rainbow pendant 5 secondes pour notifier l'enfant que quelqu'un arrive.
+  
+  Serial.println("[PUBNUB-ROUTE] nighttime-alert-ack: Signal J'arrive reçu, rotate rainbow 5 secondes");
+
+  // Mémoriser si on était en bedtime pour restaurer à la fin
+  if (!nighttimeAlertAckActive) {
+    nighttimeAlertAckBedtimeWasActive = BedtimeManager::isBedtimeActive();
+  }
+
+  LEDManager::preventSleep();
+  // NOTE: Pas de wakeUp() car cela déclenche une animation de fade-in qui flashe l'écran
+  // setEffect() allume déjà les LEDs. Si le device est en sleep mode, il se réveillera automatiquement.
+  LEDManager::setEffect(LED_EFFECT_RAINBOW);
+  LEDManager::setBrightness(LEDManager::brightnessPercentTo255(80));  // Luminosité visible
+  
+  nighttimeAlertAckActive = true;
+  nighttimeAlertAckStartTime = millis();
+  
+  return true;
+}
+
+void ModelDreamPubNubRoutes::checkNighttimeAlertAckTimeout() {
+  if (!nighttimeAlertAckActive) return;
+  
+  unsigned long currentTime = millis();
+  unsigned long elapsedTime;
+  if (currentTime >= nighttimeAlertAckStartTime) {
+    elapsedTime = currentTime - nighttimeAlertAckStartTime;
+  } else {
+    elapsedTime = (ULONG_MAX - nighttimeAlertAckStartTime) + currentTime;
+  }
+  
+  if (elapsedTime >= NIGHTTIME_ALERT_ACK_DURATION_MS) {
+    Serial.println("[PUBNUB-ROUTE] nighttime-alert-ack: Fin du rotate rainbow, restauration affichage");
+    nighttimeAlertAckActive = false;
+    nighttimeAlertAckStartTime = 0;
+
+    if (nighttimeAlertAckBedtimeWasActive) {
+      nighttimeAlertAckBedtimeWasActive = false;
+      BedtimeManager::restoreDisplayFromConfig();
+    } else if (DreamTouchHandler::isDefaultColorDisplayed()) {
+      // Restaurer la couleur par défaut après le "J'arrive"
+      DreamConfig dreamConfig = DreamConfigManager::getConfig();
+      LEDManager::preventSleep();
+      LEDManager::wakeUp();
+      // Nettoyer d'abord pour éviter les animations résiduelles du rainbow
+      LEDManager::clear();
+      delay(50);
+      LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
+      LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
+      LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+      LEDManager::setEffect(defaultEffect);
+    } else {
+      LEDManager::clear();
+    }
+  }
+}
+
+bool ModelDreamPubNubRoutes::handleSetDefaultConfig(const JsonObject& json) {
+  // Format: { "action": "set-default-config", "colorR": 255, "colorG": 107, "colorB": 200, "brightness": 50, "effect": "rainbow_soft" }
+  // Sauvegarde la configuration de couleur/effet par défaut pour le tap sans routine
+
+  Serial.println("[PUBNUB-ROUTE] set-default-config: Sauvegarde de la configuration par défaut...");
+
+  if (!SDManager::isAvailable()) {
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Carte SD non disponible");
+    return false;
+  }
+
+  // Extraire les paramètres
+  int colorR = -1;
+  int colorG = -1;
+  int colorB = -1;
+  int brightness = -1;
+  const char* effectStr = nullptr;
+  bool hasEffect = false;
+
+  // Les paramètres sont à la racine du JSON (pas dans un wrapper "params")
+  if (json["colorR"].is<int>()) colorR = json["colorR"].as<int>();
+  else if (json["colorR"].is<double>()) colorR = (int)json["colorR"].as<double>();
+  if (json["colorG"].is<int>()) colorG = json["colorG"].as<int>();
+  else if (json["colorG"].is<double>()) colorG = (int)json["colorG"].as<double>();
+  if (json["colorB"].is<int>()) colorB = json["colorB"].as<int>();
+  else if (json["colorB"].is<double>()) colorB = (int)json["colorB"].as<double>();
+  if (json["brightness"].is<int>()) brightness = json["brightness"].as<int>();
+  else if (json["brightness"].is<double>()) brightness = (int)json["brightness"].as<double>();
+
+  if (json["effect"].is<const char*>()) {
+    effectStr = json["effect"].as<const char*>();
+    hasEffect = true;
+  }
+
+  // Validation
+  if (colorR < 0 || colorR > 255 || colorG < 0 || colorG > 255 || colorB < 0 || colorB > 255) {
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Couleur invalide");
+    return false;
+  }
+
+  if (brightness < 0 || brightness > 100) {
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Brightness invalide");
+    return false;
+  }
+
+  // Charger la configuration actuelle
+  DreamConfig dreamConfig = DreamConfigManager::getConfig();
+
+  // Mettre à jour les champs
+  dreamConfig.default_color_r = (uint8_t)colorR;
+  dreamConfig.default_color_g = (uint8_t)colorG;
+  dreamConfig.default_color_b = (uint8_t)colorB;
+  dreamConfig.default_brightness = (uint8_t)brightness;
+
+  // Sauvegarder l'effet si présent
+  if (hasEffect && effectStr != nullptr) {
+    strncpy(dreamConfig.default_effect, effectStr, sizeof(dreamConfig.default_effect) - 1);
+    dreamConfig.default_effect[sizeof(dreamConfig.default_effect) - 1] = '\0';
+  } else {
+    // Pas d'effet = couleur unie
+    strcpy(dreamConfig.default_effect, "");
+  }
+
+  // Sauvegarder sur la SD
+  if (DreamConfigManager::saveConfig(dreamConfig)) {
+    Serial.print("[PUBNUB-ROUTE] set-default-config: Configuration sauvegardée - RGB(");
+    Serial.print(dreamConfig.default_color_r);
+    Serial.print(",");
+    Serial.print(dreamConfig.default_color_g);
+    Serial.print(",");
+    Serial.print(dreamConfig.default_color_b);
+    Serial.print("), Brightness: ");
+    Serial.print(dreamConfig.default_brightness);
+    Serial.print("%, Effect: ");
+    Serial.println(dreamConfig.default_effect);
+
+    // Déclencher automatiquement le test avec la nouvelle configuration (comme set-bedtime-config)
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Déclenchement automatique du test...");
+    JsonDocument testJson;
+    JsonObject testParams = testJson["params"].to<JsonObject>();
+    testParams["colorR"] = colorR;
+    testParams["colorG"] = colorG;
+    testParams["colorB"] = colorB;
+    testParams["brightness"] = brightness;
+    if (hasEffect && effectStr != nullptr && strlen(effectStr) > 0) {
+      testParams["effect"] = effectStr;
+    }
+    if (handleStartTestDefaultConfig(testJson.as<JsonObject>())) {
+      Serial.println("[PUBNUB-ROUTE] set-default-config: Test automatique démarré avec succès");
+    } else {
+      Serial.println("[PUBNUB-ROUTE] set-default-config: Erreur lors du démarrage du test automatique");
+    }
+
+    return true;
+  } else {
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Erreur lors de la sauvegarde");
+    return false;
+  }
+}
+
+bool ModelDreamPubNubRoutes::handleStartTestDefaultConfig(const JsonObject& json) {
+  // Format: { "action": "start-test-default-config", "params": { "colorR": 255, "colorG": 107, "colorB": 200, "brightness": 50, "effect": "rainbow_soft" } }
+  // Affiche la couleur/effet par défaut en temps réel sur l'ESP (comme start-test-bedtime)
+
+  Serial.println("[PUBNUB-ROUTE] start-test-default-config: Démarrage/mise à jour du test...");
+
+  bool wasAlreadyActive = testDefaultConfigActive;
+
+  int colorR = -1;
+  int colorG = -1;
+  int colorB = -1;
+  int brightness = -1;
+  const char* effectStr = nullptr;
+  bool hasEffect = false;
+
+  if (json["params"].is<JsonObject>()) {
+    JsonObject params = json["params"].as<JsonObject>();
+    if (params["colorR"].is<int>()) colorR = params["colorR"].as<int>();
+    else if (params["colorR"].is<double>()) colorR = (int)params["colorR"].as<double>();
+    if (params["colorG"].is<int>()) colorG = params["colorG"].as<int>();
+    else if (params["colorG"].is<double>()) colorG = (int)params["colorG"].as<double>();
+    if (params["colorB"].is<int>()) colorB = params["colorB"].as<int>();
+    else if (params["colorB"].is<double>()) colorB = (int)params["colorB"].as<double>();
+    if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
+    else if (params["brightness"].is<double>()) brightness = (int)params["brightness"].as<double>();
+    if (params["effect"].is<const char*>()) {
+      effectStr = params["effect"].as<const char*>();
+      hasEffect = true;
+    }
+  } else {
+    if (json["colorR"].is<int>()) colorR = json["colorR"].as<int>();
+    if (json["colorG"].is<int>()) colorG = json["colorG"].as<int>();
+    if (json["colorB"].is<int>()) colorB = json["colorB"].as<int>();
+    if (json["brightness"].is<int>()) brightness = json["brightness"].as<int>();
+    if (json["effect"].is<const char*>()) {
+      effectStr = json["effect"].as<const char*>();
+      hasEffect = true;
+    }
+  }
+
+  if (colorR < 0 || colorR > 255 || colorG < 0 || colorG > 255 || colorB < 0 || colorB > 255) {
+    Serial.println("[PUBNUB-ROUTE] start-test-default-config: Couleur invalide");
+    return false;
+  }
+  if (brightness < 0 || brightness > 100) {
+    Serial.println("[PUBNUB-ROUTE] start-test-default-config: Brightness invalide");
+    return false;
+  }
+
+  uint8_t brightnessValue = (brightness * 255 + 50) / 100;
+  LEDManager::wakeUp();
+
+  LEDEffect effect = LED_EFFECT_NONE;
+  if (hasEffect && effectStr != nullptr) {
+    if (strcmp(effectStr, "none") == 0 || strcmp(effectStr, "") == 0) {
+      effect = LED_EFFECT_NONE;
+    } else if (strcmp(effectStr, "pulse") == 0) {
+      effect = LED_EFFECT_PULSE;
+    } else if (strcmp(effectStr, "rainbow_soft") == 0 || strcmp(effectStr, "rainbow-soft") == 0) {
+      effect = LED_EFFECT_RAINBOW_SOFT;
+    } else if (strcmp(effectStr, "rotate") == 0) {
+      effect = LED_EFFECT_ROTATE;
+    } else if (strcmp(effectStr, "breathe") == 0) {
+      effect = LED_EFFECT_BREATHE;
+    } else if (strcmp(effectStr, "nightlight") == 0) {
+      effect = LED_EFFECT_NIGHTLIGHT;
+    } else {
+      effect = LED_EFFECT_NONE;
+    }
+  }
+
+  LEDManager::setEffect(effect);
+  LEDManager::setColor(colorR, colorG, colorB);
+  LEDManager::setBrightness(brightnessValue);
+
+  testDefaultConfigActive = true;
+  testDefaultConfigStartTime = millis();
+
+  Serial.print("[PUBNUB-ROUTE] start-test-default-config: Test démarré - RGB(");
+  Serial.print(colorR);
+  Serial.print(",");
+  Serial.print(colorG);
+  Serial.print(",");
+  Serial.print(colorB);
+  Serial.print("), Brightness: ");
+  Serial.print(brightness);
+  Serial.print("%");
+  if (hasEffect && effectStr != nullptr) {
+    Serial.print(", Effect: ");
+    Serial.print(effectStr);
+  }
+  Serial.println();
+
+  return true;
+}
+
+bool ModelDreamPubNubRoutes::handleStopTestDefaultConfig(const JsonObject& json) {
+  if (!testDefaultConfigActive) {
+    Serial.println("[PUBNUB-ROUTE] stop-test-default-config: Aucun test actif");
+    return false;
+  }
+  Serial.println("[PUBNUB-ROUTE] stop-test-default-config: Arrêt du test");
+  testDefaultConfigActive = false;
+  testDefaultConfigStartTime = 0;
+  LEDManager::clear();
+  return true;
 }
 
 bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
@@ -1294,6 +1651,60 @@ void ModelDreamPubNubRoutes::publishNighttimeAlertToggled(bool enabled) {
   }
 }
 
+void ModelDreamPubNubRoutes::publishDefaultColorState() {
+  if (!PubNubManager::isConnected()) return;
+
+  // Déterminer le deviceState basé sur l'état courant
+  const char* deviceState = "idle";
+  if (BedtimeManager::isBedtimeActive()) {
+    deviceState = BedtimeManager::isManuallyStarted() ? "manual" : "bedtime";
+  } else if (WakeupManager::isWakeupActive()) {
+    deviceState = "wakeup";
+  } else if (DreamTouchHandler::isDefaultColorDisplayed()) {
+    deviceState = "manual";
+  }
+
+  // Publier un message "info" simplifié avec le deviceState
+  char json[128];
+  snprintf(json, sizeof(json), "{\"type\":\"info\",\"deviceState\":\"%s\"}", deviceState);
+  if (PubNubManager::publish(json)) {
+    Serial.printf("[PUBNUB-ROUTE] default-color-state publie (deviceState=%s)\n", deviceState);
+  }
+}
+
+bool ModelDreamPubNubRoutes::handleSetTimezone(const JsonObject& json) {
+  // Format: { "action": "set-timezone", "timezoneId": "Europe/Paris" }
+
+  if (!json["timezoneId"].is<const char*>()) {
+    Serial.println("[PUBNUB-ROUTE] set-timezone: timezoneId manquant ou invalide");
+    return false;
+  }
+
+  const char* timezoneId = json["timezoneId"].as<const char*>();
+  if (!timezoneId || strlen(timezoneId) == 0) {
+    Serial.println("[PUBNUB-ROUTE] set-timezone: timezoneId vide");
+    return false;
+  }
+
+  Serial.printf("[PUBNUB-ROUTE] set-timezone: Réception de %s\n", timezoneId);
+
+  // Obtenir les offsets UTC pour cette timezone
+  long offsetSeconds = TimezoneManager::getOffsetSeconds(timezoneId);
+  int daylightOffsetSeconds = TimezoneManager::getDaylightOffsetSeconds(timezoneId);
+
+  Serial.printf("[PUBNUB-ROUTE] set-timezone: offsetSeconds=%ld, daylightOffsetSeconds=%d\n",
+    offsetSeconds, daylightOffsetSeconds);
+
+  // Synchroniser le RTC avec les nouveaux offsets
+  if (RTCManager::syncWithNTP(offsetSeconds, daylightOffsetSeconds)) {
+    Serial.printf("[PUBNUB-ROUTE] set-timezone: RTC synchronisé avec %s\n", timezoneId);
+    return true;
+  } else {
+    Serial.println("[PUBNUB-ROUTE] set-timezone: Erreur lors de la synchronisation du RTC");
+    return false;
+  }
+}
+
 void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("");
   Serial.println("========== Routes PubNub Dream ==========");
@@ -1315,5 +1726,9 @@ void ModelDreamPubNubRoutes::printRoutes() {
   Serial.println("{ \"action\": \"firmware-update\", \"version\": \"1.0.1\" }");
   Serial.println("{ \"action\": \"get-env\" }");
   Serial.println("{ \"action\": \"set-nighttime-alert\", \"params\": { \"enabled\": true|false } }");
+  Serial.println("{ \"action\": \"nighttime-alert-ack\" }  // J'arrive - rainbow 5 sec");
+  Serial.println("{ \"action\": \"set-default-config\", \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100, \"effect\": \"string|null\" }");
+  Serial.println("{ \"action\": \"start-test-default-config\", \"params\": { \"colorR\": 0-255, \"colorG\": 0-255, \"colorB\": 0-255, \"brightness\": 0-100, \"effect\": \"string|null\" } }");
+  Serial.println("{ \"action\": \"stop-test-default-config\" }");
   Serial.println("==========================================");
 }

@@ -138,7 +138,21 @@ void loop() {
     #endif
   }
   #endif
-  
+
+  // Synchroniser l'heure RTC régulièrement tant qu'elle n'est pas valide
+  // Retry toutes les secondes si le WiFi est connecté
+  #ifdef HAS_RTC
+  static unsigned long lastRtcSyncAttempt = 0;
+  if (WiFiManager::isConnected() && !RTCManager::isTimeValid()
+      && (millis() - lastRtcSyncAttempt > 1000)) {
+    lastRtcSyncAttempt = millis();
+    if (Serial) {
+      Serial.println("[MAIN] RTC - Tentative synchronisation NTP...");
+    }
+    RTCManager::autoSyncIfNeeded();
+  }
+  #endif
+
   // Gérer les initialisations lazy quand le WiFi se connecte
   #ifdef HAS_WIFI
   static bool lastWiFiState = false;

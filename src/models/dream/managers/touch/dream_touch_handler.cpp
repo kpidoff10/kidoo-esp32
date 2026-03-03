@@ -9,6 +9,7 @@
 #include "../wakeup/wakeup_manager.h"
 #include "../../config/dream_config.h"
 #include "../../api/dream_api_routes.h"
+#include "../../pubnub/model_pubnub_routes.h"
 #include "../../../../common/managers/touch/touch_manager.h"
 #include "../../../../common/managers/led/led_manager.h"
 #include "../../../../common/managers/sd/sd_manager.h"
@@ -25,10 +26,39 @@ static uint8_t getBrightnessFromConfig() {
   return LEDManager::brightnessPercentTo255(SDManager::getConfig().bedtime_brightness);
 }
 
+/** Parse l'effet par défaut depuis la config (string → LEDEffect enum) */
+static LEDEffect parseDefaultEffect(const char* effectStr) {
+  if (!effectStr || effectStr[0] == '\0') {
+    return LED_EFFECT_NONE;  // Empty string = solid color
+  }
+  if (strcmp(effectStr, "pulse_fast") == 0) {
+    return LED_EFFECT_PULSE_FAST;
+  }
+  if (strcmp(effectStr, "pulse") == 0) {
+    return LED_EFFECT_PULSE;
+  }
+  if (strcmp(effectStr, "rainbow_soft") == 0) {
+    return LED_EFFECT_RAINBOW_SOFT;
+  }
+  if (strcmp(effectStr, "rotate") == 0) {
+    return LED_EFFECT_ROTATE;
+  }
+  if (strcmp(effectStr, "nightlight") == 0) {
+    return LED_EFFECT_NIGHTLIGHT;
+  }
+  if (strcmp(effectStr, "breathe") == 0) {
+    return LED_EFFECT_BREATHE;
+  }
+  return LED_EFFECT_NONE;  // Unknown effect = solid color
+}
+
 static const unsigned long HOLD_ALERT_MS = 2000; // Appui 2s+ = envoi alerte (sans relâcher)
 static const unsigned long ALERT_FEEDBACK_MS = 3000; // Durée du feedback alerte avant reprise du mode
 
 unsigned long DreamTouchHandler::s_alertFeedbackUntil = 0;
+
+// Variable statique exposée au reste du système
+static bool s_defaultColorDisplayed = false;  // Track if default color is currently on
 
 void DreamTouchHandler::update() {
   if (!TouchManager::isInitialized()) return;
@@ -57,6 +87,18 @@ void DreamTouchHandler::update() {
       LEDManager::setEffect(LED_EFFECT_NONE);
       LEDManager::setColor(wc.colorR, wc.colorG, wc.colorB);
       LEDManager::setBrightness(brightnessValue);
+    } else if (s_defaultColorDisplayed) {
+      // Reprendre la couleur par défaut après l'alerte
+      DreamConfig dreamConfig = DreamConfigManager::getConfig();
+      LEDManager::preventSleep();
+      LEDManager::wakeUp();
+      // Nettoyer d'abord pour éviter les animations résiduelles du pulse
+      LEDManager::clear();
+      delay(50);
+      LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
+      LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
+      LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+      LEDManager::setEffect(defaultEffect);
     } else {
       LEDManager::startFadeOutAndClear();
     }
@@ -80,18 +122,13 @@ void DreamTouchHandler::update() {
       LEDManager::setBrightness(getBrightnessFromConfig());
       s_alertFeedbackUntil = now + ALERT_FEEDBACK_MS;
       bool ok = DreamApiRoutes::postNighttimeAlert();
-      // Nettoyer d'abord pour éviter les couleurs résiduelles
-      LEDManager::clear();
-      delay(50);
-      // Vert si succès, rouge si erreur
+      // Effet avant couleur pour pulse direct (évite flash noir)
+      LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
       if (ok) {
         LEDManager::setColor(COLOR_GREEN);  // Vert
       } else {
         LEDManager::setColor(COLOR_RED);  // Rouge
       }
-      delay(50);  // Laisser la couleur bien définie avant l'effet
-      LEDManager::setEffect(LED_EFFECT_PULSE_FAST);  // Pulse avec la bonne couleur
-      if (ok) delay(100);
       if (Serial) Serial.printf("[DREAM] Appui 2s: alerte %s\n", ok ? "envoyee" : "echec");
 #else
       if (Serial) Serial.println("[DREAM] Appui 2s: alerte (WiFi non dispo)");
@@ -117,12 +154,28 @@ void DreamTouchHandler::update() {
           BedtimeManager::startBedtimeManually();
           if (Serial) Serial.println("[DREAM] Tap: routine coucher lancee");
         } else {
-          LEDManager::preventSleep();
-          LEDManager::wakeUp();
-          LEDManager::setColor(255, 0, 0);  // Rouge
-          LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
-          noRoutineFeedbackUntil = now + 3000;
-          if (Serial) Serial.println("[DREAM] Tap: pas de routine pour aujourd'hui");
+          // Toggle default color display on/off
+          if (s_defaultColorDisplayed) {
+            // Default color is on → turn it off
+            LEDManager::clear();
+            s_defaultColorDisplayed = false;
+            ModelDreamPubNubRoutes::publishDefaultColorState();
+            if (Serial) Serial.println("[DREAM] Tap: couleur par defaut eteinte");
+          } else {
+            // Default color is off → turn it on
+            DreamConfig dreamConfig = DreamConfigManager::getConfig();
+            LEDManager::preventSleep();
+            LEDManager::wakeUp();
+            LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
+            LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
+            LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+            LEDManager::setEffect(defaultEffect);
+            s_defaultColorDisplayed = true;
+            ModelDreamPubNubRoutes::publishDefaultColorState();
+            if (Serial) Serial.printf("[DREAM] Tap: couleur par defaut affichee (RGB:%d,%d,%d, effet:%s)\n",
+                                       dreamConfig.default_color_r, dreamConfig.default_color_g,
+                                       dreamConfig.default_color_b, dreamConfig.default_effect);
+          }
         }
       }
     }
@@ -146,4 +199,8 @@ void DreamTouchHandler::triggerAlertFeedback(bool success) {
   delay(50);  // Laisser la couleur bien définie avant l'effet
   LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
   s_alertFeedbackUntil = millis() + ALERT_FEEDBACK_MS;
+}
+
+bool DreamTouchHandler::isDefaultColorDisplayed() {
+  return s_defaultColorDisplayed;
 }

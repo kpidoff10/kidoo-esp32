@@ -28,6 +28,12 @@ public:
    * Déclencher le feedback LED après envoi alerte (vert=ok, rouge=échec)
    */
   static void triggerAlertFeedback(bool success);
+
+  /**
+   * Vérifier si la couleur par défaut est actuellement affichée (tapotage sans routine)
+   * @return true si la couleur par défaut est active, false sinon
+   */
+  static bool isDefaultColorDisplayed();
 };
 
 #endif // DREAM_TOUCH_HANDLER_H

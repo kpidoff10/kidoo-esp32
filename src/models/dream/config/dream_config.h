@@ -2,6 +2,7 @@
 #define MODEL_DREAM_DREAM_CONFIG_H
 
 #include <Arduino.h>
+#include <cstdint>
 
 /**
  * Configuration spécifique au modèle Dream
@@ -14,6 +15,13 @@
 struct DreamConfig {
   /** Alerte réveil nocturne : notification si l'enfant touche la veilleuse pendant la nuit */
   bool nighttime_alert_enabled;
+
+  /** Configuration de couleur/effet par défaut (au tap, si aucune routine) */
+  uint8_t default_color_r;      // 0-255 (défaut: 255)
+  uint8_t default_color_g;      // 0-255 (défaut: 0)
+  uint8_t default_color_b;      // 0-255 (défaut: 0)
+  uint8_t default_brightness;   // 0-100 (défaut: 50)
+  char default_effect[32];      // "" = couleur unie, "pulse_fast", "rainbow_soft", etc. (défaut: "")
 };
 
 class DreamConfigManager {

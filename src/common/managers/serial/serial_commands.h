@@ -44,10 +44,15 @@ private:
   static void cmdBrightness(const String& args);
   static void cmdSleep(const String& args);
   static void cmdBLE();
+  static void cmdBLEStart();
+  static void cmdBLEStop();
   static void cmdWiFi();
   static void cmdWiFiSet(const String& args);
   static void cmdWiFiConnect();
   static void cmdWiFiDisconnect();
+  static void cmdWiFiScan();
+  static void cmdConfigRetry();
+  static void cmdDeviceKey();
   static void cmdPubNub();
   static void cmdPubNubConnect();
   static void cmdPubNubDisconnect();
@@ -56,6 +61,7 @@ private:
   static void cmdRTC();
   static void cmdRTCSet(const String& args);
   static void cmdRTCSync();
+  static void cmdApiPing();
   static void cmdPotentiometer();
   static void cmdMemoryDebug();
   static void cmdNFCRead(const String& args);
@@ -90,6 +96,16 @@ private:
   
   static bool initialized;
   static String inputBuffer;
+
+  // Historique des commandes
+  static constexpr uint8_t HISTORY_MAX = 10;
+  static String history[HISTORY_MAX];
+  static uint8_t historyCount;
+  static int8_t historyIndex;     // -1 = pas en navigation
+  static String tempBuffer;       // Sauvegarde du buffer avant navigation
+  static uint8_t escState;        // 0=normal, 1=reçu ESC, 2=reçu ESC[
+
+  static void replaceInputBuffer(const String& newContent);
 };
 
 #endif // SERIAL_COMMANDS_H

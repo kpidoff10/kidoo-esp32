@@ -25,7 +25,7 @@ bool TouchManager::init() {
   debouncedState = (digitalRead(TOUCH_PIN) == TOUCH_ACTIVE_LEVEL);
   lastRawState = debouncedState;
   lastChangeTime = millis();
-  debounceMs = 50;
+  debounceMs = 20;  // Débounce 20ms pour stabiliser la détection du maintien
   initialized = true;
 
   return true;

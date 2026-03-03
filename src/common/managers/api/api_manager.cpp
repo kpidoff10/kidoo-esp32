@@ -12,6 +12,7 @@
 
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 #if defined(HAS_SD) && defined(HAS_RTC)
 #include "common/managers/device_key/device_key_manager.h"
@@ -35,7 +36,6 @@ int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
   http.setTimeout(timeoutMs);
   int code = http.POST(body);
   http.end();
-  client.stop();
   return code;
 }
 
@@ -80,7 +80,6 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
       *responseBody = http.getString();
     }
     http.end();
-    client.stop();
     return code;
   } else {
     // RTC non disponible: faire requête SANS signature
@@ -103,7 +102,6 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
     *responseBody = http.getString();
   }
   http.end();
-  client.stop();
   return code;
 }
 

@@ -6,7 +6,15 @@
 #include <SD.h>
 #include <ArduinoJson.h>
 #include "common/managers/ble/ble_manager.h"
+#ifdef HAS_BLE
+#include "common/managers/ble_config/ble_config_manager.h"
+#endif
 #include "common/managers/wifi/wifi_manager.h"
+#ifdef HAS_WIFI
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "app_config.h"
+#endif
 #ifdef HAS_PUBNUB
 #include "common/managers/pubnub/pubnub_manager.h"
 #endif
@@ -29,7 +37,13 @@
 #ifdef HAS_ENV_SENSOR
 #include "common/managers/env_sensor/env_sensor_manager.h"
 #endif
+#ifdef HAS_SD
+#include "common/managers/device_key/device_key_manager.h"
+#endif
 #include "models/model_serial_commands.h"
+#ifdef KIDOO_MODEL_DREAM
+#include "models/dream/config_sync/model_config_sync_routes.h"
+#endif
 #ifdef HAS_PUBNUB
 #include "models/model_pubnub_routes.h"
 #endif
@@ -42,6 +56,13 @@
 bool SerialCommands::initialized = false;
 String SerialCommands::inputBuffer = "";
 
+// Historique des commandes
+String SerialCommands::history[SerialCommands::HISTORY_MAX];
+uint8_t SerialCommands::historyCount = 0;
+int8_t  SerialCommands::historyIndex = -1;
+String  SerialCommands::tempBuffer = "";
+uint8_t SerialCommands::escState = 0;
+
 void SerialCommands::init() {
   if (initialized) {
     return;
@@ -53,31 +74,89 @@ void SerialCommands::init() {
   // Initialiser seulement si Serial est disponible (USB connecté)
 }
 
+void SerialCommands::replaceInputBuffer(const String& newContent) {
+  // Effacer les caractères actuels avec backspace
+  for (int i = inputBuffer.length(); i > 0; i--) {
+    Serial.print("\b \b");
+  }
+  inputBuffer = newContent;
+  Serial.print(inputBuffer);
+}
+
 void SerialCommands::update() {
   // Vérifier que Serial est disponible avant d'essayer de lire
   if (!Serial || !Serial.available()) {
     return;
   }
-  
+
   // Lire les caractères disponibles
   while (Serial.available()) {
     char c = Serial.read();
-    
+
+    // Machine d'états pour les séquences ESC (touches flèches)
+    if (escState == 1) {
+      if (c == '[') { escState = 2; continue; }
+      escState = 0;
+    } else if (escState == 2) {
+      escState = 0;
+      if (c == 'A') {
+        // Flèche haut — commande précédente
+        if (historyCount > 0) {
+          if (historyIndex == -1) {
+            tempBuffer = inputBuffer;
+            historyIndex = (int8_t)(historyCount - 1);
+          } else if (historyIndex > 0) {
+            historyIndex--;
+          }
+          replaceInputBuffer(history[historyIndex]);
+        }
+        continue;
+      } else if (c == 'B') {
+        // Flèche bas — commande suivante
+        if (historyIndex != -1) {
+          if (historyIndex < (int8_t)(historyCount - 1)) {
+            historyIndex++;
+            replaceInputBuffer(history[historyIndex]);
+          } else {
+            historyIndex = -1;
+            replaceInputBuffer(tempBuffer);
+          }
+        }
+        continue;
+      }
+      continue;
+    }
+
+    // Détecter début de séquence ESC
+    if (c == 0x1B) { escState = 1; continue; }
+
     if (c == '\n' || c == '\r') {
       if (inputBuffer.length() > 0) {
         processCommand(inputBuffer);
         inputBuffer = "";
       }
+      historyIndex = -1;
+      tempBuffer = "";
     } else if (c == '\b' || c == 127) {
       // Backspace
       if (inputBuffer.length() > 0) {
         inputBuffer.remove(inputBuffer.length() - 1);
         Serial.print("\b \b");
       }
+      // Réinitialiser l'historique lors de l'édition
+      if (historyIndex != -1) {
+        historyIndex = -1;
+        tempBuffer = "";
+      }
     } else if (c >= 32 && c <= 126) {
       // Caractère imprimable
       inputBuffer += c;
       Serial.print(c);
+      // Réinitialiser l'historique lors de l'édition
+      if (historyIndex != -1) {
+        historyIndex = -1;
+        tempBuffer = "";
+      }
     }
   }
 }
@@ -86,9 +165,26 @@ void SerialCommands::processCommand(const String& command) {
   if (command.length() == 0) {
     return;
   }
-  
+
+  // Ajouter à l'historique (si différent de la dernière commande)
+  if (historyCount == 0 || history[historyCount - 1] != command) {
+    if (historyCount < HISTORY_MAX) {
+      history[historyCount++] = command;
+    } else {
+      // Décaler pour faire de la place (FIFO)
+      for (uint8_t i = 0; i < HISTORY_MAX - 1; i++) {
+        history[i] = history[i + 1];
+      }
+      history[HISTORY_MAX - 1] = command;
+    }
+  }
+
+  // Réinitialiser l'index d'historique
+  historyIndex = -1;
+  tempBuffer = "";
+
   Serial.println(); // Nouvelle ligne après la commande
-  
+
   // Séparer la commande et les arguments
   int spaceIndex = command.indexOf(' ');
   String cmd = command;
@@ -120,6 +216,10 @@ void SerialCommands::processCommand(const String& command) {
     cmdSleep(args);
   } else if (cmd == "ble" || cmd == "bluetooth" || cmd == "ble-status") {
     cmdBLE();
+  } else if (cmd == "ble-start" || cmd == "ble-pair" || cmd == "ble-appairer") {
+    cmdBLEStart();
+  } else if (cmd == "ble-stop") {
+    cmdBLEStop();
   } else if (cmd == "wifi" || cmd == "wifi-status") {
     cmdWiFi();
   } else if (cmd == "wifi-set") {
@@ -128,6 +228,12 @@ void SerialCommands::processCommand(const String& command) {
     cmdWiFiConnect();
   } else if (cmd == "wifi-disconnect") {
     cmdWiFiDisconnect();
+  } else if (cmd == "wifi-scan" || cmd == "scan-wifi") {
+    cmdWiFiScan();
+  } else if (cmd == "config-retry" || cmd == "retry-config") {
+    cmdConfigRetry();
+  } else if (cmd == "device-key" || cmd == "public-key" || cmd == "cle-device") {
+    cmdDeviceKey();
   #ifdef HAS_PUBNUB
   } else if (cmd == "pubnub" || cmd == "pubnub-status") {
     cmdPubNub();
@@ -146,6 +252,8 @@ void SerialCommands::processCommand(const String& command) {
     cmdRTCSet(args);
   } else if (cmd == "rtc-sync" || cmd == "ntp" || cmd == "ntp-sync") {
     cmdRTCSync();
+  } else if (cmd == "api-ping" || cmd == "ping-api" || cmd == "ping-server") {
+    cmdApiPing();
   } else if (cmd == "pot" || cmd == "potentiometer" || cmd == "volume") {
     cmdPotentiometer();
   } else if (cmd == "memdebug" || cmd == "mem-debug" || cmd == "raminfo") {
@@ -246,6 +354,9 @@ void SerialCommands::printHelp() {
   #ifdef HAS_BLE
   if (HAS_BLE) {
     Serial.println("  ble, bluetooth   - Afficher l'etat de connexion BLE");
+    Serial.println("  ble-start        - Lancer l'appareillage BLE (visible pour l'app mobile)");
+    Serial.println("  ble-stop         - Arreter le mode appareillage BLE");
+    Serial.println("  (ble-pair / ble-appairer = alias de ble-start)");
   }
   #endif
   
@@ -255,6 +366,8 @@ void SerialCommands::printHelp() {
     Serial.println("  wifi-set <ssid> [password] - Configurer le WiFi");
     Serial.println("  wifi-connect     - Se connecter au WiFi configure");
     Serial.println("  wifi-disconnect  - Se deconnecter du WiFi");
+    Serial.println("  wifi-scan        - Scanner les reseaux WiFi disponibles");
+    Serial.println("  api-ping         - Tester la connectivite au serveur API");
     Serial.println("  ota <version>    - Mise a jour OTA vers la version (ex: ota 1.0.26)");
   }
   #endif
@@ -313,6 +426,10 @@ void SerialCommands::printHelp() {
   Serial.println("  config-list, config - Afficher toutes les cles de config.json");
   Serial.println("  config-get <key>   - Lire une cle de config.json");
   Serial.println("  config-set <key> <value> - Definir une cle dans config.json");
+  Serial.println("  config-retry      - Tester retry sync config (avec signature RTC, Dream)");
+  #ifdef HAS_SD
+  Serial.println("  device-key        - Afficher la cle publique Ed25519 (auth device)");
+  #endif
   
   #ifdef HAS_AUDIO
   if (HAS_AUDIO) {
@@ -532,6 +649,31 @@ void SerialCommands::cmdBLE() {
 #endif
 }
 
+void SerialCommands::cmdBLEStart() {
+#ifndef HAS_BLE
+  Serial.println("[BLE] BLE non disponible sur ce modele");
+  return;
+#else
+  Serial.println("[BLE] Lancement de l'appareillage BLE...");
+  if (BLEConfigManager::enableBLE(0, true)) {
+    Serial.println("[BLE] BLE active. L'appareil est visible pour l'appairage (duree par defaut: 15 min).");
+  } else {
+    Serial.println("[BLE] Echec activation BLE");
+  }
+#endif
+}
+
+void SerialCommands::cmdBLEStop() {
+#ifndef HAS_BLE
+  Serial.println("[BLE] BLE non disponible sur ce modele");
+  return;
+#else
+  Serial.println("[BLE] Arret du mode appareillage BLE.");
+  BLEConfigManager::disableBLE();
+  Serial.println("[BLE] BLE desactive.");
+#endif
+}
+
 void SerialCommands::cmdWiFi() {
   WiFiManager::printInfo();
 }
@@ -647,6 +789,76 @@ void SerialCommands::cmdWiFiDisconnect() {
   
   WiFiManager::disconnect();
   Serial.println("[WIFI] Deconnecte");
+#endif
+}
+
+void SerialCommands::cmdWiFiScan() {
+#ifdef HAS_WIFI
+  if (!HAS_WIFI) {
+    Serial.println("[WIFI] WiFi non disponible sur ce modele");
+    return;
+  }
+  Serial.println("");
+  Serial.println("========================================");
+  Serial.println("          SCAN RESEAUX WIFI");
+  Serial.println("========================================");
+
+  int n = WiFi.scanNetworks();
+  Serial.printf("Nombre de reseaux detectes: %d\n\n", n);
+
+  if (n > 0) {
+    Serial.println("Reseaux disponibles:");
+    for (int i = 0; i < n && i < 20; i++) {
+      Serial.print("  ");
+      Serial.print(i + 1);
+      Serial.print(". ");
+      Serial.print(WiFi.SSID(i));
+      Serial.print(" (");
+      Serial.print(WiFi.RSSI(i));
+      Serial.println(" dBm)");
+    }
+    if (n > 20) Serial.printf("  ... et %d autres reseaux.\n", n - 20);
+  } else {
+    Serial.println("Aucun reseau WiFi detecte");
+  }
+
+  Serial.println("========================================");
+  Serial.println("");
+#else
+  Serial.println("[WIFI] WiFi non disponible sur ce modele");
+#endif
+}
+
+void SerialCommands::cmdConfigRetry() {
+#ifdef HAS_WIFI
+  if (!HAS_WIFI) {
+    Serial.println("[CONFIG] WiFi non disponible");
+    return;
+  }
+#ifdef KIDOO_MODEL_DREAM
+  Serial.println("[CONFIG] Retry config-sync avec signature RTC...");
+  ModelDreamConfigSyncRoutes::retryFetchConfig();
+  Serial.println("[CONFIG] Retry lance");
+#else
+  Serial.println("[CONFIG] config-retry non disponible sur ce modele");
+#endif
+#else
+  Serial.println("[CONFIG] WiFi non disponible");
+#endif
+}
+
+void SerialCommands::cmdDeviceKey() {
+#ifndef HAS_SD
+  Serial.println("[DEVICE] Carte SD non disponible sur ce modele");
+  return;
+#else
+  char pubKey[48] = {0};
+  if (DeviceKeyManager::getOrCreatePublicKeyBase64(pubKey, sizeof(pubKey))) {
+    Serial.println("[DEVICE] Cle publique Ed25519 (a mettre dans la DB si signature invalide):");
+    Serial.println(pubKey);
+  } else {
+    Serial.println("[DEVICE] Cle device non disponible (SD?)");
+  }
 #endif
 }
 
@@ -831,6 +1043,79 @@ void SerialCommands::cmdRTCSync() {
   } else {
     Serial.println("[RTC] Echec synchronisation NTP");
   }
+#endif
+}
+
+void SerialCommands::cmdApiPing() {
+#ifndef HAS_WIFI
+  Serial.println("[API-PING] WiFi non disponible sur ce modele");
+  return;
+#else
+  if (!HAS_WIFI) {
+    Serial.println("[API-PING] WiFi non disponible");
+    return;
+  }
+
+  if (!WiFiManager::isConnected()) {
+    Serial.println("[API-PING] WiFi non connecte");
+    return;
+  }
+
+  Serial.println("[API-PING] Test de connectivite au serveur API...");
+  Serial.print("[API-PING] URL cible: ");
+  Serial.println(API_BASE_URL);
+
+  // Construire l'URL de test (un endpoint simple)
+  char url[256];
+  snprintf(url, sizeof(url), "%s/api/health", API_BASE_URL);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, url);
+  http.setConnectTimeout(5000);
+  http.setTimeout(8000);
+
+  unsigned long startTime = millis();
+  int httpCode = http.GET();
+  unsigned long elapsed = millis() - startTime;
+
+  Serial.print("[API-PING] Reponse HTTP: ");
+  Serial.print(httpCode);
+  Serial.print(" (");
+  Serial.print(elapsed);
+  Serial.println(" ms)");
+
+  if (httpCode > 0) {
+    if (httpCode == 200) {
+      Serial.println("[API-PING] ✓ Serveur accessible et repondant correctement");
+    } else if (httpCode >= 400 && httpCode < 500) {
+      Serial.print("[API-PING] ⚠ Client error (");
+      Serial.print(httpCode);
+      Serial.println(") - Verifiez l'URL ou l'authentification");
+    } else if (httpCode >= 500) {
+      Serial.print("[API-PING] ⚠ Serveur error (");
+      Serial.print(httpCode);
+      Serial.println(") - Le serveur a une erreur");
+    } else {
+      Serial.print("[API-PING] ✓ Reponse: ");
+      Serial.println(httpCode);
+    }
+  } else if (httpCode == -1) {
+    Serial.println("[API-PING] ✗ Erreur de connexion: Serveur inaccessible ou timeout");
+    Serial.println("[API-PING] Verifiez:");
+    Serial.println("  - L'adresse IP/hostname est correcte");
+    Serial.println("  - Le port est accessible");
+    Serial.println("  - Le firewall ne bloque pas la connexion");
+    Serial.println("  - Le cable reseau/WiFi est connecte");
+  } else {
+    Serial.print("[API-PING] ✗ Erreur HTTP: ");
+    Serial.println(httpCode);
+  }
+
+  http.end();
+  client.stop();
+  Serial.println("");
 #endif
 }
 

@@ -29,6 +29,13 @@ private:
    * @return true si la configuration a été récupérée et sauvegardée avec succès, false sinon
    */
   static bool fetchConfigFromAPI();
+
+  /**
+   * Récupérer et appliquer le fuseau horaire depuis l'API serveur
+   * Synchronise le RTC avec le fuseau horaire de l'utilisateur
+   * @return true si la synchronisation a réussi, false sinon
+   */
+  static bool fetchAndApplyTimezoneFromAPI();
 };
 
 #endif // MODEL_DREAM_CONFIG_SYNC_ROUTES_H

@@ -2,6 +2,8 @@
 #include "common/managers/ble/ble_manager.h"
 #include "common/managers/ble_config/ble_config_manager.h"
 #include "models/model_config.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 bool InitManager::initBLE() {
   systemStatus.ble = INIT_IN_PROGRESS;
@@ -15,11 +17,10 @@ bool InitManager::initBLE() {
     return true;  // Pas une erreur, juste désactivé
   }
 
-  // IMPORTANT: Initialisé en lazy (lazy initialization)
-  // BLEManager (structures BLE, tasks) ne sera créé que lorsqu'il est vraiment nécessaire
-  // BLEConfigManager (bouton) s'initialise au boot pour détecter les appuis
-  //
-  // Cela économise ~60KB de RAM au démarrage, tout en gardant le bouton détectable dès le boot
+  // IMPORTANT: Lazy initialization pattern
+  // HAS_BLE = true permet la compilation correcte
+  // Mais on NE PAS initialise BLEManager au boot (problème de stabilité)
+  // BLEManager ne s'initialise que sur appui bouton via BLEConfigManager::enableBLE()
   //
   // Activation BLE seulement sur :
   // - Appui long sur le bouton BLE (3 secondes)

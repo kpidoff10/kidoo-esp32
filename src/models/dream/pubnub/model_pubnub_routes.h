@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include "common/managers/led/led_manager.h"
 
 /**
  * Routes PubNub spécifiques au modèle Kidoo Dream
@@ -24,7 +25,11 @@
  * - set-wakeup-config: Sauvegarder la configuration de l'heure de réveil sur la SD
  * - firmware-update: Lancer une mise à jour OTA (version cible)
  * - get-env: Récupérer température, humidité (et pression) du capteur AHT20+BMP280
- * 
+ * - set-default-config: Configurer la couleur/effet/brightness par défaut (au tap, si aucune routine)
+ * - start-test-default-config: Démarrer le test de la couleur par défaut (affichage en temps réel)
+ * - stop-test-default-config: Arrêter le test
+ * - set-timezone: Définir le fuseau horaire IANA et synchroniser l'RTC
+ *
  * Format des messages:
  * { "action": "get-info" }
  * { "action": "brightness", "params": { "value": 50 } }
@@ -41,6 +46,10 @@
  * { "action": "set-wakeup-config", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50, "weekdaySchedule": {...} } }
  * { "action": "firmware-update", "version": "1.0.1" }
  * { "action": "get-env" }
+ * { "action": "set-default-config", "colorR": 255, "colorG": 107, "colorB": 200, "brightness": 50, "effect": "rainbow_soft" }
+ * { "action": "start-test-default-config", "params": { "colorR": 255, "colorG": 107, "colorB": 200, "brightness": 50, "effect": "rainbow_soft" } }
+ * { "action": "stop-test-default-config" }
+ * { "action": "set-timezone", "timezoneId": "Europe/Paris" }
  */
 
 class ModelDreamPubNubRoutes {
@@ -73,6 +82,16 @@ public:
   static void checkTestWakeupTimeout();
 
   /**
+   * Vérifier le timeout du test de couleur par défaut (à appeler périodiquement)
+   */
+  static void checkTestDefaultConfigTimeout();
+
+  /**
+   * Vérifier le timeout du "J'arrive" (nighttime-alert-ack) - rotate rainbow 5 secondes
+   */
+  static void checkNighttimeAlertAckTimeout();
+
+  /**
    * Publier env via PubNub si température ou humidité a changé (à appeler périodiquement dans loop)
    */
   static void updateEnvPublisher();
@@ -89,7 +108,13 @@ public:
    * Publier le changement d'état de l'alerte nocturne (activée/désactivée via l'app).
    */
   static void publishNighttimeAlertToggled(bool enabled);
-  
+
+  /**
+   * Publier le changement d'état de la couleur par défaut (tapotage sans routine).
+   * À appeler depuis DreamTouchHandler quand on allume/éteint la couleur par défaut.
+   */
+  static void publishDefaultColorState();
+
   /**
    * Vérifier si le test de wakeup est actif
    */
@@ -114,6 +139,11 @@ private:
   static bool handleFirmwareUpdate(const JsonObject& json);
   static bool handleGetEnv(const JsonObject& json);
   static bool handleSetNighttimeAlert(const JsonObject& json);
+  static bool handleNighttimeAlertAck(const JsonObject& json);
+  static bool handleSetDefaultConfig(const JsonObject& json);
+  static bool handleStartTestDefaultConfig(const JsonObject& json);
+  static bool handleStopTestDefaultConfig(const JsonObject& json);
+  static bool handleSetTimezone(const JsonObject& json);
 };
 
 #endif // MODEL_DREAM_PUBNUB_ROUTES_H
