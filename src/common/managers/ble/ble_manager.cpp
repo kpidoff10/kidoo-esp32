@@ -128,6 +128,11 @@ char* BLEManager::deviceName = nullptr;
 const char* BLEManager::deviceNameForReinit = nullptr;
 
 bool BLEManager::init(const char* deviceName) {
+#ifndef HAS_BLE
+  // BLE non disponible sur ce modèle
+  LogManager::info("[BLE] BLE non disponible sur ce modèle");
+  return false;
+#else
   // Conserver le pointeur pour ré-init après shutdown (ne pas libérer, ex: DEFAULT_DEVICE_NAME)
   deviceNameForReinit = deviceName;
 
@@ -144,26 +149,21 @@ bool BLEManager::init(const char* deviceName) {
         bleCommandTaskHandle = nullptr;
       }
     }
-    
+
     // Supprimer la queue si elle existe
     if (bleCommandQueue != nullptr) {
       vQueueDelete(bleCommandQueue);
       bleCommandQueue = nullptr;
     }
   }
-  
+
   initialized = true;
   available = false;
-  
-#ifndef HAS_BLE
-  // BLE non disponible sur ce modèle
-  LogManager::info("[BLE] BLE non disponible sur ce modèle");
-  return false;
-#else
+
   // BLE disponible, initialiser
   LogManager::info("[BLE] Initialisation du BLE...");
   LogManager::info("[BLE] Nom du dispositif: %s", deviceName);
-  
+
   // Allouer et copier le nom du device
   if (BLEManager::deviceName != nullptr) {
     free(BLEManager::deviceName);

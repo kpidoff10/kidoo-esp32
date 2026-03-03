@@ -94,11 +94,13 @@ void BLEConfigManager::update() {
         LogManager::info("[BLE-CONFIG] Client deconnecte - Feedback lumineux reactive");
       }
       #endif
-      
+
       // Mettre à jour le feedback visuel (seulement si pas connecté)
+      #ifdef HAS_BLE
       if (!connected) {
         updateFeedback();
       }
+      #endif
     }
   }
 }
