@@ -10,6 +10,7 @@
 #include "../../config/dream_config.h"
 #include "../../api/dream_api_routes.h"
 #include "../../pubnub/model_pubnub_routes.h"
+#include "../../utils/led_effect_parser.h"
 #include "../../../../common/managers/touch/touch_manager.h"
 #include "../../../../common/managers/led/led_manager.h"
 #include "../../../../common/managers/sd/sd_manager.h"
@@ -28,28 +29,8 @@ static uint8_t getBrightnessFromConfig() {
 
 /** Parse l'effet par défaut depuis la config (string → LEDEffect enum) */
 static LEDEffect parseDefaultEffect(const char* effectStr) {
-  if (!effectStr || effectStr[0] == '\0') {
-    return LED_EFFECT_NONE;  // Empty string = solid color
-  }
-  if (strcmp(effectStr, "pulse_fast") == 0) {
-    return LED_EFFECT_PULSE_FAST;
-  }
-  if (strcmp(effectStr, "pulse") == 0) {
-    return LED_EFFECT_PULSE;
-  }
-  if (strcmp(effectStr, "rainbow_soft") == 0) {
-    return LED_EFFECT_RAINBOW_SOFT;
-  }
-  if (strcmp(effectStr, "rotate") == 0) {
-    return LED_EFFECT_ROTATE;
-  }
-  if (strcmp(effectStr, "nightlight") == 0) {
-    return LED_EFFECT_NIGHTLIGHT;
-  }
-  if (strcmp(effectStr, "breathe") == 0) {
-    return LED_EFFECT_BREATHE;
-  }
-  return LED_EFFECT_NONE;  // Unknown effect = solid color
+  // Utiliser LEDEffectParser pour la conversion uniforme
+  return LEDEffectParser::parse(effectStr);
 }
 
 static const unsigned long HOLD_ALERT_MS = 2000; // Appui 2s+ = envoi alerte (sans relâcher)

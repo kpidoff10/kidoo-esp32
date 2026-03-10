@@ -3,6 +3,7 @@
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
+#include "../../utils/schedule_parser.h"
 #include <ArduinoJson.h>
 #include "../bedtime/bedtime_manager.h"
 
@@ -201,41 +202,9 @@ void WakeupManager::checkNow() {
 }
 
 void WakeupManager::parseWeekdaySchedule(const char* jsonStr) {
-  if (!jsonStr || strlen(jsonStr) == 0) {
-    return;
-  }
-  
-  // Parser le JSON
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<512> doc;
-  #pragma GCC diagnostic pop
-  
-  DeserializationError error = deserializeJson(doc, jsonStr);
-  if (error) {
-    Serial.print("[WAKEUP] ERREUR parsing weekdaySchedule: ");
-    Serial.println(error.c_str());
-    return;
-  }
-  
-  // Parser chaque jour (accepter hour/minute en int, long ou double pour compatibilité JSON)
-  for (int i = 0; i < 7; i++) {
-    if (doc[WEEKDAY_NAMES[i]].is<JsonObject>()) {
-      JsonObject daySchedule = doc[WEEKDAY_NAMES[i]].as<JsonObject>();
-      int h = -1, m = -1;
-      if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
-      else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
-      if (daySchedule["minute"].is<int>()) m = daySchedule["minute"].as<int>();
-      else if (daySchedule["minute"].is<double>()) m = (int)daySchedule["minute"].as<double>();
-      if (h >= 0 && h <= 23) config.schedules[i].hour = (uint8_t)h;
-      if (m >= 0 && m <= 59) config.schedules[i].minute = (uint8_t)m;
-      if (daySchedule["activated"].is<bool>()) {
-        config.schedules[i].activated = daySchedule["activated"].as<bool>();
-      } else {
-        config.schedules[i].activated = (h >= 0 && m >= 0);
-      }
-    }
-  }
+  // Utiliser ScheduleParser pour parser le JSON weekdaySchedule
+  // validateFully=false pour wakeup (moins strict que bedtime)
+  ScheduleParser::parseWeekdaySchedule(jsonStr, config.schedules, false, "[WAKEUP]");
 }
 
 uint8_t WakeupManager::weekdayToIndex(uint8_t dayOfWeek) {

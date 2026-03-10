@@ -3,6 +3,8 @@
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
+#include "../../utils/schedule_parser.h"
+#include "../../utils/led_effect_parser.h"
 #include <ArduinoJson.h>
 
 // Variables statiques
@@ -157,39 +159,9 @@ void BedtimeManager::checkNow() {
 }
 
 void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
-  if (!jsonStr || strlen(jsonStr) == 0) {
-    return;
-  }
-  
-  // Parser le JSON
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<512> doc;
-  #pragma GCC diagnostic pop
-  
-  DeserializationError error = deserializeJson(doc, jsonStr);
-  if (error) {
-    return;
-  }
-  
-  // Parser chaque jour (accepter hour/minute en int ou double pour compatibilité JSON)
-  for (int i = 0; i < 7; i++) {
-    if (doc[WEEKDAY_NAMES[i]].is<JsonObject>()) {
-      JsonObject daySchedule = doc[WEEKDAY_NAMES[i]].as<JsonObject>();
-      int h = -1, m = -1;
-      if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
-      else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
-      if (daySchedule["minute"].is<int>()) m = daySchedule["minute"].as<int>();
-      else if (daySchedule["minute"].is<double>()) m = (int)daySchedule["minute"].as<double>();
-      if (h >= 0 && h <= 23) config.schedules[i].hour = (uint8_t)h;
-      if (m >= 0 && m <= 59) config.schedules[i].minute = (uint8_t)m;
-      if (daySchedule["activated"].is<bool>()) {
-        config.schedules[i].activated = daySchedule["activated"].as<bool>();
-      } else {
-        config.schedules[i].activated = (h >= 0 && h <= 23 && m >= 0 && m <= 59);
-      }
-    }
-  }
+  // Utiliser ScheduleParser pour parser le JSON weekdaySchedule
+  // validateFully=true pour exiger que hour ET minute soient valides (bedtime est strict)
+  ScheduleParser::parseWeekdaySchedule(jsonStr, config.schedules, true, "[BEDTIME]");
 }
 
 uint8_t BedtimeManager::weekdayToIndex(uint8_t dayOfWeek) {
@@ -552,30 +524,9 @@ void BedtimeManager::startBedtime() {
   // Réveiller les LEDs
   LEDManager::wakeUp();
   
-  // Déterminer l'effet à utiliser
-  LEDEffect effect = LED_EFFECT_NONE;
-  bool useEffect = false;
-  
-  // Vérifier si un effet est configuré (et n'est pas "none")
-  if (strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0) {
-    useEffect = true;
-    
-    // Convertir le nom de l'effet en enum
-    if (strcmp(config.effect, "pulse") == 0) {
-      effect = LED_EFFECT_PULSE;
-    } else if (strcmp(config.effect, "rainbow-soft") == 0) {
-      effect = LED_EFFECT_RAINBOW_SOFT;
-    } else if (strcmp(config.effect, "breathe") == 0) {
-      effect = LED_EFFECT_BREATHE;
-    } else if (strcmp(config.effect, "nightlight") == 0) {
-      effect = LED_EFFECT_NIGHTLIGHT;
-    } else {
-      // Effet inconnu, utiliser couleur fixe
-      useEffect = false;
-      effect = LED_EFFECT_NONE;
-      Serial.printf("[BEDTIME] Effet inconnu: %s, utilisation de la couleur fixe\n", config.effect);
-    }
-  }
+  // Déterminer l'effet à utiliser (via LEDEffectParser)
+  LEDEffect effect = LEDEffectParser::parse(config.effect);
+  bool useEffect = (effect != LED_EFFECT_NONE && strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0);
 
   if (useEffect) {
     if (!LEDManager::setEffect(effect)) {
@@ -728,23 +679,8 @@ void BedtimeManager::restoreDisplayFromConfig() {
   LEDManager::wakeUp();
 
   uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
-  LEDEffect effect = LED_EFFECT_NONE;
-  bool useEffect = false;
-
-  if (strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0) {
-    useEffect = true;
-    if (strcmp(config.effect, "pulse") == 0) {
-      effect = LED_EFFECT_PULSE;
-    } else if (strcmp(config.effect, "rainbow-soft") == 0) {
-      effect = LED_EFFECT_RAINBOW_SOFT;
-    } else if (strcmp(config.effect, "breathe") == 0) {
-      effect = LED_EFFECT_BREATHE;
-    } else if (strcmp(config.effect, "nightlight") == 0) {
-      effect = LED_EFFECT_NIGHTLIGHT;
-    } else {
-      useEffect = false;
-    }
-  }
+  LEDEffect effect = LEDEffectParser::parse(config.effect);
+  bool useEffect = (effect != LED_EFFECT_NONE && strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0);
 
   if (useEffect) {
     LEDManager::setEffect(effect);

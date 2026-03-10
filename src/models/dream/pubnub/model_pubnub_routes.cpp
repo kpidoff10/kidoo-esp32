@@ -15,6 +15,7 @@
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
 #include "models/dream/managers/touch/dream_touch_handler.h"
+#include "models/dream/utils/led_effect_parser.h"
 #include "models/model_config.h"
 #ifdef HAS_ENV_SENSOR
 #include "common/managers/env_sensor/env_sensor_manager.h"
@@ -31,28 +32,8 @@
 
 /** Parse l'effet par défaut depuis la config (string → LEDEffect enum) */
 static LEDEffect parseDefaultEffect(const char* effectStr) {
-  if (!effectStr || effectStr[0] == '\0') {
-    return LED_EFFECT_NONE;  // Empty string = solid color
-  }
-  if (strcmp(effectStr, "pulse_fast") == 0) {
-    return LED_EFFECT_PULSE_FAST;
-  }
-  if (strcmp(effectStr, "pulse") == 0) {
-    return LED_EFFECT_PULSE;
-  }
-  if (strcmp(effectStr, "rainbow_soft") == 0) {
-    return LED_EFFECT_RAINBOW_SOFT;
-  }
-  if (strcmp(effectStr, "rotate") == 0) {
-    return LED_EFFECT_ROTATE;
-  }
-  if (strcmp(effectStr, "nightlight") == 0) {
-    return LED_EFFECT_NIGHTLIGHT;
-  }
-  if (strcmp(effectStr, "breathe") == 0) {
-    return LED_EFFECT_BREATHE;
-  }
-  return LED_EFFECT_NONE;  // Unknown effect = solid color
+  // Utiliser LEDEffectParser pour la conversion uniforme
+  return LEDEffectParser::parse(effectStr);
 }
 
 // Déclaration anticipée pour handleGetInfo (définition complète plus bas)
@@ -415,20 +396,15 @@ bool ModelDreamPubNubRoutes::handleLed(const JsonObject& json) {
   // Traiter l'effet
   if (json["effect"].is<const char*>()) {
     const char* effectStr = json["effect"].as<const char*>();
-    LEDEffect effect = LED_EFFECT_NONE;
-    
-    if (strcmp(effectStr, "none") == 0 || strcmp(effectStr, "solid") == 0) effect = LED_EFFECT_NONE;
-    else if (strcmp(effectStr, "pulse") == 0) effect = LED_EFFECT_PULSE;
-    else if (strcmp(effectStr, "rotate") == 0) effect = LED_EFFECT_ROTATE;
-    else if (strcmp(effectStr, "rainbow") == 0) effect = LED_EFFECT_RAINBOW;
-    else if (strcmp(effectStr, "glossy") == 0) effect = LED_EFFECT_GLOSSY;
-    else if (strcmp(effectStr, "off") == 0) {
+
+    if (strcmp(effectStr, "off") == 0) {
       // Éteindre les LEDs
       LEDManager::clear();
       Serial.println("[PUBNUB-ROUTE] LEDs eteintes");
       return true;
     }
-    
+
+    LEDEffect effect = LEDEffectParser::parse(effectStr);
     LEDManager::setEffect(effect);
     Serial.print("[PUBNUB-ROUTE] Effet: ");
     Serial.println(effectStr);
@@ -540,26 +516,7 @@ bool ModelDreamPubNubRoutes::handleStartTestBedtime(const JsonObject& json) {
   // Convertir l'effet string en enum LEDEffect si fourni
   LEDEffect effect = LED_EFFECT_NONE;
   if (hasEffect && effectStr != nullptr) {
-    if (strcmp(effectStr, "none") == 0 || strcmp(effectStr, "") == 0) {
-      effect = LED_EFFECT_NONE;
-    } else if (strcmp(effectStr, "pulse") == 0) {
-      effect = LED_EFFECT_PULSE;
-    } else if (strcmp(effectStr, "rotate") == 0) {
-      effect = LED_EFFECT_ROTATE;
-    } else if (strcmp(effectStr, "rainbow") == 0) {
-      effect = LED_EFFECT_RAINBOW;
-    } else if (strcmp(effectStr, "rainbow-soft") == 0) {
-      effect = LED_EFFECT_RAINBOW_SOFT;
-    } else if (strcmp(effectStr, "glossy") == 0) {
-      effect = LED_EFFECT_GLOSSY;
-    } else if (strcmp(effectStr, "breathe") == 0) {
-      effect = LED_EFFECT_BREATHE;
-    } else if (strcmp(effectStr, "nightlight") == 0) {
-      effect = LED_EFFECT_NIGHTLIGHT;
-    } else {
-      Serial.printf("[PUBNUB-ROUTE] start-test-bedtime: Effet inconnu '%s', utilisation de NONE\n", effectStr);
-      effect = LED_EFFECT_NONE;
-    }
+    effect = LEDEffectParser::parse(effectStr);
   }
   
   // Appliquer les paramètres du test
@@ -1013,21 +970,7 @@ bool ModelDreamPubNubRoutes::handleStartTestDefaultConfig(const JsonObject& json
 
   LEDEffect effect = LED_EFFECT_NONE;
   if (hasEffect && effectStr != nullptr) {
-    if (strcmp(effectStr, "none") == 0 || strcmp(effectStr, "") == 0) {
-      effect = LED_EFFECT_NONE;
-    } else if (strcmp(effectStr, "pulse") == 0) {
-      effect = LED_EFFECT_PULSE;
-    } else if (strcmp(effectStr, "rainbow_soft") == 0 || strcmp(effectStr, "rainbow-soft") == 0) {
-      effect = LED_EFFECT_RAINBOW_SOFT;
-    } else if (strcmp(effectStr, "rotate") == 0) {
-      effect = LED_EFFECT_ROTATE;
-    } else if (strcmp(effectStr, "breathe") == 0) {
-      effect = LED_EFFECT_BREATHE;
-    } else if (strcmp(effectStr, "nightlight") == 0) {
-      effect = LED_EFFECT_NIGHTLIGHT;
-    } else {
-      effect = LED_EFFECT_NONE;
-    }
+    effect = LEDEffectParser::parse(effectStr);
   }
 
   LEDManager::setEffect(effect);
