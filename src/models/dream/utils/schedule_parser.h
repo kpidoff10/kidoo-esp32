@@ -1,13 +1,15 @@
 #ifndef SCHEDULE_PARSER_H
 #define SCHEDULE_PARSER_H
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
-#include "models/dream/config/dream_config.h"
 #include "models/dream/managers/dream_schedules.h"
 
 /**
  * Parser pour les schedules de bedtime/wakeup au format JSON weekday
  * Consolide la logique de parsing présente dans BedtimeManager et WakeupManager
+ *
+ * Template pour supporter BedtimeSchedule et WakeupSchedule
  */
 class ScheduleParser {
 public:
@@ -22,13 +24,14 @@ public:
    * }
    *
    * @param jsonStr String JSON à parser
-   * @param schedules Tableau des 7 schedules à remplir
+   * @param schedules Tableau des 7 schedules à remplir (template support pour BedtimeSchedule, WakeupSchedule)
    * @param validateFully Si true, exige que hour et minute soient valides pour activer
    * @param debugPrefix Préfixe pour les messages de debug (ex: "[BEDTIME]")
    */
+  template<typename ScheduleType>
   static void parseWeekdaySchedule(
     const char* jsonStr,
-    DreamSchedule* schedules,
+    ScheduleType* schedules,
     bool validateFully = true,
     const char* debugPrefix = nullptr
   ) {
