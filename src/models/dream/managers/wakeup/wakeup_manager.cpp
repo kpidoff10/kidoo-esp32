@@ -600,17 +600,16 @@ void WakeupManager::updateFadeIn() {
       lastBrightness = brightnessValue;
     }
   } else {
-    // Interpolation linéaire de la brightness et de la couleur
-    float progress = (float)elapsed / (float)FADE_IN_DURATION_MS;
-    
+    // Interpolation linéaire de la brightness et de la couleur (utiliser entiers au lieu de float)
+
     // Brightness: startBrightness → targetBrightness (ne pas repartir de 0)
     uint8_t targetBrightness = LEDManager::brightnessPercentTo255(config.brightness);
-    uint8_t currentBrightness = (uint8_t)(startBrightness + (targetBrightness - startBrightness) * progress);
-    
-    // Couleur: interpolation linéaire RGB de startColor vers config.color
-    uint8_t currentR = (uint8_t)(startColorR + (config.colorR - startColorR) * progress);
-    uint8_t currentG = (uint8_t)(startColorG + (config.colorG - startColorG) * progress);
-    uint8_t currentB = (uint8_t)(startColorB + (config.colorB - startColorB) * progress);
+    uint8_t currentBrightness = (uint8_t)(startBrightness + ((targetBrightness - startBrightness) * elapsed) / FADE_IN_DURATION_MS);
+
+    // Couleur: interpolation linéaire RGB de startColor vers config.color (utiliser entiers)
+    uint8_t currentR = (uint8_t)(startColorR + ((config.colorR - startColorR) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentG = (uint8_t)(startColorG + ((config.colorG - startColorG) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentB = (uint8_t)(startColorB + ((config.colorB - startColorB) * elapsed) / FADE_IN_DURATION_MS);
     
     // Ne mettre à jour que si la couleur ou brightness a changé
     if (lastColorR != currentR || lastColorG != currentG || lastColorB != currentB) {
