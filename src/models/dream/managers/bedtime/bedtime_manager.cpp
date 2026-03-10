@@ -1,4 +1,5 @@
 #include "bedtime_manager.h"
+#include "../dream_schedules.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
@@ -175,12 +176,9 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
     return;
   }
   
-  // Mapping des jours de la semaine
-  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
-  
   // Parser chaque jour (accepter hour/minute en int ou double pour compatibilité JSON)
   for (int i = 0; i < 7; i++) {
-    if (doc[weekdays[i]].is<JsonObject>()) {
+    if (doc[WEEKDAY_NAMES[i]].is<JsonObject>()) {
       JsonObject daySchedule = doc[weekdays[i]].as<JsonObject>();
       int h = -1, m = -1;
       if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
@@ -223,11 +221,10 @@ bool BedtimeManager::getWakeupScheduleForDay(uint8_t dayIndex, int& outHour, int
   if (error) {
     return false;
   }
-  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
-  if (!doc[weekdays[dayIndex]].is<JsonObject>()) {
+  if (!doc[WEEKDAY_NAMES[dayIndex]].is<JsonObject>()) {
     return false;
   }
-  JsonObject daySchedule = doc[weekdays[dayIndex]].as<JsonObject>();
+  JsonObject daySchedule = doc[WEEKDAY_NAMES[dayIndex]].as<JsonObject>();
   if (!daySchedule["hour"].is<int>() || !daySchedule["minute"].is<int>()) {
     return false;
   }
@@ -276,11 +273,10 @@ bool BedtimeManager::isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int
 }
 
 const char* BedtimeManager::indexToWeekday(uint8_t index) {
-  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   if (index < 7) {
-    return weekdays[index];
+    return WEEKDAY_NAMES[index];
   }
-  return weekdays[0];
+  return WEEKDAY_NAMES[0];
 }
 
 void BedtimeManager::update() {

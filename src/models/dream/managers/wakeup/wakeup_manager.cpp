@@ -1,4 +1,5 @@
 #include "wakeup_manager.h"
+#include "../dream_schedules.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
@@ -221,13 +222,10 @@ void WakeupManager::parseWeekdaySchedule(const char* jsonStr) {
     return;
   }
   
-  // Mapping des jours de la semaine
-  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
-  
   // Parser chaque jour (accepter hour/minute en int, long ou double pour compatibilité JSON)
   for (int i = 0; i < 7; i++) {
-    if (doc[weekdays[i]].is<JsonObject>()) {
-      JsonObject daySchedule = doc[weekdays[i]].as<JsonObject>();
+    if (doc[WEEKDAY_NAMES[i]].is<JsonObject>()) {
+      JsonObject daySchedule = doc[WEEKDAY_NAMES[i]].as<JsonObject>();
       int h = -1, m = -1;
       if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
       else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
@@ -254,11 +252,10 @@ uint8_t WakeupManager::weekdayToIndex(uint8_t dayOfWeek) {
 }
 
 const char* WakeupManager::indexToWeekday(uint8_t index) {
-  const char* weekdays[] = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
   if (index < 7) {
-    return weekdays[index];
+    return WEEKDAY_NAMES[index];
   }
-  return weekdays[0];
+  return WEEKDAY_NAMES[0];
 }
 
 void WakeupManager::update() {
