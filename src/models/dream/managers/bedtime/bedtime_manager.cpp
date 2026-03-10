@@ -164,6 +164,18 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
   ScheduleParser::parseWeekdaySchedule(jsonStr, config.schedules, true, "[BEDTIME]");
 }
 
+/**
+ * Helper privé pour appliquer l'effet et la couleur bedtime aux LEDs
+ * Utilisé par startBedtime() et restoreDisplayFromConfig()
+ */
+static void applyBedtimeDisplay(const BedtimeConfig& cfg) {
+  LEDEffect effect = LEDEffectParser::parse(cfg.effect);
+  bool useEffect = (effect != LED_EFFECT_NONE && strlen(cfg.effect) > 0 && strcmp(cfg.effect, "none") != 0);
+
+  LEDManager::setEffect(useEffect ? effect : LED_EFFECT_NONE);
+  LEDManager::setColor(cfg.colorR, cfg.colorG, cfg.colorB);
+}
+
 uint8_t BedtimeManager::weekdayToIndex(uint8_t dayOfWeek) {
   // RTC dayOfWeek: 1=Lundi, 7=Dimanche
   // Notre index: 0=Lundi, 6=Dimanche
@@ -282,12 +294,7 @@ void BedtimeManager::update() {
   unsigned long nextCheckInterval = calculateNextCheckInterval();
   
   // Vérifier périodiquement avec un intervalle adaptatif
-  unsigned long elapsed;
-  if (currentTime >= lastCheckTime) {
-    elapsed = currentTime - lastCheckTime;
-  } else {
-    elapsed = (ULONG_MAX - lastCheckTime) + currentTime + 1;
-  }
+  unsigned long elapsed = TimeUtils::calculateElapsed(currentTime, lastCheckTime);
   
   if (elapsed >= nextCheckInterval) {
     lastCheckTime = currentTime;
@@ -524,25 +531,8 @@ void BedtimeManager::startBedtime() {
   // Réveiller les LEDs
   LEDManager::wakeUp();
   
-  // Déterminer l'effet à utiliser (via LEDEffectParser)
-  LEDEffect effect = LEDEffectParser::parse(config.effect);
-  bool useEffect = (effect != LED_EFFECT_NONE && strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0);
-
-  if (useEffect) {
-    if (!LEDManager::setEffect(effect)) {
-      Serial.printf("[BEDTIME] WARN: setEffect(%d) failed\n", effect);
-    }
-    if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
-      Serial.printf("[BEDTIME] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
-    }
-  } else {
-    if (!LEDManager::setEffect(LED_EFFECT_NONE)) {
-      Serial.println("[BEDTIME] WARN: setEffect(NONE) failed");
-    }
-    if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
-      Serial.printf("[BEDTIME] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
-    }
-  }
+  // Appliquer l'effet et la couleur selon la config bedtime
+  applyBedtimeDisplay(config);
 }
 
 void BedtimeManager::updateFadeIn() {
@@ -678,16 +668,7 @@ void BedtimeManager::restoreDisplayFromConfig() {
   LEDManager::preventSleep();
   LEDManager::wakeUp();
 
+  applyBedtimeDisplay(config);
   uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
-  LEDEffect effect = LEDEffectParser::parse(config.effect);
-  bool useEffect = (effect != LED_EFFECT_NONE && strlen(config.effect) > 0 && strcmp(config.effect, "none") != 0);
-
-  if (useEffect) {
-    LEDManager::setEffect(effect);
-    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
-  } else {
-    LEDManager::setEffect(LED_EFFECT_NONE);
-    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
-  }
   LEDManager::setBrightness(brightnessValue);
 }

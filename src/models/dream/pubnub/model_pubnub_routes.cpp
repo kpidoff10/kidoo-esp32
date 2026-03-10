@@ -39,6 +39,46 @@ static LEDEffect parseDefaultEffect(const char* effectStr) {
 // Déclaration anticipée pour handleGetInfo (définition complète plus bas)
 static bool testBedtimeActive = false;
 
+/**
+ * Structure pour un dispatch de route PubNub
+ * Mappe une action (ou ses alias) à son handler
+ */
+struct PubNubActionRoute {
+  const char* action1;            // Action primaire
+  const char* action2;            // Action alternative (peut être nullptr)
+  const char* action3;            // Action alternative 2 (peut être nullptr)
+  bool (ModelDreamPubNubRoutes::*handler)(const JsonObject&);
+};
+
+/**
+ * Tableau des routes - mappe les actions aux handlers
+ * Réduit la logique de 66 lignes de if-else à une simple itération
+ */
+static const PubNubActionRoute PUBNUB_ROUTES[] = {
+  {"get-info", "getinfo", nullptr, &ModelDreamPubNubRoutes::handleGetInfo},
+  {"brightness", nullptr, nullptr, &ModelDreamPubNubRoutes::handleBrightness},
+  {"sleep-timeout", "sleeptimeout", "sleep", &ModelDreamPubNubRoutes::handleSleepTimeout},
+  {"reboot", "restart", nullptr, &ModelDreamPubNubRoutes::handleReboot},
+  {"led", nullptr, nullptr, &ModelDreamPubNubRoutes::handleLed},
+  {"start-test-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestBedtime},
+  {"stop-test-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestBedtime},
+  {"start-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartBedtime},
+  {"stop-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopBedtime},
+  {"stop-routine", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopRoutine},
+  {"set-bedtime-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetBedtimeConfig},
+  {"start-test-wakeup", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestWakeup},
+  {"stop-test-wakeup", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestWakeup},
+  {"set-wakeup-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetWakeupConfig},
+  {"firmware-update", nullptr, nullptr, &ModelDreamPubNubRoutes::handleFirmwareUpdate},
+  {"get-env", "getenv", "env", &ModelDreamPubNubRoutes::handleGetEnv},
+  {"set-nighttime-alert", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetNighttimeAlert},
+  {"nighttime-alert-ack", nullptr, nullptr, &ModelDreamPubNubRoutes::handleNighttimeAlertAck},
+  {"set-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetDefaultConfig},
+  {"start-test-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestDefaultConfig},
+  {"stop-test-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestDefaultConfig},
+  {"set-timezone", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetTimezone},
+};
+
 bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   // Vérifier que l'action est présente
   if (!json["action"].is<const char*>()) {
@@ -54,73 +94,17 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   
   Serial.print("[PUBNUB-ROUTE] Traitement de l'action: ");
   Serial.println(action);
-  
-  // Router vers le bon handler
-  if (strcmp(action, "get-info") == 0 || strcmp(action, "getinfo") == 0) {
-    return handleGetInfo(json);
-  }
-  else if (strcmp(action, "brightness") == 0) {
-    return handleBrightness(json);
-  }
-  else if (strcmp(action, "sleep-timeout") == 0 || strcmp(action, "sleeptimeout") == 0 || strcmp(action, "sleep") == 0) {
-    return handleSleepTimeout(json);
-  }
-  else if (strcmp(action, "reboot") == 0 || strcmp(action, "restart") == 0) {
-    return handleReboot(json);
-  }
-  else if (strcmp(action, "led") == 0) {
-    return handleLed(json);
-  }
-  else if (strcmp(action, "start-test-bedtime") == 0) {
-    return handleStartTestBedtime(json);
-  }
-  else if (strcmp(action, "stop-test-bedtime") == 0) {
-    return handleStopTestBedtime(json);
-  }
-  else if (strcmp(action, "start-bedtime") == 0) {
-    return handleStartBedtime(json);
-  }
-  else if (strcmp(action, "stop-bedtime") == 0) {
-    return handleStopBedtime(json);
-  }
-  else if (strcmp(action, "stop-routine") == 0) {
-    return handleStopRoutine(json);
-  }
-  else if (strcmp(action, "set-bedtime-config") == 0) {
-    return handleSetBedtimeConfig(json);
-  }
-  else if (strcmp(action, "start-test-wakeup") == 0) {
-    return handleStartTestWakeup(json);
-  }
-  else if (strcmp(action, "stop-test-wakeup") == 0) {
-    return handleStopTestWakeup(json);
-  }
-  else if (strcmp(action, "set-wakeup-config") == 0) {
-    return handleSetWakeupConfig(json);
-  }
-  else if (strcmp(action, "firmware-update") == 0) {
-    return handleFirmwareUpdate(json);
-  }
-  else if (strcmp(action, "get-env") == 0 || strcmp(action, "getenv") == 0 || strcmp(action, "env") == 0) {
-    return handleGetEnv(json);
-  }
-  else if (strcmp(action, "set-nighttime-alert") == 0) {
-    return handleSetNighttimeAlert(json);
-  }
-  else if (strcmp(action, "nighttime-alert-ack") == 0) {
-    return handleNighttimeAlertAck(json);
-  }
-  else if (strcmp(action, "set-default-config") == 0) {
-    return handleSetDefaultConfig(json);
-  }
-  else if (strcmp(action, "start-test-default-config") == 0) {
-    return handleStartTestDefaultConfig(json);
-  }
-  else if (strcmp(action, "stop-test-default-config") == 0) {
-    return handleStopTestDefaultConfig(json);
-  }
-  else if (strcmp(action, "set-timezone") == 0) {
-    return handleSetTimezone(json);
+
+  // Router vers le bon handler via dispatch table
+  for (size_t i = 0; i < sizeof(PUBNUB_ROUTES) / sizeof(PUBNUB_ROUTES[0]); i++) {
+    const PubNubActionRoute& route = PUBNUB_ROUTES[i];
+
+    // Vérifier action primaire ou ses alternatives
+    if (strcmp(action, route.action1) == 0 ||
+        (route.action2 != nullptr && strcmp(action, route.action2) == 0) ||
+        (route.action3 != nullptr && strcmp(action, route.action3) == 0)) {
+      return (this->*(route.handler))(json);
+    }
   }
 
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");

@@ -35,6 +35,7 @@ uint8_t WakeupManager::lastBrightness = 255;
 static const unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute
 static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
 static const unsigned long WAKEUP_DURATION_MS = 1800000;     // 30 minutes après l'heure de réveil avant fade-out
+static const unsigned long WAKEUP_FADE_OUT_START_MS = FADE_IN_DURATION_MS + WAKEUP_DURATION_MS; // Quand démarrer le fade-out
 static const unsigned long FADE_UPDATE_INTERVAL_MS = 100;     // Mettre à jour le fade toutes les 100ms (10 fois par seconde)
 static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 15;         // Déclencher 15 minutes avant
 
@@ -258,12 +259,7 @@ void WakeupManager::update() {
   unsigned long nextCheckInterval = calculateNextCheckInterval();
   
   // Vérifier périodiquement avec un intervalle adaptatif
-  unsigned long elapsed;
-  if (currentTime >= lastCheckTime) {
-    elapsed = currentTime - lastCheckTime;
-  } else {
-    elapsed = (ULONG_MAX - lastCheckTime) + currentTime + 1;
-  }
+  unsigned long elapsed = TimeUtils::calculateElapsed(currentTime, lastCheckTime);
   
   if (elapsed >= nextCheckInterval) {
     lastCheckTime = currentTime;
@@ -279,13 +275,8 @@ void WakeupManager::update() {
 
   // Mettre à jour les animations de fade si actives (avec throttling pour éviter les appels trop fréquents)
   if (fadeInActive) {
-    unsigned long timeSinceLastFadeUpdate;
-    if (currentTime >= lastFadeUpdateTime) {
-      timeSinceLastFadeUpdate = currentTime - lastFadeUpdateTime;
-    } else {
-      timeSinceLastFadeUpdate = (ULONG_MAX - lastFadeUpdateTime) + currentTime;
-    }
-    
+    unsigned long timeSinceLastFadeUpdate = TimeUtils::calculateElapsed(currentTime, lastFadeUpdateTime);
+
     if (timeSinceLastFadeUpdate >= FADE_UPDATE_INTERVAL_MS) {
       lastFadeUpdateTime = currentTime;
       updateFadeIn();
@@ -305,11 +296,9 @@ void WakeupManager::update() {
       elapsedSinceStart = (ULONG_MAX - wakeupStartTime) + currentTime;
     }
     
-    // Le fade-in dure 15 minutes, donc après 15 + 30 = 45 minutes depuis le début
+    // Le fade-in dure 1 minute, donc après 1 + 30 = 31 minutes depuis le début
     // on démarre le fade-out (30 minutes après l'heure de réveil exacte)
-    unsigned long wakeupDurationWithFadeIn = FADE_IN_DURATION_MS + WAKEUP_DURATION_MS;
-    
-    if (elapsedSinceStart >= wakeupDurationWithFadeIn) {
+    if (elapsedSinceStart >= WAKEUP_FADE_OUT_START_MS) {
       // Démarrer le fade-out après 30 minutes après l'heure de réveil
       fadeOutActive = true;
       fadeStartTime = currentTime;
@@ -319,13 +308,8 @@ void WakeupManager::update() {
   
   // Mettre à jour le fade-out si actif (avec throttling)
   if (fadeOutActive) {
-    unsigned long timeSinceLastFadeUpdate;
-    if (currentTime >= lastFadeUpdateTime) {
-      timeSinceLastFadeUpdate = currentTime - lastFadeUpdateTime;
-    } else {
-      timeSinceLastFadeUpdate = (ULONG_MAX - lastFadeUpdateTime) + currentTime;
-    }
-    
+    unsigned long timeSinceLastFadeUpdate = TimeUtils::calculateElapsed(currentTime, lastFadeUpdateTime);
+
     if (timeSinceLastFadeUpdate >= FADE_UPDATE_INTERVAL_MS) {
       lastFadeUpdateTime = currentTime;
       updateFadeOut();

@@ -15,6 +15,35 @@
 #include <esp_mac.h>  // Pour ESP_MAC_WIFI_STA
 #endif
 
+/**
+ * Helper pour parser la couleur (R, G, B) depuis un JsonObject
+ * Valide et met à jour les références si présentes dans le JSON
+ */
+static inline void updateColorFromJson(const JsonObject& json, uint8_t& r, uint8_t& g, uint8_t& b) {
+  if (json["colorR"].is<int>()) {
+    r = (uint8_t)json["colorR"].as<int>();
+  }
+  if (json["colorG"].is<int>()) {
+    g = (uint8_t)json["colorG"].as<int>();
+  }
+  if (json["colorB"].is<int>()) {
+    b = (uint8_t)json["colorB"].as<int>();
+  }
+}
+
+/**
+ * Helper pour parser la brightness (0-100) depuis un JsonObject
+ * Retourne la brightness validée, ou laisse la valeur existante inchangée
+ */
+static inline void updateBrightnessFromJson(const JsonObject& json, uint8_t& brightness) {
+  if (json["brightness"].is<int>()) {
+    int value = json["brightness"].as<int>();
+    if (value >= 0 && value <= 100) {
+      brightness = (uint8_t)value;
+    }
+  }
+}
+
 void ModelDreamConfigSyncRoutes::onWiFiConnected() {
   Serial.println("[CONFIG-SYNC] WiFi connecte - Recuperation de la configuration depuis l'API");
 
@@ -154,21 +183,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     if (!shouldMergeBedtime) {
       Serial.println("[CONFIG-SYNC] API bedtime vide/zeros - conservation config SD existante");
     } else {
-      if (bedtime["colorR"].is<int>()) {
-        config.bedtime_colorR = (uint8_t)bedtime["colorR"].as<int>();
-      }
-      if (bedtime["colorG"].is<int>()) {
-        config.bedtime_colorG = (uint8_t)bedtime["colorG"].as<int>();
-      }
-      if (bedtime["colorB"].is<int>()) {
-        config.bedtime_colorB = (uint8_t)bedtime["colorB"].as<int>();
-      }
-      if (bedtime["brightness"].is<int>()) {
-        int brightness = bedtime["brightness"].as<int>();
-        if (brightness >= 0 && brightness <= 100) {
-          config.bedtime_brightness = (uint8_t)brightness;
-        }
-      }
+      updateColorFromJson(bedtime, config.bedtime_colorR, config.bedtime_colorG, config.bedtime_colorB);
+      updateBrightnessFromJson(bedtime, config.bedtime_brightness);
       if (bedtime["nightlightAllNight"].is<bool>()) {
         config.bedtime_allNight = bedtime["nightlightAllNight"].as<bool>();
       }
@@ -192,21 +208,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     if (!shouldMergeWakeup) {
       Serial.println("[CONFIG-SYNC] API wakeup vide/zeros - conservation config SD existante");
     } else {
-      if (wakeup["colorR"].is<int>()) {
-        config.wakeup_colorR = (uint8_t)wakeup["colorR"].as<int>();
-      }
-      if (wakeup["colorG"].is<int>()) {
-        config.wakeup_colorG = (uint8_t)wakeup["colorG"].as<int>();
-      }
-      if (wakeup["colorB"].is<int>()) {
-        config.wakeup_colorB = (uint8_t)wakeup["colorB"].as<int>();
-      }
-      if (wakeup["brightness"].is<int>()) {
-        int brightness = wakeup["brightness"].as<int>();
-        if (brightness >= 0 && brightness <= 100) {
-          config.wakeup_brightness = (uint8_t)brightness;
-        }
-      }
+      updateColorFromJson(wakeup, config.wakeup_colorR, config.wakeup_colorG, config.wakeup_colorB);
+      updateBrightnessFromJson(wakeup, config.wakeup_brightness);
 
       // Mettre à jour weekdaySchedule
       if (wakeup["weekdaySchedule"].is<JsonObject>()) {
@@ -233,21 +236,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     if (!data["defaultColor"].isNull() && data["defaultColor"].is<JsonObject>()) {
       JsonObject defaultColor = data["defaultColor"];
       DreamConfig dreamConfig = DreamConfigManager::getConfig();
-      if (defaultColor["colorR"].is<int>()) {
-        dreamConfig.default_color_r = (uint8_t)defaultColor["colorR"].as<int>();
-      }
-      if (defaultColor["colorG"].is<int>()) {
-        dreamConfig.default_color_g = (uint8_t)defaultColor["colorG"].as<int>();
-      }
-      if (defaultColor["colorB"].is<int>()) {
-        dreamConfig.default_color_b = (uint8_t)defaultColor["colorB"].as<int>();
-      }
-      if (defaultColor["brightness"].is<int>()) {
-        int brightness = defaultColor["brightness"].as<int>();
-        if (brightness >= 0 && brightness <= 100) {
-          dreamConfig.default_brightness = (uint8_t)brightness;
-        }
-      }
+      updateColorFromJson(defaultColor, dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
+      updateBrightnessFromJson(defaultColor, dreamConfig.default_brightness);
       if (defaultColor["effect"].is<const char*>()) {
         const char* effectStr = defaultColor["effect"].as<const char*>();
         strncpy(dreamConfig.default_effect, effectStr, sizeof(dreamConfig.default_effect) - 1);
