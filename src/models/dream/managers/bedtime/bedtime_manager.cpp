@@ -552,7 +552,7 @@ void BedtimeManager::startBedtime() {
   
   // Empêcher le sleep mode pendant le bedtime
   LEDManager::preventSleep();
-  
+
   // Réveiller les LEDs
   LEDManager::wakeUp();
   
@@ -580,13 +580,21 @@ void BedtimeManager::startBedtime() {
       Serial.printf("[BEDTIME] Effet inconnu: %s, utilisation de la couleur fixe\n", config.effect);
     }
   }
-  
+
   if (useEffect) {
-    LEDManager::setEffect(effect);
-    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
+    if (!LEDManager::setEffect(effect)) {
+      Serial.printf("[BEDTIME] WARN: setEffect(%d) failed\n", effect);
+    }
+    if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
+      Serial.printf("[BEDTIME] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
+    }
   } else {
-    LEDManager::setEffect(LED_EFFECT_NONE);
-    LEDManager::setColor(config.colorR, config.colorG, config.colorB);
+    if (!LEDManager::setEffect(LED_EFFECT_NONE)) {
+      Serial.println("[BEDTIME] WARN: setEffect(NONE) failed");
+    }
+    if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
+      Serial.printf("[BEDTIME] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
+    }
   }
 }
 
@@ -596,29 +604,35 @@ void BedtimeManager::updateFadeIn() {
   if (elapsed >= FADE_IN_DURATION_MS) {
     // Fade-in terminé
     fadeInActive = false;
-    
+
     // Appliquer la brightness finale
     uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
-    LEDManager::setBrightness(brightnessValue);
-    
+    if (!LEDManager::setBrightness(brightnessValue)) {
+      Serial.printf("[BEDTIME] WARN: setBrightness(%d) failed\n", brightnessValue);
+    }
+
     Serial.println("[BEDTIME] Fade-in termine");
   } else {
     // Interpolation linéaire de la brightness
     float progress = (float)elapsed / (float)FADE_IN_DURATION_MS;
     uint8_t targetBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(progress * targetBrightness);
-    
-    LEDManager::setBrightness(currentBrightness);
+
+    if (!LEDManager::setBrightness(currentBrightness)) {
+      Serial.printf("[BEDTIME] WARN: setBrightness(%d) failed\n", currentBrightness);
+    }
   }
 }
 
 void BedtimeManager::updateFadeOut() {
   unsigned long elapsed = millis() - fadeStartTime;
-  
+
   if (elapsed >= FADE_OUT_DURATION_MS) {
     // Fade-out terminé, éteindre complètement et arrêter le bedtime
     fadeOutActive = false;
-    LEDManager::clear();
+    if (!LEDManager::clear()) {
+      Serial.println("[BEDTIME] WARN: clear() failed");
+    }
     ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
     bedtimeActive = false;
     manuallyStarted = false;
@@ -627,8 +641,10 @@ void BedtimeManager::updateFadeOut() {
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
     uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
-    
-    LEDManager::setBrightness(currentBrightness);
+
+    if (!LEDManager::setBrightness(currentBrightness)) {
+      Serial.printf("[BEDTIME] WARN: setBrightness(%d) failed\n", currentBrightness);
+    }
   }
 }
 
