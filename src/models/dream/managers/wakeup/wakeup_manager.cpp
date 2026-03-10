@@ -1,9 +1,9 @@
 #include "wakeup_manager.h"
 #include "../dream_schedules.h"
+#include "../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
-#include <limits.h>  // Pour ULONG_MAX
 #include "../bedtime/bedtime_manager.h"
 
 // Variables statiques
@@ -30,14 +30,10 @@ uint8_t WakeupManager::lastColorG = 255;
 uint8_t WakeupManager::lastColorB = 255;
 uint8_t WakeupManager::lastBrightness = 255;
 
-// Constantes
+// Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
 static const unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute
 static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
 static const unsigned long WAKEUP_DURATION_MS = 1800000;     // 30 minutes après l'heure de réveil avant fade-out
-static const unsigned long CHECK_INTERVAL_MS = 60000;        // Vérifier toutes les minutes (quand proche de l'heure)
-static const unsigned long CHECK_INTERVAL_3H_MS = 10800000;  // 3 heures (quand très loin)
-static const unsigned long CHECK_INTERVAL_1H_MS = 3600000;   // 1 heure (quand loin)
-static const unsigned long CHECK_INTERVAL_30M_MS = 1800000;  // 30 minutes (quand proche)
 static const unsigned long FADE_UPDATE_INTERVAL_MS = 100;     // Mettre à jour le fade toutes les 100ms (10 fois par seconde)
 static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 15;         // Déclencher 15 minutes avant
 

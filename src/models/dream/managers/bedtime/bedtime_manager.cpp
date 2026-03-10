@@ -1,9 +1,9 @@
 #include "bedtime_manager.h"
 #include "../dream_schedules.h"
+#include "../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
 #include <ArduinoJson.h>
-#include <limits.h>  // Pour ULONG_MAX
 
 // Variables statiques
 bool BedtimeManager::initialized = false;
@@ -23,14 +23,10 @@ unsigned long BedtimeManager::fadeStartTime = 0;
 unsigned long BedtimeManager::lastCachedCheckInterval = 0;
 uint8_t BedtimeManager::lastCachedIntervalDay = 0;
 
-// Constantes
+// Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
 static const unsigned long FADE_IN_DURATION_MS = 30000;      // 30 secondes
 static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
 static const unsigned long BEDTIME_DURATION_MS = 1800000;     // 30 minutes avant fade-out
-static const unsigned long CHECK_INTERVAL_MS = 60000;        // Vérifier toutes les minutes (quand proche de l'heure)
-static const unsigned long CHECK_INTERVAL_3H_MS = 10800000;  // 3 heures (quand très loin)
-static const unsigned long CHECK_INTERVAL_1H_MS = 3600000;   // 1 heure (quand loin)
-static const unsigned long CHECK_INTERVAL_30M_MS = 1800000;  // 30 minutes (quand proche)
 
 bool BedtimeManager::init() {
   if (initialized) {
