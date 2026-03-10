@@ -7,6 +7,7 @@
 #include "api_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
 #include "app_config.h"
+#include "ssl_config.h"
 
 #ifdef HAS_WIFI
 
@@ -19,6 +20,13 @@
 #include "common/managers/rtc/rtc_manager.h"
 #endif
 
+// Configurer le client SSL avec la chaîne de certificats (protection contre MITM)
+// Utilise le certificat intermédiaire R12 qui valide la chaîne complète
+static void initSecureClient(WiFiClientSecure& client) {
+  // Ajouter le certificat intermédiaire (signe le certificat du serveur)
+  client.setCACert(LETS_ENCRYPT_R12);
+}
+
 int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
   if (!WiFiManager::isConnected()) {
     Serial.println("[API] WiFi non connecte, requete annulee");
@@ -28,11 +36,10 @@ int ApiManager::postJson(const char* path, const char* body, int timeoutMs) {
   char url[256];
   snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
   WiFiClientSecure client;
-  client.setInsecure();
+  initSecureClient(client);  // Vérifier le certificat CA (protection MITM)
   HTTPClient http;
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-  http.setConnectTimeout(5000);
   http.setTimeout(timeoutMs);
   int code = http.POST(body);
   http.end();
@@ -67,13 +74,12 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
     char url[256];
     snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
     WiFiClientSecure client;
-    client.setInsecure();
+    initSecureClient(client);  // Vérifier le certificat CA (protection MITM)
     HTTPClient http;
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-kidoo-timestamp", timestampStr);
     http.addHeader("x-kidoo-signature", signatureB64);
-    http.setConnectTimeout(5000);
     http.setTimeout(timeoutMs);
     int code = http.GET();
     if (code > 0 && responseBody) {
@@ -91,11 +97,10 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
   char url[256];
   snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
   WiFiClientSecure client;
-  client.setInsecure();
+  initSecureClient(client);  // Vérifier le certificat CA (protection MITM)
   HTTPClient http;
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-  http.setConnectTimeout(5000);
   http.setTimeout(timeoutMs);
   int code = http.GET();
   if (code > 0 && responseBody) {

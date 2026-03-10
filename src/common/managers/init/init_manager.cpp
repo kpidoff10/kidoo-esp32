@@ -33,6 +33,7 @@ SystemStatus InitManager::systemStatus = {
   INIT_NOT_STARTED,  // serial
   INIT_NOT_STARTED,  // led
   INIT_NOT_STARTED,  // sd
+  INIT_NOT_STARTED,  // deviceKey
   INIT_NOT_STARTED,  // nfc
   INIT_NOT_STARTED,  // ble
   INIT_NOT_STARTED,  // wifi
@@ -46,6 +47,7 @@ SystemStatus InitManager::systemStatus = {
 };
 bool InitManager::initialized = false;
 SDConfig* InitManager::globalConfig = nullptr;
+bool InitManager::noDeviceKeyFound = false;
 
 bool InitManager::init() {
   // 1. Initialiser la communication série EN PREMIER (priorité absolue)
@@ -122,7 +124,20 @@ bool InitManager::init() {
     delay(100);
   }
   #endif
-  
+
+  // ÉTAPE 2a : Initialiser la clé device (ED25519)
+  #ifdef HAS_SD
+  if (HAS_SD) {
+    if (!initDeviceKey()) {
+      if (serialAvailable) {
+        LogManager::error("[INIT] Echec initialisation clé device");
+      }
+      allSuccess = false;
+    }
+    delay(100);
+  }
+  #endif
+
   // ÉTAPE 2b : Initialiser le LCD (modèle Gotchi avec HAS_LCD)
   #ifdef HAS_LCD
   if (HAS_LCD) {
@@ -324,6 +339,8 @@ InitStatus InitManager::getComponentStatus(const char* componentName) {
     return systemStatus.led;
   } else if (strcmp(componentName, "sd") == 0) {
     return systemStatus.sd;
+  } else if (strcmp(componentName, "deviceKey") == 0) {
+    return systemStatus.deviceKey;
   } else if (strcmp(componentName, "nfc") == 0) {
     return systemStatus.nfc;
   } else if (strcmp(componentName, "ble") == 0) {
@@ -384,7 +401,20 @@ void InitManager::printStatus() {
     case INIT_FAILED: sdStr = "ERREUR"; break;
   }
   LogManager::info("[INIT] SD: %s", sdStr);
-  
+
+  #ifdef HAS_SD
+  if (HAS_SD) {
+    const char* deviceKeyStr = "?";
+    switch (systemStatus.deviceKey) {
+      case INIT_NOT_STARTED: deviceKeyStr = "Non demarre"; break;
+      case INIT_IN_PROGRESS: deviceKeyStr = "En cours"; break;
+      case INIT_SUCCESS: deviceKeyStr = "OK"; break;
+      case INIT_FAILED: deviceKeyStr = "ERREUR"; break;
+    }
+    LogManager::info("[INIT] Clé Device: %s", deviceKeyStr);
+  }
+  #endif
+
   #ifdef HAS_NFC
   if (HAS_NFC) {
     const char* nfcStr = "?";

@@ -26,6 +26,7 @@ struct SystemStatus {
   InitStatus serial;        // Communication série
   InitStatus led;           // Gestionnaire LED
   InitStatus sd;            // Gestionnaire SD
+  InitStatus deviceKey;     // Gestionnaire clé device
   InitStatus nfc;           // Gestionnaire NFC
   InitStatus ble;           // Gestionnaire BLE
   InitStatus wifi;          // Gestionnaire WiFi
@@ -78,6 +79,7 @@ private:
   static bool initSerial();
   static bool initLED();
   static bool initSD();
+  static bool initDeviceKey();
   static bool initNFC();
   static bool initBLE();
   static bool initWiFi();
@@ -95,6 +97,7 @@ private:
   static SystemStatus systemStatus;
   static bool initialized;
   static SDConfig* globalConfig;  // Configuration globale du système
+  static bool noDeviceKeyFound;   // Flag: clé device manquante -> forcer BLE auto
   
   // Configuration Serial
   static const unsigned long SERIAL_BAUD_RATE = 115200;

@@ -14,6 +14,12 @@
 class DeviceKeyManager {
 public:
   /**
+   * Vérifier si la clé device existe déjà (sans créer si manquante).
+   * @return true si la clé existe sur la SD, false sinon
+   */
+  static bool keyExists();
+
+  /**
    * Obtenir ou créer la clé publique en base64.
    * Génère une paire si elle n'existe pas, sinon charge depuis la SD.
    * @param outBuffer Buffer de sortie pour la clé base64

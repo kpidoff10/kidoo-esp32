@@ -4,6 +4,7 @@
 #include "../../../sd/sd_manager.h"
 #include "../../../wifi/wifi_manager.h"
 #include "../../../led/led_manager.h"
+#include "../../../device_key/device_key_manager.h"
 #include "../ble_command_handler.h"
 
 static bool s_setupAsyncPending = false;
@@ -70,11 +71,20 @@ static void onSetupConnectComplete(bool success, void* userData) {
       wifiConnected = false;
     } else {
       Serial.println("[BLE-COMMAND] Configuration WiFi sauvegardee avec succes!");
+
+      // Créer la clé device lors du premier setup
+      char pubKeyB64[48];
+      if (DeviceKeyManager::getOrCreatePublicKeyBase64(pubKeyB64, sizeof(pubKeyB64))) {
+        Serial.println("[BLE-COMMAND] Clé device créée avec succès");
+      } else {
+        Serial.println("[BLE-COMMAND] ERREUR: Impossible de créer la clé device");
+        wifiConnected = false;
+      }
     }
   } else {
     Serial.println("[BLE-COMMAND] Echec de connexion WiFi - Configuration NON sauvegardee");
   }
-  
+
   delete ctx;
   s_setupAsyncPending = false;
   BLECommandHandler::sendSetupCompletionResponse(success && wifiConnected, wifiConnected);

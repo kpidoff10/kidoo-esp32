@@ -2,9 +2,11 @@
  * DownloadManager - Téléchargement HTTP/HTTPS vers fichier (SD)
  *
  * Stream par blocs (comme OTA), gère HTTP et HTTPS (WiFiClientSecure).
+ * Utilise vérification SSL pour prévenir les attaques MITM.
  */
 
 #include "download_manager.h"
+#include "ssl_config.h"
 
 #if defined(HAS_SD) && defined(HAS_WIFI)
 
@@ -63,7 +65,7 @@ bool DownloadManager::downloadUrlToFile(const char* url, const char* localPath) 
 
   if (useHttps) {
     WiFiClientSecure client;
-    client.setInsecure();
+    client.setCACert(ISRG_ROOT_X1);  // Vérifier le certificat CA (protection MITM)
     client.setTimeout(DOWNLOAD_TIMEOUT_MS);
     HTTPClient http;
     http.begin(client, url);
@@ -185,7 +187,7 @@ int DownloadManager::downloadUrlsToFiles(const char* urls[], const char* paths[]
       if (host != lastHost) {
         secureClient.stop();
         lastHost = host;
-        secureClient.setInsecure();
+        secureClient.setCACert(ISRG_ROOT_X1);  // Vérifier le certificat CA (protection MITM)
         secureClient.setTimeout(DOWNLOAD_TIMEOUT_MS);
       }
       HTTPClient http;

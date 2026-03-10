@@ -14,6 +14,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "app_config.h"
+#include "ssl_config.h"
 #endif
 #ifdef HAS_PUBNUB
 #include "common/managers/pubnub/pubnub_manager.h"
@@ -1070,10 +1071,9 @@ void SerialCommands::cmdApiPing() {
   snprintf(url, sizeof(url), "%s/api/health", API_BASE_URL);
 
   WiFiClientSecure client;
-  client.setInsecure();
+  client.setCACert(ISRG_ROOT_X1);  // Vérifier le certificat CA (protection MITM)
   HTTPClient http;
   http.begin(client, url);
-  http.setConnectTimeout(5000);
   http.setTimeout(8000);
 
   unsigned long startTime = millis();
