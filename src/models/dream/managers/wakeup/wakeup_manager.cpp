@@ -552,14 +552,20 @@ void WakeupManager::startWakeup() {
   
   // Empêcher le sleep mode pendant le wake-up
   LEDManager::preventSleep();
-  
+
   // Réveiller les LEDs
   LEDManager::wakeUp();
-  
+
   // 3) Figer l'affichage sur la couleur/brightness capturées puis lancer le fade progressif
-  LEDManager::setEffect(LED_EFFECT_NONE);
-  LEDManager::setColor(startColorR, startColorG, startColorB);
-  LEDManager::setBrightness(startBrightness);
+  if (!LEDManager::setEffect(LED_EFFECT_NONE)) {
+    Serial.println("[WAKEUP] WARN: setEffect(NONE) failed");
+  }
+  if (!LEDManager::setColor(startColorR, startColorG, startColorB)) {
+    Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", startColorR, startColorG, startColorB);
+  }
+  if (!LEDManager::setBrightness(startBrightness)) {
+    Serial.printf("[WAKEUP] WARN: setBrightness(%d) failed\n", startBrightness);
+  }
   
   // Initialiser les dernières valeurs pour le fade-in
   lastColorR = startColorR;
@@ -585,16 +591,22 @@ void WakeupManager::updateFadeIn() {
     
     // Appliquer la couleur et brightness finales seulement si elles ont changé
     if (lastColorR != config.colorR || lastColorG != config.colorG || lastColorB != config.colorB) {
-      LEDManager::setColor(config.colorR, config.colorG, config.colorB);
-      lastColorR = config.colorR;
-      lastColorG = config.colorG;
-      lastColorB = config.colorB;
+      if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
+        Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
+      } else {
+        lastColorR = config.colorR;
+        lastColorG = config.colorG;
+        lastColorB = config.colorB;
+      }
     }
-    
+
     uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
     if (lastBrightness != brightnessValue) {
-      LEDManager::setBrightness(brightnessValue);
-      lastBrightness = brightnessValue;
+      if (!LEDManager::setBrightness(brightnessValue)) {
+        Serial.printf("[WAKEUP] WARN: setBrightness(%d) failed\n", brightnessValue);
+      } else {
+        lastBrightness = brightnessValue;
+      }
     }
   } else {
     // Interpolation linéaire de la brightness et de la couleur (utiliser entiers au lieu de float)
@@ -607,18 +619,24 @@ void WakeupManager::updateFadeIn() {
     uint8_t currentR = (uint8_t)(startColorR + ((config.colorR - startColorR) * elapsed) / FADE_IN_DURATION_MS);
     uint8_t currentG = (uint8_t)(startColorG + ((config.colorG - startColorG) * elapsed) / FADE_IN_DURATION_MS);
     uint8_t currentB = (uint8_t)(startColorB + ((config.colorB - startColorB) * elapsed) / FADE_IN_DURATION_MS);
-    
+
     // Ne mettre à jour que si la couleur ou brightness a changé
     if (lastColorR != currentR || lastColorG != currentG || lastColorB != currentB) {
-      LEDManager::setColor(currentR, currentG, currentB);
-      lastColorR = currentR;
-      lastColorG = currentG;
-      lastColorB = currentB;
+      if (!LEDManager::setColor(currentR, currentG, currentB)) {
+        Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", currentR, currentG, currentB);
+      } else {
+        lastColorR = currentR;
+        lastColorG = currentG;
+        lastColorB = currentB;
+      }
     }
-    
+
     if (lastBrightness != currentBrightness) {
-      LEDManager::setBrightness(currentBrightness);
-      lastBrightness = currentBrightness;
+      if (!LEDManager::setBrightness(currentBrightness)) {
+        Serial.printf("[WAKEUP] WARN: setBrightness(%d) failed\n", currentBrightness);
+      } else {
+        lastBrightness = currentBrightness;
+      }
     }
   }
 }
@@ -645,8 +663,10 @@ void WakeupManager::updateFadeOut() {
     float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
     uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
-    
-    LEDManager::setBrightness(currentBrightness);
+
+    if (!LEDManager::setBrightness(currentBrightness)) {
+      Serial.printf("[WAKEUP] WARN: setBrightness(%d) failed\n", currentBrightness);
+    }
   }
 }
 
@@ -663,9 +683,11 @@ void WakeupManager::stopWakeup() {
 
   // Réautoriser le sleep mode
   LEDManager::allowSleep();
-  
+
   // Éteindre les LEDs
-  LEDManager::clear();
+  if (!LEDManager::clear()) {
+    Serial.println("[WAKEUP] WARN: clear() failed");
+  }
 }
 
 bool WakeupManager::isWakeupEnabled() {
