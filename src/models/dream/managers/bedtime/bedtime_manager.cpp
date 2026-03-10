@@ -50,7 +50,7 @@ bool BedtimeManager::init() {
     // Au démarrage : si on est dans la plage nuit, activer soit bedtime soit laisser WakeupManager démarrer le wakeup
     // (dans la fenêtre 15 min avant lever → 35 min après = mode wakeup, sinon mode bedtime)
     if (s_state.checkingEnabled) {
-      uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+      uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       bool hasWakeup = getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute);
       if (hasWakeup && isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
@@ -165,15 +165,6 @@ static void applyBedtimeDisplay(const BedtimeConfig& cfg) {
   LEDManager::setColor(cfg.colorR, cfg.colorG, cfg.colorB);
 }
 
-uint8_t BedtimeManager::weekdayToIndex(uint8_t dayOfWeek) {
-  // RTC dayOfWeek: 1=Lundi, 7=Dimanche
-  // Notre index: 0=Lundi, 6=Dimanche
-  if (dayOfWeek >= 1 && dayOfWeek <= 7) {
-    return dayOfWeek - 1;
-  }
-  return 0; // Par défaut, lundi
-}
-
 bool BedtimeManager::getWakeupScheduleForDay(uint8_t dayIndex, int& outHour, int& outMinute) {
   if (dayIndex >= 7) {
     return false;
@@ -241,13 +232,6 @@ bool BedtimeManager::isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int
   return (currentMinutes >= wStart) || (currentMinutes < wEnd);
 }
 
-const char* BedtimeManager::indexToWeekday(uint8_t index) {
-  if (index < 7) {
-    return WEEKDAY_NAMES[index];
-  }
-  return WEEKDAY_NAMES[0];
-}
-
 void BedtimeManager::update() {
   if (!s_state.initialized) {
     return;
@@ -290,7 +274,7 @@ void BedtimeManager::update() {
     // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init), activer bedtime sauf si dans fenêtre wakeup
     if (!s_state.routineActive && !manuallyStarted && s_state.checkingEnabled) {
       DateTime now = RTCManager::getDateTime();
-      uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+      uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       if (getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute) &&
           isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute) &&
@@ -351,7 +335,7 @@ void BedtimeManager::updateCheckingState() {
   }
   
   DateTime now = RTCManager::getDateTime();
-  uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+  uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   // Vérifier si la routine est activée pour aujourd'hui
   bool wasEnabled = s_state.checkingEnabled;
@@ -393,7 +377,7 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
   }
 
   DateTime now = RTCManager::getDateTime();
-  uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+  uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
 
   // Retourner l'intervalle en cache si le jour n'a pas changé
   if (now.dayOfWeek == s_state.lastCachedIntervalDay && !configChanged()) {
@@ -441,7 +425,7 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
 
 void BedtimeManager::checkBedtimeTrigger() {
   DateTime now = RTCManager::getDateTime();
-  uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+  uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   if (!config.schedules[dayIndex].activated) {
     if (s_state.routineActive) {
@@ -599,7 +583,7 @@ bool BedtimeManager::isBedtimeEnabled() {
   }
   
   DateTime now = RTCManager::getDateTime();
-  uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
+  uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   return config.schedules[dayIndex].activated;
 }
