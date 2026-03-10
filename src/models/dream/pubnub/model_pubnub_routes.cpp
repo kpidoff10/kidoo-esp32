@@ -40,14 +40,19 @@ static LEDEffect parseDefaultEffect(const char* effectStr) {
 static bool testBedtimeActive = false;
 
 /**
+ * Type pour pointeur de fonction handler statique
+ */
+typedef bool (*PubNubHandlerFunc)(const JsonObject&);
+
+/**
  * Structure pour un dispatch de route PubNub
- * Mappe une action (ou ses alias) à son handler
+ * Mappe une action (ou ses aliases) à son handler statique
  */
 struct PubNubActionRoute {
   const char* action1;            // Action primaire
   const char* action2;            // Action alternative (peut être nullptr)
   const char* action3;            // Action alternative 2 (peut être nullptr)
-  bool (ModelDreamPubNubRoutes::*handler)(const JsonObject&);
+  PubNubHandlerFunc handler;      // Pointeur vers la fonction handler statique
 };
 
 /**
@@ -55,28 +60,28 @@ struct PubNubActionRoute {
  * Réduit la logique de 66 lignes de if-else à une simple itération
  */
 static const PubNubActionRoute PUBNUB_ROUTES[] = {
-  {"get-info", "getinfo", nullptr, &ModelDreamPubNubRoutes::handleGetInfo},
-  {"brightness", nullptr, nullptr, &ModelDreamPubNubRoutes::handleBrightness},
-  {"sleep-timeout", "sleeptimeout", "sleep", &ModelDreamPubNubRoutes::handleSleepTimeout},
-  {"reboot", "restart", nullptr, &ModelDreamPubNubRoutes::handleReboot},
-  {"led", nullptr, nullptr, &ModelDreamPubNubRoutes::handleLed},
-  {"start-test-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestBedtime},
-  {"stop-test-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestBedtime},
-  {"start-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartBedtime},
-  {"stop-bedtime", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopBedtime},
-  {"stop-routine", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopRoutine},
-  {"set-bedtime-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetBedtimeConfig},
-  {"start-test-wakeup", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestWakeup},
-  {"stop-test-wakeup", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestWakeup},
-  {"set-wakeup-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetWakeupConfig},
-  {"firmware-update", nullptr, nullptr, &ModelDreamPubNubRoutes::handleFirmwareUpdate},
-  {"get-env", "getenv", "env", &ModelDreamPubNubRoutes::handleGetEnv},
-  {"set-nighttime-alert", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetNighttimeAlert},
-  {"nighttime-alert-ack", nullptr, nullptr, &ModelDreamPubNubRoutes::handleNighttimeAlertAck},
-  {"set-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetDefaultConfig},
-  {"start-test-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStartTestDefaultConfig},
-  {"stop-test-default-config", nullptr, nullptr, &ModelDreamPubNubRoutes::handleStopTestDefaultConfig},
-  {"set-timezone", nullptr, nullptr, &ModelDreamPubNubRoutes::handleSetTimezone},
+  {"get-info", "getinfo", nullptr, ModelDreamPubNubRoutes::handleGetInfo},
+  {"brightness", nullptr, nullptr, ModelDreamPubNubRoutes::handleBrightness},
+  {"sleep-timeout", "sleeptimeout", "sleep", ModelDreamPubNubRoutes::handleSleepTimeout},
+  {"reboot", "restart", nullptr, ModelDreamPubNubRoutes::handleReboot},
+  {"led", nullptr, nullptr, ModelDreamPubNubRoutes::handleLed},
+  {"start-test-bedtime", nullptr, nullptr, ModelDreamPubNubRoutes::handleStartTestBedtime},
+  {"stop-test-bedtime", nullptr, nullptr, ModelDreamPubNubRoutes::handleStopTestBedtime},
+  {"start-bedtime", nullptr, nullptr, ModelDreamPubNubRoutes::handleStartBedtime},
+  {"stop-bedtime", nullptr, nullptr, ModelDreamPubNubRoutes::handleStopBedtime},
+  {"stop-routine", nullptr, nullptr, ModelDreamPubNubRoutes::handleStopRoutine},
+  {"set-bedtime-config", nullptr, nullptr, ModelDreamPubNubRoutes::handleSetBedtimeConfig},
+  {"start-test-wakeup", nullptr, nullptr, ModelDreamPubNubRoutes::handleStartTestWakeup},
+  {"stop-test-wakeup", nullptr, nullptr, ModelDreamPubNubRoutes::handleStopTestWakeup},
+  {"set-wakeup-config", nullptr, nullptr, ModelDreamPubNubRoutes::handleSetWakeupConfig},
+  {"firmware-update", nullptr, nullptr, ModelDreamPubNubRoutes::handleFirmwareUpdate},
+  {"get-env", "getenv", "env", ModelDreamPubNubRoutes::handleGetEnv},
+  {"set-nighttime-alert", nullptr, nullptr, ModelDreamPubNubRoutes::handleSetNighttimeAlert},
+  {"nighttime-alert-ack", nullptr, nullptr, ModelDreamPubNubRoutes::handleNighttimeAlertAck},
+  {"set-default-config", nullptr, nullptr, ModelDreamPubNubRoutes::handleSetDefaultConfig},
+  {"start-test-default-config", nullptr, nullptr, ModelDreamPubNubRoutes::handleStartTestDefaultConfig},
+  {"stop-test-default-config", nullptr, nullptr, ModelDreamPubNubRoutes::handleStopTestDefaultConfig},
+  {"set-timezone", nullptr, nullptr, ModelDreamPubNubRoutes::handleSetTimezone},
 };
 
 bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
@@ -103,7 +108,7 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
     if (strcmp(action, route.action1) == 0 ||
         (route.action2 != nullptr && strcmp(action, route.action2) == 0) ||
         (route.action3 != nullptr && strcmp(action, route.action3) == 0)) {
-      return (this->*(route.handler))(json);
+      return (route.handler)(json);
     }
   }
 
