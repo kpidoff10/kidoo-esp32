@@ -45,8 +45,10 @@ bool DreamApiRoutes::postNighttimeAlert() {
       return true;
     }
     if (attempt < maxRetries) {
-      Serial.printf("[DREAM] nighttime-alert tentative %d/%d: code=%d, retry...\n", attempt, maxRetries, code);
-      delay(300);
+      // Exponential backoff: 300ms * 2^(attempt-1)
+      unsigned long backoffMs = 300 * (1 << (attempt - 1));
+      Serial.printf("[DREAM] nighttime-alert tentative %d/%d: code=%d, retry in %ldms...\n", attempt, maxRetries, code, backoffMs);
+      delay(backoffMs);
     }
   }
 
