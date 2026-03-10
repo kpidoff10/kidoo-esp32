@@ -6,6 +6,8 @@
 #include "../../../../common/managers/rtc/rtc_manager.h"
 #include "../../../../common/managers/sd/sd_manager.h"
 #include "../../../../common/managers/led/led_manager.h"
+#include "../schedule_state.h"
+#include "../schedule_utils.h"
 
 /**
  * Gestionnaire automatique du bedtime pour le modèle Dream
@@ -121,27 +123,15 @@ public:
   static void restoreDisplayFromConfig();
 
 private:
-  // Variables statiques
-  static bool initialized;
+  // État partagé (variables communes entre BedtimeManager et WakeupManager)
+  static ScheduleState s_state;
+
+  // Configuration
   static BedtimeConfig config;
   static BedtimeConfig lastConfig;  // Sauvegarde de la dernière config pour détecter les changements
-  static bool bedtimeActive;
-  static bool manuallyStarted; // Flag pour indiquer que le bedtime a été démarré manuellement
-  static unsigned long bedtimeStartTime;
-  static unsigned long lastCheckTime;
-  static uint8_t lastTriggeredHour;
-  static uint8_t lastTriggeredMinute;
-  static bool checkingEnabled;  // Si true, vérifier toutes les minutes. Si false, attendre le jour suivant
-  static uint8_t lastCheckedDay;  // Dernier jour vérifié (1-7, RTC format)
-  
-  // États de transition
-  static bool fadeInActive;
-  static bool fadeOutActive;
-  static unsigned long fadeStartTime;
 
-  // Cache pour calculateNextCheckInterval
-  static unsigned long lastCachedCheckInterval;
-  static uint8_t lastCachedIntervalDay;
+  // Flag unique à BedtimeManager
+  static bool manuallyStarted; // Flag pour indiquer que le bedtime a été démarré manuellement
 
   // Fonctions privées
   static void parseWeekdaySchedule(const char* jsonStr);

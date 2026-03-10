@@ -5,25 +5,14 @@
 #include "../../pubnub/model_pubnub_routes.h"
 #include "../../utils/schedule_parser.h"
 #include "../../utils/led_effect_parser.h"
+#include "../schedule_utils.h"
 #include <ArduinoJson.h>
 
 // Variables statiques
-bool BedtimeManager::initialized = false;
+ScheduleState BedtimeManager::s_state;
 BedtimeConfig BedtimeManager::config;
 BedtimeConfig BedtimeManager::lastConfig;
-bool BedtimeManager::bedtimeActive = false;
 bool BedtimeManager::manuallyStarted = false;
-unsigned long BedtimeManager::bedtimeStartTime = 0;
-unsigned long BedtimeManager::lastCheckTime = 0;
-uint8_t BedtimeManager::lastTriggeredHour = 255;  // 255 = jamais déclenché
-uint8_t BedtimeManager::lastTriggeredMinute = 255;
-bool BedtimeManager::checkingEnabled = false;
-uint8_t BedtimeManager::lastCheckedDay = 0;  // 0 = jamais vérifié
-bool BedtimeManager::fadeInActive = false;
-bool BedtimeManager::fadeOutActive = false;
-unsigned long BedtimeManager::fadeStartTime = 0;
-unsigned long BedtimeManager::lastCachedCheckInterval = 0;
-uint8_t BedtimeManager::lastCachedIntervalDay = 0;
 
 // Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
 static const unsigned long FADE_IN_DURATION_MS = 30000;      // 30 secondes
@@ -31,7 +20,7 @@ static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
 static const unsigned long BEDTIME_DURATION_MS = 1800000;     // 30 minutes avant fade-out
 
 bool BedtimeManager::init() {
-  if (initialized) {
+  if (s_state.initialized) {
     return true;
   }
   
@@ -47,39 +36,39 @@ bool BedtimeManager::init() {
     return false;
   }
   
-  initialized = true;
+  s_state.initialized = true;
   
   // Initialiser l'état de vérification
   if (RTCManager::isAvailable()) {
     DateTime now = RTCManager::getDateTime();
-    lastCheckedDay = now.dayOfWeek;
+    s_state.lastCheckedDay = now.dayOfWeek;
     updateCheckingState();
     
-    // Initialiser lastCheckTime pour démarrer avec le bon intervalle
-    lastCheckTime = millis();
+    // Initialiser s_state.lastCheckTime pour démarrer avec le bon intervalle
+    s_state.lastCheckTime = millis();
     
     // Au démarrage : si on est dans la plage nuit, activer soit bedtime soit laisser WakeupManager démarrer le wakeup
     // (dans la fenêtre 15 min avant lever → 35 min après = mode wakeup, sinon mode bedtime)
-    if (checkingEnabled) {
+    if (s_state.checkingEnabled) {
       uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       bool hasWakeup = getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute);
       if (hasWakeup && isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute)) {
         if (!isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
           startBedtime();
-          fadeInActive = false;  // Pas de fade-in au boot, affichage direct
+          s_state.fadeInActive = false;  // Pas de fade-in au boot, affichage direct
           uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
           LEDManager::setBrightness(brightnessValue);
-          lastTriggeredHour = config.schedules[dayIndex].hour;
-          lastTriggeredMinute = config.schedules[dayIndex].minute;
+          s_state.lastTriggeredHour = config.schedules[dayIndex].hour;
+          s_state.lastTriggeredMinute = config.schedules[dayIndex].minute;
         }
       }
     }
     
   } else {
-    checkingEnabled = false;
-    lastCheckedDay = 0;
-    lastCheckTime = millis();
+    s_state.checkingEnabled = false;
+    s_state.lastCheckedDay = 0;
+    s_state.lastCheckTime = millis();
   }
   
   return true;
@@ -124,24 +113,24 @@ bool BedtimeManager::loadConfig() {
 
 bool BedtimeManager::reloadConfig() {
   // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
-  lastTriggeredHour = 255;
-  lastTriggeredMinute = 255;
+  s_state.lastTriggeredHour = 255;
+  s_state.lastTriggeredMinute = 255;
   
   bool result = loadConfig();
   
   // Si la config a changé, vérifier si la routine est activée pour aujourd'hui
-  if (result && initialized && RTCManager::isAvailable()) {
+  if (result && s_state.initialized && RTCManager::isAvailable()) {
     if (configChanged()) {
       updateCheckingState();
-      lastCheckTime = millis();
-      if (checkingEnabled) {
+      s_state.lastCheckTime = millis();
+      if (s_state.checkingEnabled) {
         checkNow();
       }
     } else {
       // Config identique, juste vérifier maintenant si déjà en cours de vérification
-      if (checkingEnabled) {
-        // Réinitialiser quand même lastCheckTime pour recalculer l'intervalle (au cas où l'heure aurait changé)
-        lastCheckTime = millis();
+      if (s_state.checkingEnabled) {
+        // Réinitialiser quand même s_state.lastCheckTime pour recalculer l'intervalle (au cas où l'heure aurait changé)
+        s_state.lastCheckTime = millis();
         checkNow();
       }
     }
@@ -151,7 +140,7 @@ bool BedtimeManager::reloadConfig() {
 }
 
 void BedtimeManager::checkNow() {
-  if (!initialized || !RTCManager::isAvailable()) {
+  if (!s_state.initialized || !RTCManager::isAvailable()) {
     return;
   }
   // Vérifier immédiatement si c'est l'heure de déclencher le bedtime
@@ -260,7 +249,7 @@ const char* BedtimeManager::indexToWeekday(uint8_t index) {
 }
 
 void BedtimeManager::update() {
-  if (!initialized) {
+  if (!s_state.initialized) {
     return;
   }
   
@@ -278,13 +267,13 @@ void BedtimeManager::update() {
   DateTime now = RTCManager::getDateTime();
   
   // Vérifier si le jour a changé
-  if (lastCheckedDay != now.dayOfWeek) {
-    lastCheckedDay = now.dayOfWeek;
+  if (s_state.lastCheckedDay != now.dayOfWeek) {
+    s_state.lastCheckedDay = now.dayOfWeek;
     updateCheckingState();  // Mettre à jour l'état de vérification pour le nouveau jour
   }
   
   // Ne vérifier que si la routine est activée pour aujourd'hui
-  if (!checkingEnabled) {
+  if (!s_state.checkingEnabled) {
     return;  // Routine non activée pour aujourd'hui, pas besoin de vérifier
   }
   
@@ -294,12 +283,12 @@ void BedtimeManager::update() {
   unsigned long nextCheckInterval = calculateNextCheckInterval();
   
   // Vérifier périodiquement avec un intervalle adaptatif
-  unsigned long elapsed = TimeUtils::calculateElapsed(currentTime, lastCheckTime);
+  unsigned long elapsed = TimeUtils::calculateElapsed(currentTime, s_state.lastCheckTime);
   
   if (elapsed >= nextCheckInterval) {
-    lastCheckTime = currentTime;
+    s_state.lastCheckTime = currentTime;
     // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init), activer bedtime sauf si dans fenêtre wakeup
-    if (!bedtimeActive && !manuallyStarted && checkingEnabled) {
+    if (!s_state.routineActive && !manuallyStarted && s_state.checkingEnabled) {
       DateTime now = RTCManager::getDateTime();
       uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
@@ -307,11 +296,11 @@ void BedtimeManager::update() {
           isCurrentTimeBetweenBedtimeAndWakeup(dayIndex, now.hour, now.minute, wakeupHour, wakeupMinute) &&
           !isCurrentTimeInWakeupWindow(now.hour, now.minute, wakeupHour, wakeupMinute)) {
         startBedtime();
-        fadeInActive = false;
+        s_state.fadeInActive = false;
         uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
         LEDManager::setBrightness(brightnessValue);
-        lastTriggeredHour = config.schedules[dayIndex].hour;
-        lastTriggeredMinute = config.schedules[dayIndex].minute;
+        s_state.lastTriggeredHour = config.schedules[dayIndex].hour;
+        s_state.lastTriggeredMinute = config.schedules[dayIndex].minute;
       } else {
         checkBedtimeTrigger();
       }
@@ -328,36 +317,36 @@ void BedtimeManager::update() {
 #endif
 
   // Mettre à jour les animations de fade si actives
-  if (fadeInActive) {
+  if (s_state.fadeInActive) {
     updateFadeIn();
   }
   
   // Vérifier si on doit démarrer le fade-out (30 minutes après le début si allNight = false)
-  if (bedtimeActive && !config.allNight && !fadeInActive && !fadeOutActive) {
+  if (s_state.routineActive && !config.allNight && !s_state.fadeInActive && !s_state.fadeOutActive) {
     unsigned long elapsedSinceStart;
     
     // Gérer le wrap-around de millis() (se produit après ~49 jours)
-    if (currentTime >= bedtimeStartTime) {
-      elapsedSinceStart = currentTime - bedtimeStartTime;
+    if (currentTime >= s_state.startTime) {
+      elapsedSinceStart = currentTime - s_state.startTime;
     } else {
       // Wrap-around détecté
-      elapsedSinceStart = (ULONG_MAX - bedtimeStartTime) + currentTime;
+      elapsedSinceStart = (ULONG_MAX - s_state.startTime) + currentTime;
     }
     
     if (elapsedSinceStart >= BEDTIME_DURATION_MS) {
-      fadeOutActive = true;
-      fadeStartTime = currentTime;
+      s_state.fadeOutActive = true;
+      s_state.fadeStartTime = currentTime;
     }
   }
   
-  if (fadeOutActive) {
+  if (s_state.fadeOutActive) {
     updateFadeOut();
   }
 }
 
 void BedtimeManager::updateCheckingState() {
   if (!RTCManager::isAvailable()) {
-    checkingEnabled = false;
+    s_state.checkingEnabled = false;
     return;
   }
   
@@ -365,12 +354,12 @@ void BedtimeManager::updateCheckingState() {
   uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
   
   // Vérifier si la routine est activée pour aujourd'hui
-  bool wasEnabled = checkingEnabled;
-  checkingEnabled = config.schedules[dayIndex].activated;
+  bool wasEnabled = s_state.checkingEnabled;
+  s_state.checkingEnabled = config.schedules[dayIndex].activated;
   
-  if (checkingEnabled) {
+  if (s_state.checkingEnabled) {
     if (!wasEnabled) {
-      lastCheckTime = millis();
+      s_state.lastCheckTime = millis();
     }
   }
 }
@@ -407,16 +396,16 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
   uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
 
   // Retourner l'intervalle en cache si le jour n'a pas changé
-  if (now.dayOfWeek == lastCachedIntervalDay && !configChanged()) {
-    return lastCachedCheckInterval;
+  if (now.dayOfWeek == s_state.lastCachedIntervalDay && !configChanged()) {
+    return s_state.lastCachedCheckInterval;
   }
 
   // Jour changé ou config changée : recalculer
-  lastCachedIntervalDay = now.dayOfWeek;
+  s_state.lastCachedIntervalDay = now.dayOfWeek;
 
   if (!config.schedules[dayIndex].activated) {
-    lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
-    return lastCachedCheckInterval;
+    s_state.lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
+    return s_state.lastCachedCheckInterval;
   }
 
   // Calculer la distance jusqu'à l'heure de déclenchement
@@ -438,16 +427,16 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
 
   // Déterminer l'intervalle de vérification basé sur la distance
   if (hoursUntilTarget > 6.0f) {
-    lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
+    s_state.lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
   } else if (hoursUntilTarget > 3.0f) {
-    lastCachedCheckInterval = CHECK_INTERVAL_1H_MS;
+    s_state.lastCachedCheckInterval = CHECK_INTERVAL_1H_MS;
   } else if (hoursUntilTarget > 1.0f) {
-    lastCachedCheckInterval = CHECK_INTERVAL_30M_MS;
+    s_state.lastCachedCheckInterval = CHECK_INTERVAL_30M_MS;
   } else {
-    lastCachedCheckInterval = CHECK_INTERVAL_MS;
+    s_state.lastCachedCheckInterval = CHECK_INTERVAL_MS;
   }
 
-  return lastCachedCheckInterval;
+  return s_state.lastCachedCheckInterval;
 }
 
 void BedtimeManager::checkBedtimeTrigger() {
@@ -455,7 +444,7 @@ void BedtimeManager::checkBedtimeTrigger() {
   uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
   
   if (!config.schedules[dayIndex].activated) {
-    if (bedtimeActive) {
+    if (s_state.routineActive) {
       stopBedtime();
     }
     return;
@@ -469,15 +458,15 @@ void BedtimeManager::checkBedtimeTrigger() {
   // Vérifier si c'est l'heure de coucher exacte (dans la minute, secondes 0-59)
   // On vérifie toutes les minutes, donc on déclenche si on est dans la bonne minute
   if (now.hour == targetHour && now.minute == targetMinute) {
-    if (!bedtimeActive &&
+    if (!s_state.routineActive &&
         !manuallyStarted &&
-        (lastTriggeredHour != now.hour || lastTriggeredMinute != now.minute)) {
+        (s_state.lastTriggeredHour != now.hour || s_state.lastTriggeredMinute != now.minute)) {
       Serial.println("[BEDTIME] >>> DÉCLENCHEMENT DU BEDTIME <<<");
       startBedtime();
-      lastTriggeredHour = now.hour;
-      lastTriggeredMinute = now.minute;
+      s_state.lastTriggeredHour = now.hour;
+      s_state.lastTriggeredMinute = now.minute;
     } else {
-      if (bedtimeActive) {
+      if (s_state.routineActive) {
         Serial.println("[BEDTIME] Bedtime déjà actif, pas de nouveau déclenchement");
       } else if (manuallyStarted) {
         Serial.println("[BEDTIME] Bedtime démarré manuellement, pas de déclenchement automatique");
@@ -489,23 +478,23 @@ void BedtimeManager::checkBedtimeTrigger() {
     // Sécurité : si on a dépassé l'heure de coucher de 0 à 2 minutes et qu'on n'est pas en mode bedtime, déclencher
     int minutesAfterTarget = currentMinutes - targetMinutes;
     if (minutesAfterTarget >= 0 && minutesAfterTarget <= 2 &&
-        !bedtimeActive && !manuallyStarted &&
-        (lastTriggeredHour != (uint8_t)targetHour || lastTriggeredMinute != (uint8_t)targetMinute)) {
+        !s_state.routineActive && !manuallyStarted &&
+        (s_state.lastTriggeredHour != (uint8_t)targetHour || s_state.lastTriggeredMinute != (uint8_t)targetMinute)) {
       Serial.println("[BEDTIME] >>> DÉCLENCHEMENT SÉCURITÉ (dépassement 0-2 min) <<<");
       startBedtime();
-      lastTriggeredHour = targetHour;
-      lastTriggeredMinute = targetMinute;
+      s_state.lastTriggeredHour = targetHour;
+      s_state.lastTriggeredMinute = targetMinute;
     } else {
       // Log pour comprendre pourquoi ça ne correspond pas
       Serial.printf("[BEDTIME] Heure ne correspond pas: Actuelle %02d:%02d vs Config %02d:%02d\n",
                     now.hour, now.minute, targetHour, targetMinute);
 
       // Si on n'est plus dans la minute de déclenchement, réinitialiser les flags
-      if (lastTriggeredHour == config.schedules[dayIndex].hour &&
-          lastTriggeredMinute == config.schedules[dayIndex].minute) {
+      if (s_state.lastTriggeredHour == config.schedules[dayIndex].hour &&
+          s_state.lastTriggeredMinute == config.schedules[dayIndex].minute) {
         Serial.println("[BEDTIME] Sortie de la minute de déclenchement, réinitialisation des flags");
-        lastTriggeredHour = 255;
-        lastTriggeredMinute = 255;
+        s_state.lastTriggeredHour = 255;
+        s_state.lastTriggeredMinute = 255;
       }
     }
   }
@@ -516,11 +505,11 @@ void BedtimeManager::startBedtime() {
   const char* state = isManuallyStarted() ? "manual" : "started";
   ModelDreamPubNubRoutes::publishRoutineState("bedtime", state);
 
-  bedtimeActive = true;
-  bedtimeStartTime = millis();
-  fadeInActive = true;
-  fadeOutActive = false;
-  fadeStartTime = millis();
+  s_state.routineActive = true;
+  s_state.startTime = millis();
+  s_state.fadeInActive = true;
+  s_state.fadeOutActive = false;
+  s_state.fadeStartTime = millis();
   
   // Convertir brightness de 0-100 vers 0-255
   uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
@@ -536,11 +525,11 @@ void BedtimeManager::startBedtime() {
 }
 
 void BedtimeManager::updateFadeIn() {
-  unsigned long elapsed = millis() - fadeStartTime;
+  unsigned long elapsed = millis() - s_state.fadeStartTime;
   
   if (elapsed >= FADE_IN_DURATION_MS) {
     // Fade-in terminé
-    fadeInActive = false;
+    s_state.fadeInActive = false;
 
     // Appliquer la brightness finale
     uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
@@ -562,16 +551,16 @@ void BedtimeManager::updateFadeIn() {
 }
 
 void BedtimeManager::updateFadeOut() {
-  unsigned long elapsed = millis() - fadeStartTime;
+  unsigned long elapsed = millis() - s_state.fadeStartTime;
 
   if (elapsed >= FADE_OUT_DURATION_MS) {
     // Fade-out terminé, éteindre complètement et arrêter le bedtime
-    fadeOutActive = false;
+    s_state.fadeOutActive = false;
     if (!LEDManager::clear()) {
       Serial.println("[BEDTIME] WARN: clear() failed");
     }
     ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
-    bedtimeActive = false;
+    s_state.routineActive = false;
     manuallyStarted = false;
   } else {
     // Interpolation linéaire de la brightness vers 0
@@ -586,13 +575,13 @@ void BedtimeManager::updateFadeOut() {
 }
 
 void BedtimeManager::stopBedtime(bool clearDisplay) {
-  if (bedtimeActive) {
+  if (s_state.routineActive) {
     ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
   }
 
-  bedtimeActive = false;
-  fadeInActive = false;
-  fadeOutActive = false;
+  s_state.routineActive = false;
+  s_state.fadeInActive = false;
+  s_state.fadeOutActive = false;
   manuallyStarted = false; // Réinitialiser le flag manuel
 
   // Réautoriser le sleep mode
@@ -605,7 +594,7 @@ void BedtimeManager::stopBedtime(bool clearDisplay) {
 }
 
 bool BedtimeManager::isBedtimeEnabled() {
-  if (!initialized) {
+  if (!s_state.initialized) {
     return false;
   }
   
@@ -620,7 +609,7 @@ BedtimeConfig BedtimeManager::getConfig() {
 }
 
 bool BedtimeManager::isBedtimeActive() {
-  return bedtimeActive;
+  return s_state.routineActive;
 }
 
 bool BedtimeManager::isManuallyStarted() {
@@ -630,7 +619,7 @@ bool BedtimeManager::isManuallyStarted() {
 void BedtimeManager::startBedtimeManually() {
   // Si le bedtime est déjà marqué actif (même si les LEDs ne le reflètent pas), arrêter proprement
   // pour repartir sur une base saine et réappliquer la config
-  if (bedtimeActive || fadeInActive || fadeOutActive) {
+  if (s_state.routineActive || s_state.fadeInActive || s_state.fadeOutActive) {
     stopBedtime();
   }
   
@@ -641,10 +630,10 @@ void BedtimeManager::startBedtimeManually() {
   startBedtime();
   
   Serial.printf("[BEDTIME] startBedtimeManually: bedtimeActive=%d manuallyStarted=%d\n",
-    bedtimeActive, manuallyStarted);
+    s_state.routineActive, manuallyStarted);
   
   // Allumage direct sans fade quand démarrage manuel (tap ou app)
-  fadeInActive = false;
+  s_state.fadeInActive = false;
   uint8_t brightnessValue = LEDManager::brightnessPercentTo255(config.brightness);
   LEDManager::setBrightness(brightnessValue);
 }
@@ -657,11 +646,11 @@ void BedtimeManager::stopBedtimeManually() {
 }
 
 void BedtimeManager::restoreDisplayFromConfig() {
-  if (!initialized) {
+  if (!s_state.initialized) {
     return;
   }
   // Ne pas écraser si on est en extinction progressive (allNight = false, fade-out en cours)
-  if (fadeOutActive) {
+  if (s_state.fadeOutActive) {
     return;
   }
   // Réafficher effet, couleur et luminosité selon la config (sans toucher à bedtimeActive/fade)
