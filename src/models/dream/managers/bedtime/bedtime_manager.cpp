@@ -179,7 +179,7 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
   // Parser chaque jour (accepter hour/minute en int ou double pour compatibilité JSON)
   for (int i = 0; i < 7; i++) {
     if (doc[WEEKDAY_NAMES[i]].is<JsonObject>()) {
-      JsonObject daySchedule = doc[weekdays[i]].as<JsonObject>();
+      JsonObject daySchedule = doc[WEEKDAY_NAMES[i]].as<JsonObject>();
       int h = -1, m = -1;
       if (daySchedule["hour"].is<int>()) h = daySchedule["hour"].as<int>();
       else if (daySchedule["hour"].is<double>()) h = (int)daySchedule["hour"].as<double>();
