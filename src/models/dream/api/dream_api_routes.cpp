@@ -11,15 +11,7 @@
 
 #include <esp_mac.h>
 
-// Convertir MAC AA:BB:CC:DD:EE:FF -> AABBCCDDEEFF (sans séparateurs)
-static void macToPathFormat(const char* macStr, char* out, size_t outSize) {
-  for (size_t i = 0, j = 0; macStr[i] && j < outSize - 1; i++) {
-    if (macStr[i] != ':' && macStr[i] != '-') {
-      out[j++] = (macStr[i] >= 'a' && macStr[i] <= 'z') ? macStr[i] - 32 : macStr[i];
-    }
-  }
-  out[outSize - 1] = '\0';
-}
+// macToPathFormat() is now in mac_utils.h as inline function
 
 bool DreamApiRoutes::postNighttimeAlert() {
   char macStr[18];
