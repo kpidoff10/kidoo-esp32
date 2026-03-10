@@ -45,4 +45,21 @@ inline String getMacAddressString(int macType = 0) {
 }
 #endif
 
+/**
+ * Convertir une adresse MAC en format chemin (sans séparateurs, majuscules)
+ * Exemple: "AA:BB:CC:DD:EE:FF" → "AABBCCDDEEFF"
+ *
+ * @param macStr Adresse MAC au format "AA:BB:CC:DD:EE:FF" ou "AA-BB-CC-DD-EE-FF"
+ * @param out Buffer de sortie
+ * @param outSize Taille du buffer de sortie
+ */
+inline void macToPathFormat(const char* macStr, char* out, size_t outSize) {
+  for (size_t i = 0, j = 0; macStr[i] && j < outSize - 1; i++) {
+    if (macStr[i] != ':' && macStr[i] != '-') {
+      out[j++] = (macStr[i] >= 'a' && macStr[i] <= 'z') ? macStr[i] - 32 : macStr[i];
+    }
+  }
+  out[outSize - 1] = '\0';
+}
+
 #endif // MAC_UTILS_H
