@@ -120,6 +120,11 @@ public:
    */
   static bool isTestWakeupActive();
 
+  /**
+   * Réinitialiser tous les flags de test au démarrage du modèle
+   */
+  static void resetTestFlags();
+
 private:
   // Handlers pour chaque action
   static bool handleGetInfo(const JsonObject& json);

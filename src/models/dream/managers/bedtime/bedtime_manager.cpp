@@ -19,6 +19,8 @@ uint8_t BedtimeManager::lastCheckedDay = 0;  // 0 = jamais vérifié
 bool BedtimeManager::fadeInActive = false;
 bool BedtimeManager::fadeOutActive = false;
 unsigned long BedtimeManager::fadeStartTime = 0;
+unsigned long BedtimeManager::lastCachedCheckInterval = 0;
+uint8_t BedtimeManager::lastCachedIntervalDay = 0;
 
 // Constantes
 static const unsigned long FADE_IN_DURATION_MS = 30000;      // 30 secondes
@@ -190,7 +192,7 @@ void BedtimeManager::parseWeekdaySchedule(const char* jsonStr) {
       if (daySchedule["activated"].is<bool>()) {
         config.schedules[i].activated = daySchedule["activated"].as<bool>();
       } else {
-        config.schedules[i].activated = (h >= 0 && m >= 0);
+        config.schedules[i].activated = (h >= 0 && h <= 23 && m >= 0 && m <= 59);
       }
     }
   }
@@ -429,45 +431,52 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
   if (!RTCManager::isAvailable()) {
     return CHECK_INTERVAL_MS;  // Par défaut, toutes les minutes
   }
-  
+
   DateTime now = RTCManager::getDateTime();
   uint8_t dayIndex = weekdayToIndex(now.dayOfWeek);
-  
-  if (!config.schedules[dayIndex].activated) {
-    return CHECK_INTERVAL_3H_MS;  // Non activé, vérifier toutes les 3h au cas où
+
+  // Retourner l'intervalle en cache si le jour n'a pas changé
+  if (now.dayOfWeek == lastCachedIntervalDay && !configChanged()) {
+    return lastCachedCheckInterval;
   }
-  
+
+  // Jour changé ou config changée : recalculer
+  lastCachedIntervalDay = now.dayOfWeek;
+
+  if (!config.schedules[dayIndex].activated) {
+    lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
+    return lastCachedCheckInterval;
+  }
+
   // Calculer la distance jusqu'à l'heure de déclenchement
   int targetHour = config.schedules[dayIndex].hour;
   int targetMinute = config.schedules[dayIndex].minute;
-  
+
   // Calculer les minutes jusqu'à l'heure de déclenchement
   int currentMinutes = now.hour * 60 + now.minute;
   int targetMinutes = targetHour * 60 + targetMinute;
   int minutesUntilTarget = targetMinutes - currentMinutes;
-  
+
   // Si l'heure de déclenchement est passée aujourd'hui, c'est pour demain
   if (minutesUntilTarget < 0) {
     minutesUntilTarget += 24 * 60;  // Ajouter 24 heures
   }
-  
+
   // Convertir en heures
   float hoursUntilTarget = minutesUntilTarget / 60.0f;
-  
+
   // Déterminer l'intervalle de vérification basé sur la distance
   if (hoursUntilTarget > 6.0f) {
-    // Plus de 6 heures avant : vérifier toutes les 3 heures
-    return CHECK_INTERVAL_3H_MS;
+    lastCachedCheckInterval = CHECK_INTERVAL_3H_MS;
   } else if (hoursUntilTarget > 3.0f) {
-    // 3-6 heures avant : vérifier toutes les heures
-    return CHECK_INTERVAL_1H_MS;
+    lastCachedCheckInterval = CHECK_INTERVAL_1H_MS;
   } else if (hoursUntilTarget > 1.0f) {
-    // 1-3 heures avant : vérifier toutes les 30 minutes
-    return CHECK_INTERVAL_30M_MS;
+    lastCachedCheckInterval = CHECK_INTERVAL_30M_MS;
   } else {
-    // Moins d'1 heure avant : vérifier toutes les minutes
-    return CHECK_INTERVAL_MS;
+    lastCachedCheckInterval = CHECK_INTERVAL_MS;
   }
+
+  return lastCachedCheckInterval;
 }
 
 void BedtimeManager::checkBedtimeTrigger() {

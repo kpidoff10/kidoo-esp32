@@ -138,7 +138,11 @@ private:
   static bool fadeInActive;
   static bool fadeOutActive;
   static unsigned long fadeStartTime;
-  
+
+  // Cache pour calculateNextCheckInterval
+  static unsigned long lastCachedCheckInterval;
+  static uint8_t lastCachedIntervalDay;
+
   // Fonctions privées
   static void parseWeekdaySchedule(const char* jsonStr);
   static uint8_t weekdayToIndex(uint8_t dayOfWeek); // Convertir RTC dayOfWeek (1-7) vers index (0-6)

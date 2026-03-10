@@ -94,7 +94,6 @@ void DreamTouchHandler::update() {
       LEDManager::wakeUp();
       // Nettoyer d'abord pour éviter les animations résiduelles du pulse
       LEDManager::clear();
-      delay(50);
       LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
       LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
       LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
@@ -189,14 +188,12 @@ void DreamTouchHandler::triggerAlertFeedback(bool success) {
   LEDManager::setBrightness(getBrightnessFromConfig());
   // Nettoyer d'abord pour éviter les couleurs résiduelles
   LEDManager::clear();
-  delay(50);
   // Vert si success, rouge sinon
   if (success) {
     LEDManager::setColor(COLOR_GREEN);  // Vert
   } else {
     LEDManager::setColor(COLOR_RED);  // Rouge
   }
-  delay(50);  // Laisser la couleur bien définie avant l'effet
   LEDManager::setEffect(LED_EFFECT_PULSE_FAST);
   s_alertFeedbackUntil = millis() + ALERT_FEEDBACK_MS;
 }

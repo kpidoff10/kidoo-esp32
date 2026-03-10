@@ -31,7 +31,7 @@ bool DreamApiRoutes::postNighttimeAlert() {
   char macClean[13] = {0};
   macToPathFormat(macStr, macClean, sizeof(macClean));
 
-  char path[80];
+  char path[128];
   snprintf(path, sizeof(path), "/api/devices/%s/nighttime-alert", macClean);
 
   const int maxRetries = 3;

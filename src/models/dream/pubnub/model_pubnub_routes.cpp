@@ -788,6 +788,16 @@ bool ModelDreamPubNubRoutes::isTestBedtimeActive() {
   return testBedtimeActive;
 }
 
+void ModelDreamPubNubRoutes::resetTestFlags() {
+  testBedtimeActive = false;
+  testBedtimeStartTime = 0;
+  bedtimeWasActiveBeforeTest = false;
+  testWakeupActive = false;
+  testWakeupStartTime = false;
+  testDefaultConfigActive = false;
+  testDefaultConfigStartTime = 0;
+}
+
 bool ModelDreamPubNubRoutes::handleNighttimeAlertAck(const JsonObject& json) {
   // Format: { "action": "nighttime-alert-ack" }
   // Envoyé par l'app quand le parent tape "J'arrive" sur la notification d'alerte nocturne.

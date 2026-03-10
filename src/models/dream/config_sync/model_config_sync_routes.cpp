@@ -104,7 +104,7 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
   // Format attendu: {"success": true, "data": {"bedtime": {...}, "wakeup": {...}, "defaultColor": {...}}}
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<2560> doc;
+  StaticJsonDocument<1500> doc;
   #pragma GCC diagnostic pop
 
   DeserializationError error = deserializeJson(doc, payload);

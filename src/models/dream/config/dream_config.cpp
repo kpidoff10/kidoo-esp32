@@ -28,17 +28,13 @@ DreamConfig DreamConfigManager::getConfig() {
   if (!configFile) return config;
 
   const size_t maxSize = 4096;
+  char jsonBuffer[4096];
   size_t fileSize = configFile.size();
   if (fileSize == 0 || fileSize > maxSize) {
     configFile.close();
     return config;
   }
 
-  char* jsonBuffer = new char[fileSize + 1];
-  if (!jsonBuffer) {
-    configFile.close();
-    return config;
-  }
   size_t bytesRead = configFile.readBytes(jsonBuffer, fileSize);
   jsonBuffer[bytesRead] = '\0';
   configFile.close();
@@ -48,7 +44,6 @@ DreamConfig DreamConfigManager::getConfig() {
   StaticJsonDocument<maxSize> doc;
   #pragma GCC diagnostic pop
   DeserializationError error = deserializeJson(doc, jsonBuffer);
-  delete[] jsonBuffer;
 
   if (error) return config;
 
@@ -96,13 +91,10 @@ bool DreamConfigManager::saveConfig(const DreamConfig& config) {
     if (configFile) {
       size_t fileSize = configFile.size();
       if (fileSize > 0 && fileSize <= maxSize) {
-        char* jsonBuffer = new char[fileSize + 1];
-        if (jsonBuffer) {
-          size_t bytesRead = configFile.readBytes(jsonBuffer, fileSize);
-          jsonBuffer[bytesRead] = '\0';
-          deserializeJson(doc, jsonBuffer);
-          delete[] jsonBuffer;
-        }
+        char jsonBuffer[4096];
+        size_t bytesRead = configFile.readBytes(jsonBuffer, fileSize);
+        jsonBuffer[bytesRead] = '\0';
+        deserializeJson(doc, jsonBuffer);
       }
       configFile.close();
     }
