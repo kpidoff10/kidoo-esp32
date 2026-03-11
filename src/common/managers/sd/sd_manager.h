@@ -30,6 +30,8 @@ struct SDConfig {
   uint8_t wakeup_colorG;   // Couleur G pour wakeup (0-255)
   uint8_t wakeup_colorB;   // Couleur B pour wakeup (0-255)
   uint8_t wakeup_brightness; // Luminosité pour wakeup (0-100)
+  bool wakeup_autoShutdown;  // Activation de l'extinction automatique
+  uint16_t wakeup_autoShutdownMinutes; // Durée avant extinction auto (minutes)
   char wakeup_weekdaySchedule[512]; // Schedule par jour (JSON sérialisé: {"monday":{"hour":7,"minute":30,"activated":true},...})
   // Note: Config Dream spécifique (nighttime_alert, etc.) → DreamConfigManager (clé "dream" dans config.json)
   // Note: MQTT est configuré dans default_config.h (pas sur SD)

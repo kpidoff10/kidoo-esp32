@@ -39,6 +39,8 @@ struct WakeupConfig {
   uint8_t colorG;
   uint8_t colorB;
   uint8_t brightness;  // 0-100
+  bool autoShutdown;   // Activation de l'extinction automatique
+  uint16_t autoShutdownMinutes; // Durée avant extinction (5-120 min)
   WakeupSchedule schedules[7]; // Un schedule par jour (0=monday, 6=sunday)
 };
 

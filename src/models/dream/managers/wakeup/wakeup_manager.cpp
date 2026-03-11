@@ -21,8 +21,6 @@ uint8_t WakeupManager::lastBrightness = 255;
 // Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
 static const unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute
 static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
-static const unsigned long WAKEUP_DURATION_MS = 1800000;     // 30 minutes après l'heure de réveil avant fade-out
-static const unsigned long WAKEUP_FADE_OUT_START_MS = FADE_IN_DURATION_MS + WAKEUP_DURATION_MS; // Quand démarrer le fade-out
 static const unsigned long FADE_UPDATE_INTERVAL_MS = 100;     // Mettre à jour le fade toutes les 100ms (10 fois par seconde)
 static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 15;         // Déclencher 15 minutes avant
 
@@ -108,6 +106,8 @@ bool WakeupManager::loadConfig() {
   config.colorG = sdConfig.wakeup_colorG;
   config.colorB = sdConfig.wakeup_colorB;
   config.brightness = sdConfig.wakeup_brightness;
+  config.autoShutdown = sdConfig.wakeup_autoShutdown;
+  config.autoShutdownMinutes = sdConfig.wakeup_autoShutdownMinutes;
   
   // Initialiser tous les schedules à désactivés par défaut
   for (int i = 0; i < 7; i++) {
@@ -280,11 +280,11 @@ void WakeupManager::update() {
     }
   }
   
-  // Vérifier si on doit démarrer le fade-out (30 minutes après l'heure de réveil exacte)
-  if (s_state.routineActive && !s_state.fadeInActive && !s_state.fadeOutActive) {
+  // Vérifier si on doit démarrer le fade-out (seulement si l'extinction automatique est activée)
+  if (config.autoShutdown && s_state.routineActive && !s_state.fadeInActive && !s_state.fadeOutActive) {
     // Calculer le temps écoulé depuis le début du wake-up
     unsigned long elapsedSinceStart;
-    
+
     // Gérer le wrap-around de millis() (se produit après ~49 jours)
     if (currentTime >= s_state.startTime) {
       elapsedSinceStart = currentTime - s_state.startTime;
@@ -292,14 +292,16 @@ void WakeupManager::update() {
       // Wrap-around détecté
       elapsedSinceStart = (ULONG_MAX - s_state.startTime) + currentTime;
     }
-    
-    // Le fade-in dure 1 minute, donc après 1 + 30 = 31 minutes depuis le début
-    // on démarre le fade-out (30 minutes après l'heure de réveil exacte)
-    if (elapsedSinceStart >= WAKEUP_FADE_OUT_START_MS) {
-      // Démarrer le fade-out après 30 minutes après l'heure de réveil
+
+    // Calculer le temps avant fade-out : fade-in + durée d'extinction
+    unsigned long durationMs = (unsigned long)config.autoShutdownMinutes * 60000UL;
+    unsigned long fadeOutStartMs = FADE_IN_DURATION_MS + durationMs;
+
+    // Démarrer le fade-out après la durée d'extinction configurée
+    if (elapsedSinceStart >= fadeOutStartMs) {
       s_state.fadeOutActive = true;
       s_state.fadeStartTime = currentTime;
-      Serial.println("[WAKEUP] 30 minutes après l'heure de réveil écoulées, démarrage du fade-out (5 minutes de fade-out)");
+      Serial.printf("[WAKEUP] %u minutes écoulées, démarrage du fade-out (5 minutes de fade-out)\n", config.autoShutdownMinutes);
     }
   }
   

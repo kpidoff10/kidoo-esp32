@@ -1285,21 +1285,23 @@ bool ModelDreamPubNubRoutes::handleStopTestWakeup(const JsonObject& json) {
 }
 
 bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
-  // Format: { "action": "set-wakeup-config", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50, "weekdaySchedule": {...} } }
+  // Format: { "action": "set-wakeup-config", "params": { "colorR": 255, "colorG": 200, "colorB": 100, "brightness": 50, "autoShutdown": true, "autoShutdownMinutes": 30, "weekdaySchedule": {...} } }
   // Sauvegarde la configuration de l'heure de réveil sur la carte SD
-  
+
   Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Sauvegarde de la configuration...");
-  
+
   if (!SDManager::isAvailable()) {
     Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Carte SD non disponible");
     return false;
   }
-  
+
   // Récupérer les paramètres (le serveur envoie à la racine: action, colorR, weekdaySchedule, timestamp — pas de wrapper "params")
   int colorR = -1;
   int colorG = -1;
   int colorB = -1;
   int brightness = -1;
+  bool autoShutdown = true;
+  int autoShutdownMinutes = 30;
   JsonObject weekdayScheduleObj;
   String weekdayScheduleStr;  // Si reçu comme chaîne JSON
   bool hasWeekdaySchedule = false;
@@ -1313,6 +1315,16 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
   else if (params["colorB"].is<double>()) colorB = (int)params["colorB"].as<double>();
   if (params["brightness"].is<int>()) brightness = params["brightness"].as<int>();
   else if (params["brightness"].is<double>()) brightness = (int)params["brightness"].as<double>();
+
+  if (params["autoShutdown"].is<bool>()) {
+    autoShutdown = params["autoShutdown"].as<bool>();
+  }
+
+  if (params["autoShutdownMinutes"].is<int>()) {
+    autoShutdownMinutes = params["autoShutdownMinutes"].as<int>();
+  } else if (params["autoShutdownMinutes"].is<double>()) {
+    autoShutdownMinutes = (int)params["autoShutdownMinutes"].as<double>();
+  }
 
   if (params["weekdaySchedule"].is<JsonObject>()) {
     weekdayScheduleObj = params["weekdaySchedule"].as<JsonObject>();
@@ -1336,11 +1348,21 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
   // Charger la configuration actuelle depuis la SD
   SDConfig config = SDManager::getConfig();
   
+  // Valider autoShutdownMinutes
+  if (autoShutdownMinutes < 5) {
+    autoShutdownMinutes = 5;
+  }
+  if (autoShutdownMinutes > 120) {
+    autoShutdownMinutes = 120;
+  }
+
   // Mettre à jour les champs wakeup
   config.wakeup_colorR = (uint8_t)colorR;
   config.wakeup_colorG = (uint8_t)colorG;
   config.wakeup_colorB = (uint8_t)colorB;
   config.wakeup_brightness = (uint8_t)brightness;
+  config.wakeup_autoShutdown = autoShutdown;
+  config.wakeup_autoShutdownMinutes = (uint16_t)autoShutdownMinutes;
   
   // Sauvegarder weekdaySchedule si présent
   if (hasWeekdaySchedule) {
@@ -1375,7 +1397,11 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     Serial.print(colorB);
     Serial.print("), Brightness: ");
     Serial.print(brightness);
-    Serial.print("%");
+    Serial.print("%, AutoShutdown: ");
+    Serial.print(autoShutdown ? "true" : "false");
+    Serial.print(", Duration: ");
+    Serial.print(autoShutdownMinutes);
+    Serial.print("min");
     if (hasWeekdaySchedule) {
       Serial.print(", weekdaySchedule: ");
       Serial.println(config.wakeup_weekdaySchedule);

@@ -33,6 +33,8 @@ void SDManager::initDefaultConfig(SDConfig* config) {
   config->wakeup_colorG = 200;
   config->wakeup_colorB = 100;
   config->wakeup_brightness = 50;
+  config->wakeup_autoShutdown = true;
+  config->wakeup_autoShutdownMinutes = 30;
   strcpy(config->wakeup_weekdaySchedule, "{}"); // JSON vide par défaut
 }
 
@@ -317,7 +319,18 @@ SDConfig SDManager::getConfig() {
       config.wakeup_brightness = (uint8_t)brightness;
     }
   }
-  
+
+  if (doc["wakeup_autoShutdown"].is<bool>()) {
+    config.wakeup_autoShutdown = doc["wakeup_autoShutdown"] | true;
+  }
+
+  if (doc["wakeup_autoShutdownMinutes"].is<int>()) {
+    int minutes = doc["wakeup_autoShutdownMinutes"] | 30;
+    if (minutes < 5) minutes = 5;
+    if (minutes > 120) minutes = 120;
+    config.wakeup_autoShutdownMinutes = (uint16_t)minutes;
+  }
+
   // Lire weekdaySchedule wakeup (JSON sérialisé)
   if (doc["wakeup_weekdaySchedule"].is<String>()) {
     String scheduleStr = doc["wakeup_weekdaySchedule"] | "{}";
@@ -409,7 +422,9 @@ bool SDManager::saveConfig(const SDConfig& config) {
   doc["wakeup_colorG"] = config.wakeup_colorG;
   doc["wakeup_colorB"] = config.wakeup_colorB;
   doc["wakeup_brightness"] = config.wakeup_brightness;
-  
+  doc["wakeup_autoShutdown"] = config.wakeup_autoShutdown;
+  doc["wakeup_autoShutdownMinutes"] = config.wakeup_autoShutdownMinutes;
+
   if (strlen(config.wakeup_weekdaySchedule) > 0) {
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
