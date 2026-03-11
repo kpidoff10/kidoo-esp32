@@ -168,7 +168,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     deviceState, BedtimeManager::isBedtimeActive(), BedtimeManager::isManuallyStarted(), testBedtimeActive, DreamTouchHandler::isDefaultColorDisplayed());
 
   // Préparer les données env (temperature, humidity, pressure)
-  char envJson[200] = "";
+  char envJson[300] = "";
 #ifdef HAS_ENV_SENSOR
   if (EnvSensorManager::isInitialized() && EnvSensorManager::isAvailable()) {
     float t = EnvSensorManager::getTemperatureC();
@@ -177,7 +177,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
 
     // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
     char tStr[16], hStr[16], pStr[16];
-    if (!isfinite(t) || isnan(t)) {
+    if (!isfinite(t) || isnan(t) || t < -50.0f || t > 150.0f) {
       strcpy(tStr, "null");
     } else {
       int ti = (int)t;
@@ -185,7 +185,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
       if (td < 0) td = -td;
       snprintf(tStr, sizeof(tStr), "%d.%d", ti, td);
     }
-    if (!isfinite(h) || isnan(h)) {
+    if (!isfinite(h) || isnan(h) || h < 0.0f || h > 100.0f) {
       strcpy(hStr, "null");
     } else {
       int hi = (int)h;
