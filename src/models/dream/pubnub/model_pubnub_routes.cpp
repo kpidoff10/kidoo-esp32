@@ -890,20 +890,19 @@ bool ModelDreamPubNubRoutes::handleSetDefaultConfig(const JsonObject& json) {
 
     // Déclencher automatiquement le test avec la nouvelle configuration (comme set-bedtime-config)
     Serial.println("[PUBNUB-ROUTE] set-default-config: Déclenchement automatique du test...");
-    JsonDocument testJson;
-    JsonObject testParams = testJson["params"].to<JsonObject>();
-    testParams["colorR"] = colorR;
-    testParams["colorG"] = colorG;
-    testParams["colorB"] = colorB;
-    testParams["brightness"] = brightness;
-    if (hasEffect && effectStr != nullptr && strlen(effectStr) > 0) {
-      testParams["effect"] = effectStr;
+    // Directement appeler le test sans JsonDocument pour éviter débordement de stack
+    LEDManager::wakeUp();
+    LEDEffect effect = LED_EFFECT_NONE;
+    if (hasEffect && effectStr != nullptr) {
+      effect = LEDEffectParser::parse(effectStr);
     }
-    if (handleStartTestDefaultConfig(testJson.as<JsonObject>())) {
-      Serial.println("[PUBNUB-ROUTE] set-default-config: Test automatique démarré avec succès");
-    } else {
-      Serial.println("[PUBNUB-ROUTE] set-default-config: Erreur lors du démarrage du test automatique");
-    }
+    LEDManager::setEffect(effect);
+    LEDManager::setColor(colorR, colorG, colorB);
+    uint8_t brightnessValue = (brightness * 255 + 50) / 100;
+    LEDManager::setBrightness(brightnessValue);
+    testDefaultConfigActive = true;
+    testDefaultConfigStartTime = millis();
+    Serial.println("[PUBNUB-ROUTE] set-default-config: Test automatique démarré avec succès");
 
     return true;
   } else {
