@@ -12,6 +12,7 @@
 
 #ifdef HAS_WIFI
 #include <ArduinoJson.h>
+#include <SD.h>
 #include <esp_mac.h>  // Pour ESP_MAC_WIFI_STA
 #endif
 
@@ -333,6 +334,38 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   }
 
   Serial.printf("[CONFIG-SYNC] Fuseau horaire: %s\n", timezoneId);
+
+  // Sauvegarder timezoneId dans config.json pour RTCManager::getLocalDateTime()
+  if (SDManager::isAvailable() && SDManager::configFileExists()) {
+    File configFile = SD.open("/config.json", FILE_READ);
+    if (configFile) {
+      const size_t maxSize = 4096;
+      char jsonBuffer[4096];
+      size_t fileSize = configFile.size();
+      if (fileSize > 0 && fileSize < maxSize) {
+        size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
+        jsonBuffer[bytesRead] = '\0';
+        configFile.close();
+
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<4096> doc;
+        #pragma GCC diagnostic pop
+        if (!deserializeJson(doc, jsonBuffer)) {
+          doc["timezoneId"] = timezoneId;
+          configFile = SD.open("/config.json", FILE_WRITE);
+          if (configFile) {
+            serializeJson(doc, configFile);
+            configFile.close();
+            RTCManager::setTimezoneId(timezoneId);
+            Serial.println("[CONFIG-SYNC] timezoneId sauvegardé dans config.json");
+          }
+        }
+      } else {
+        configFile.close();
+      }
+    }
+  }
 
   // Obtenir les offsets UTC pour cette timezone
   long offsetSeconds = TimezoneManager::getOffsetSeconds(timezoneId);

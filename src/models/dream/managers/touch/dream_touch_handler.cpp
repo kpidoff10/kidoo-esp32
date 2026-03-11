@@ -77,7 +77,7 @@ void DreamTouchHandler::update() {
       LEDManager::clear();
       LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
       LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
-      LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+      LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
       LEDManager::setEffect(defaultEffect);
     } else {
       LEDManager::startFadeOutAndClear();
@@ -148,7 +148,7 @@ void DreamTouchHandler::update() {
             LEDManager::wakeUp();
             LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
             LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
-            LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+            LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
             LEDManager::setEffect(defaultEffect);
             s_defaultColorDisplayed = true;
             ModelDreamPubNubRoutes::publishDefaultColorState();

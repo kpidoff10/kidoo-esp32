@@ -47,10 +47,36 @@ public:
   static bool isInitialized();
   
   /**
-   * Obtenir la date/heure actuelle
+   * Obtenir la date/heure actuelle (UTC stockée dans le RTC)
    * @return Structure DateTime avec la date/heure
    */
   static DateTime getDateTime();
+
+  /**
+   * Obtenir la date/heure en heure locale (UTC + offset timezone).
+   * Utilise timezoneId chargé en mémoire au démarrage (loadTimezoneFromConfig).
+   * Si pas de timezone configurée ou HAS_SD non défini, retourne getDateTime().
+   * @return Structure DateTime avec la date/heure locale
+   */
+  static DateTime getLocalDateTime();
+
+  /**
+   * Charger timezoneId depuis config.json (appelé au démarrage).
+   * À rappeler après set-timezone ou config sync pour mettre à jour la mémoire.
+   */
+  static void loadTimezoneFromConfig();
+
+  /**
+   * Obtenir le timezoneId actuellement configuré
+   * @return Chaîne IANA (ex: "Europe/Paris"), ou vide si pas configurée
+   */
+  static const char* getTimezoneId();
+
+  /**
+   * Mettre à jour le timezoneId en mémoire (après set-timezone ou config sync).
+   * @param timezoneId Chaîne IANA (ex: "Europe/Paris"), max 63 caractères
+   */
+  static void setTimezoneId(const char* timezoneId);
   
   /**
    * Définir la date/heure
@@ -171,6 +197,7 @@ private:
   static uint8_t readRegister(uint8_t reg);
   static void writeRegister(uint8_t reg, uint8_t value);
   static uint8_t calculateDayOfWeek(uint16_t year, uint8_t month, uint8_t day);
+  static DateTime unixToDateTime(uint32_t timestamp);
 };
 
 #endif // RTC_MANAGER_H

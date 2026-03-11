@@ -23,6 +23,16 @@ public:
    * @return L'offset pour l'heure d'été (généralement 3600 ou 0)
    */
   static int getDaylightOffsetSeconds(const char* timezoneId);
+
+  /**
+   * Offset total (base + DST) en une seule passe - optimisé pour getLocalDateTime.
+   * @param timezoneId La timezone IANA
+   * @param year Année (ex: 2024)
+   * @param month Mois 1-12
+   * @param day Jour 1-31
+   * @return Offset total en secondes (base + DST si applicable)
+   */
+  static long getTotalOffsetSeconds(const char* timezoneId, uint16_t year, uint8_t month, uint8_t day);
 };
 
 #endif // TIMEZONE_MANAGER_H

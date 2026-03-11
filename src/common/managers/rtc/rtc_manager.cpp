@@ -1,9 +1,16 @@
 #include "rtc_manager.h"
 #include <Wire.h>
 #include <time.h>
+#include <cstring>
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/log/log_manager.h"
 #include "models/model_config.h"
+#if defined(HAS_SD)
+#include "common/managers/sd/sd_manager.h"
+#include "common/managers/timezone/timezone_manager.h"
+#include <ArduinoJson.h>
+#include <SD.h>
+#endif
 
 // Serveurs NTP
 static const char* NTP_SERVER_1 = "pool.ntp.org";
@@ -14,6 +21,10 @@ static const char* NTP_SERVER_3 = "time.cloudflare.com";
 bool RTCManager::initialized = false;
 bool RTCManager::available = false;
 bool RTCManager::ntpSynced = false;
+
+// timezoneId en mémoire (chargé au démarrage, plus de lecture SD)
+static const size_t TIMEZONE_ID_MAX = 64;
+static char s_timezoneId[TIMEZONE_ID_MAX] = {0};
 
 bool RTCManager::init() {
   if (initialized) {
@@ -50,7 +61,58 @@ bool RTCManager::init() {
     LogManager::error("[RTC] DS3231 non detecte (erreur I2C: %d)", error);
   }
   
+#if defined(HAS_SD)
+  loadTimezoneFromConfig();
+#endif
+  
   return available;
+}
+
+void RTCManager::loadTimezoneFromConfig() {
+#if defined(HAS_SD)
+  s_timezoneId[0] = '\0';
+  if (!SDManager::isAvailable() || !SDManager::configFileExists()) {
+    return;
+  }
+  File configFile = SD.open("/config.json", FILE_READ);
+  if (!configFile) return;
+
+  const size_t maxSize = 512;
+  char jsonBuffer[512];
+  size_t fileSize = configFile.size();
+  if (fileSize == 0 || fileSize > maxSize) {
+    configFile.close();
+    return;
+  }
+  size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
+  jsonBuffer[bytesRead] = '\0';
+  configFile.close();
+
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  StaticJsonDocument<512> doc;
+  #pragma GCC diagnostic pop
+  if (deserializeJson(doc, jsonBuffer)) return;
+
+  const char* tz = doc["timezoneId"].as<const char*>();
+  if (tz && strlen(tz) > 0) {
+    strncpy(s_timezoneId, tz, TIMEZONE_ID_MAX - 1);
+    s_timezoneId[TIMEZONE_ID_MAX - 1] = '\0';
+  }
+#endif
+}
+
+void RTCManager::setTimezoneId(const char* timezoneId) {
+  if (!timezoneId) {
+    s_timezoneId[0] = '\0';
+    return;
+  }
+  strncpy(s_timezoneId, timezoneId, TIMEZONE_ID_MAX - 1);
+  s_timezoneId[TIMEZONE_ID_MAX - 1] = '\0';
+}
+
+const char* RTCManager::getTimezoneId() {
+  return s_timezoneId;
 }
 
 bool RTCManager::isAvailable() {
@@ -113,6 +175,59 @@ DateTime RTCManager::getDateTime() {
   }
   
   return dt;
+}
+
+DateTime RTCManager::unixToDateTime(uint32_t timestamp) {
+  DateTime dt = {0, 0, 0, 0, 0, 0, 0};
+  uint32_t remaining = timestamp;
+
+  dt.year = 1970;
+  while (true) {
+    uint32_t daysInYear = (dt.year % 4 == 0 && (dt.year % 100 != 0 || dt.year % 400 == 0)) ? 366 : 365;
+    uint32_t secondsInYear = daysInYear * 86400UL;
+    if (remaining < secondsInYear) break;
+    remaining -= secondsInYear;
+    dt.year++;
+  }
+
+  static const uint8_t daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  dt.month = 1;
+  while (dt.month <= 12) {
+    uint8_t days = daysInMonth[dt.month - 1];
+    if (dt.month == 2 && (dt.year % 4 == 0 && (dt.year % 100 != 0 || dt.year % 400 == 0))) {
+      days = 29;
+    }
+    uint32_t secondsInMonth = days * 86400UL;
+    if (remaining < secondsInMonth) break;
+    remaining -= secondsInMonth;
+    dt.month++;
+  }
+
+  dt.day = (remaining / 86400UL) + 1;
+  remaining %= 86400UL;
+  dt.hour = remaining / 3600UL;
+  remaining %= 3600UL;
+  dt.minute = remaining / 60UL;
+  dt.second = remaining % 60UL;
+  dt.dayOfWeek = calculateDayOfWeek(dt.year, dt.month, dt.day);
+
+  return dt;
+}
+
+DateTime RTCManager::getLocalDateTime() {
+  DateTime utc = getDateTime();
+#if defined(HAS_SD)
+  if (s_timezoneId[0] == '\0') return utc;
+
+  long totalOffset = TimezoneManager::getTotalOffsetSeconds(s_timezoneId, utc.year, utc.month, utc.day);
+
+  uint32_t utcUnix = getUnixTime();
+  int64_t localUnix = (int64_t)utcUnix + (int64_t)totalOffset;
+  if (localUnix < 0) localUnix = 0;
+  return unixToDateTime((uint32_t)localUnix);
+#else
+  return utc;
+#endif
 }
 
 bool RTCManager::setDateTime(const DateTime& dt) {
@@ -206,51 +321,7 @@ uint32_t RTCManager::getUnixTimeUTC() {
 }
 
 bool RTCManager::setUnixTime(uint32_t timestamp) {
-  // Convertir le timestamp en DateTime
-  DateTime dt;
-  
-  uint32_t remaining = timestamp;
-  
-  // Calculer l'année
-  dt.year = 1970;
-  while (true) {
-    uint32_t daysInYear = (dt.year % 4 == 0 && (dt.year % 100 != 0 || dt.year % 400 == 0)) ? 366 : 365;
-    uint32_t secondsInYear = daysInYear * 86400UL;
-    if (remaining < secondsInYear) break;
-    remaining -= secondsInYear;
-    dt.year++;
-  }
-  
-  // Calculer le mois
-  static const uint8_t daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  dt.month = 1;
-  while (dt.month <= 12) {
-    uint8_t days = daysInMonth[dt.month - 1];
-    if (dt.month == 2 && (dt.year % 4 == 0 && (dt.year % 100 != 0 || dt.year % 400 == 0))) {
-      days = 29;
-    }
-    uint32_t secondsInMonth = days * 86400UL;
-    if (remaining < secondsInMonth) break;
-    remaining -= secondsInMonth;
-    dt.month++;
-  }
-  
-  // Calculer le jour
-  dt.day = (remaining / 86400UL) + 1;
-  remaining %= 86400UL;
-  
-  // Calculer l'heure
-  dt.hour = remaining / 3600UL;
-  remaining %= 3600UL;
-  
-  // Calculer les minutes et secondes
-  dt.minute = remaining / 60UL;
-  dt.second = remaining % 60UL;
-  
-  // Calculer le jour de la semaine
-  dt.dayOfWeek = calculateDayOfWeek(dt.year, dt.month, dt.day);
-  
-  return setDateTime(dt);
+  return setDateTime(unixToDateTime(timestamp));
 }
 
 float RTCManager::getTemperature() {

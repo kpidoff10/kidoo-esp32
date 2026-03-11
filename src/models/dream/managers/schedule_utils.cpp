@@ -1,4 +1,5 @@
 #include "schedule_utils.h"
+#include "../../../common/utils/time_utils.h"
 
 namespace ScheduleUtils {
 
@@ -54,13 +55,13 @@ unsigned long calculateNextCheckInterval(
   state.lastCachedIntervalDay = currentDayOfWeek;
 
   // Calculer les minutes jusqu'à l'heure de déclenchement
-  int currentMinutes = currentHour * 60 + currentMinute;
-  int triggerMinutes = triggerHour * 60 + triggerMinute;
+  int currentMinutes = TimeUtils::timeToMinutes(currentHour, currentMinute);
+  int triggerMinutes = TimeUtils::timeToMinutes(triggerHour, triggerMinute);
   int minutesUntilTarget = triggerMinutes - currentMinutes;
 
   // Si l'heure de déclenchement est passée aujourd'hui, c'est pour demain
   if (minutesUntilTarget < 0) {
-    minutesUntilTarget += 24 * 60; // Ajouter 24 heures
+    minutesUntilTarget += DreamTiming::MINUTES_PER_DAY;
   }
 
   // Convertir en heures
@@ -78,6 +79,11 @@ unsigned long calculateNextCheckInterval(
   }
 
   return state.lastCachedCheckInterval;
+}
+
+void resetTriggeredFlags(ScheduleState& state) {
+  state.lastTriggeredHour = DreamTiming::TRIGGERED_NEVER;
+  state.lastTriggeredMinute = DreamTiming::TRIGGERED_NEVER;
 }
 
 } // namespace ScheduleUtils

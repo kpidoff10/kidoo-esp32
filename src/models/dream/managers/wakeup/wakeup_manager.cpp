@@ -1,5 +1,7 @@
 #include "wakeup_manager.h"
 #include "../dream_schedules.h"
+#include "../dream_timing_constants.h"
+#include "../dream_rtc_macros.h"
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
@@ -34,12 +36,8 @@ bool WakeupManager::init() {
     return true;
   }
   
-  // Vérifier que le RTC est disponible
-  if (!RTCManager::isAvailable()) {
-    Serial.println("[WAKEUP] ERREUR: RTC non disponible");
-    return false;
-  }
-  
+  RTC_CHECK_OR_RETURN_FALSE("WAKEUP");
+
   // Charger la configuration depuis la SD
   if (!loadConfig()) {
     Serial.println("[WAKEUP] ERREUR: Impossible de charger la configuration");
@@ -50,19 +48,20 @@ bool WakeupManager::init() {
   
   // Initialiser l'état de vérification
   if (RTCManager::isAvailable()) {
-    DateTime now = RTCManager::getDateTime();
+    DateTime now = RTCManager::getLocalDateTime();
     s_state.lastCheckedDay = now.dayOfWeek;
     updateCheckingState();
     
     // Initialiser lastCheckTime pour démarrer avec le bon intervalle
     s_state.lastCheckTime = millis();
     
-    // Afficher l'intervalle de vérification calculé
+#ifdef DREAM_DEBUG
     if (s_state.checkingEnabled) {
       unsigned long interval = calculateNextCheckInterval();
       Serial.printf("[WAKEUP] Intervalle de verification initial: %lu ms (%.1f heures)\n",
                     interval, interval / 3600000.0f);
     }
+#endif
 
     // Au démarrage : si l'heure actuelle est dans la fenêtre wakeup (15 min avant lever → 35 min après),
     // démarrer la routine wakeup (bedtime ne l'a pas fait pour ne pas écraser ce mode)
@@ -70,15 +69,15 @@ bool WakeupManager::init() {
       uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
       int wakeupHour = config.schedules[dayIndex].hour;
       int wakeupMinute = config.schedules[dayIndex].minute;
-      int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
-      int currentMinutes = now.hour * 60 + now.minute;
+      int wakeupMinutes = TimeUtils::timeToMinutes(wakeupHour, wakeupMinute);
+      int currentMinutes = TimeUtils::timeToMinutes(now.hour, now.minute);
       int wStart = wakeupMinutes - WAKEUP_TRIGGER_MINUTES_BEFORE;
       int wEnd = wakeupMinutes + 35;  // 35 min après = fade-out terminé
       if (wStart < 0) {
-        wStart += 24 * 60;
+        wStart += DreamTiming::MINUTES_PER_DAY;
       }
-      if (wEnd > 24 * 60) {
-        wEnd -= 24 * 60;
+      if (wEnd > DreamTiming::MINUTES_PER_DAY) {
+        wEnd -= DreamTiming::MINUTES_PER_DAY;
       }
       bool inWakeupWindow = (wStart < wEnd)
         ? (currentMinutes >= wStart && currentMinutes < wEnd)
@@ -95,7 +94,9 @@ bool WakeupManager::init() {
     s_state.lastCheckTime = millis();
   }
   
+#ifdef DREAM_DEBUG
   Serial.println("[WAKEUP] Gestionnaire initialise");
+#endif
   
   return true;
 }
@@ -140,8 +141,10 @@ void WakeupManager::loadBedtimeColor() {
   if (BedtimeManager::isBedtimeActive()) {
     // Bedtime en cours : récupérer la couleur réellement affichée (effet ou couleur fixe)
     LEDManager::getCurrentColor(startColorR, startColorG, startColorB);
+#ifdef DREAM_DEBUG
     Serial.printf("[WAKEUP] Transition depuis bedtime -> couleur actuelle LEDs: RGB(%d, %d, %d)\n",
                   startColorR, startColorG, startColorB);
+#endif
   } else {
     // Bedtime inactif (ex: boot dans fenêtre wakeup) : utiliser la couleur de la config
     startColorR = bedtimeConfig.colorR;
@@ -151,35 +154,60 @@ void WakeupManager::loadBedtimeColor() {
 }
 
 bool WakeupManager::reloadConfig() {
+  Serial.println("[WAKEUP] >>> RELOAD CONFIG <<<");
+
   // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
-  s_state.lastTriggeredHour = 255;
-  s_state.lastTriggeredMinute = 255;
-  
+  ScheduleUtils::resetTriggeredFlags(s_state);
+
   bool result = loadConfig();
-  
+  Serial.printf("[WAKEUP] loadConfig() result: %s\n", result ? "true" : "false");
+
   // Si la config a changé, vérifier si la routine est activée pour aujourd'hui
   if (result && s_state.initialized && RTCManager::isAvailable()) {
-    if (configChanged()) {
+    DateTime now = RTCManager::getLocalDateTime();
+    uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
+
+    bool changed = configChanged();
+    Serial.printf("[WAKEUP] Config changed: %s\n", changed ? "true" : "false");
+
+    if (changed) {
+      Serial.printf("[WAKEUP] Nouvelle config: %02d:%02d (Jour: %d, Index: %d)\n",
+                    config.schedules[dayIndex].hour,
+                    config.schedules[dayIndex].minute,
+                    now.dayOfWeek, dayIndex);
       Serial.println("[WAKEUP] Configuration modifiee, verification de l'etat pour aujourd'hui");
       updateCheckingState();
-      
+      Serial.printf("[WAKEUP] Checking enabled: %s\n", s_state.checkingEnabled ? "true" : "false");
+
       // Réinitialiser lastCheckTime pour recalculer l'intervalle avec la nouvelle config
       s_state.lastCheckTime = millis();
-      
+
       // Si maintenant activé pour aujourd'hui, vérifier immédiatement
       if (s_state.checkingEnabled) {
+        Serial.println("[WAKEUP] Routine activée pour aujourd'hui - appel checkNow()");
         checkNow();
+      } else {
+        Serial.println("[WAKEUP] Routine non activée pour aujourd'hui");
       }
     } else {
+      Serial.println("[WAKEUP] Config identique");
       // Config identique, juste vérifier maintenant si déjà en cours de vérification
       if (s_state.checkingEnabled) {
+        Serial.println("[WAKEUP] Checking déjà activé - appel checkNow()");
         // Réinitialiser quand même lastCheckTime pour recalculer l'intervalle (au cas où l'heure aurait changé)
         s_state.lastCheckTime = millis();
         checkNow();
+      } else {
+        Serial.println("[WAKEUP] Checking non activé");
       }
     }
+  } else {
+    Serial.printf("[WAKEUP] Conditions non remplies pour vérifier: result=%s, initialized=%s, RTC available=%s\n",
+                  result ? "true" : "false",
+                  s_state.initialized ? "true" : "false",
+                  RTCManager::isAvailable() ? "true" : "false");
   }
-  
+
   return result;
 }
 
@@ -214,7 +242,7 @@ void WakeupManager::update() {
     return;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   
   // Vérifier si le jour a changé
   if (s_state.lastCheckedDay != now.dayOfWeek) {
@@ -297,7 +325,7 @@ void WakeupManager::updateCheckingState() {
     return;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   // Vérifier si la routine est activée pour aujourd'hui
@@ -338,7 +366,7 @@ unsigned long WakeupManager::calculateNextCheckInterval() {
     return CHECK_INTERVAL_MS;  // Par défaut, toutes les minutes
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   if (!config.schedules[dayIndex].activated) {
@@ -359,13 +387,13 @@ unsigned long WakeupManager::calculateNextCheckInterval() {
   }
   
   // Calculer les minutes jusqu'à l'heure de déclenchement
-  int currentMinutes = now.hour * 60 + now.minute;
-  int triggerMinutes = targetHour * 60 + targetMinute;
+  int currentMinutes = TimeUtils::timeToMinutes(now.hour, now.minute);
+  int triggerMinutes = TimeUtils::timeToMinutes(targetHour, targetMinute);
   int minutesUntilTarget = triggerMinutes - currentMinutes;
   
   // Si l'heure de déclenchement est passée aujourd'hui, c'est pour demain
   if (minutesUntilTarget < 0) {
-    minutesUntilTarget += 24 * 60;  // Ajouter 24 heures
+    minutesUntilTarget += DreamTiming::MINUTES_PER_DAY;
   }
   
   // Convertir en heures
@@ -388,20 +416,21 @@ unsigned long WakeupManager::calculateNextCheckInterval() {
 }
 
 void WakeupManager::checkWakeupTrigger() {
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
-  // Log de débogage pour chaque vérification
-  Serial.printf("[WAKEUP] Vérification: Heure actuelle %02d:%02d:%02d, Jour de la semaine: %d (index: %d)\n",
+#ifdef DREAM_DEBUG
+  Serial.printf("[WAKEUP] Vérification: Heure actuelle %02d:%02d:%02d, Jour: %d (index: %d)\n",
                 now.hour, now.minute, now.second, now.dayOfWeek, dayIndex);
-  Serial.printf("[WAKEUP] Configuration pour ce jour: %02d:%02d, Activé: %s\n",
+  Serial.printf("[WAKEUP] Configuration: %02d:%02d, Activé: %s\n",
                 config.schedules[dayIndex].hour, config.schedules[dayIndex].minute,
                 config.schedules[dayIndex].activated ? "Oui" : "Non");
+#endif
   
-  // Vérifier si le wake-up est activé pour aujourd'hui
   if (!config.schedules[dayIndex].activated) {
+#ifdef DREAM_DEBUG
     Serial.println("[WAKEUP] Le wake-up n'est pas activé pour aujourd'hui");
-    // Si le wake-up était actif mais le jour n'est plus activé, l'arrêter
+#endif
     if (s_state.routineActive) {
       Serial.println("[WAKEUP] Arrêt du wake-up car le jour n'est plus activé");
       stopWakeup();
@@ -431,25 +460,26 @@ void WakeupManager::checkWakeupTrigger() {
       s_state.lastTriggeredHour = now.hour;
       s_state.lastTriggeredMinute = now.minute;
     } else {
+#ifdef DREAM_DEBUG
       if (s_state.routineActive) {
         Serial.println("[WAKEUP] Wake-up déjà actif, pas de nouveau déclenchement");
       } else {
         Serial.println("[WAKEUP] Déjà déclenché cette minute, pas de nouveau déclenchement");
       }
+#endif
     }
   } else {
-    // Log pour comprendre pourquoi ça ne correspond pas
+#ifdef DREAM_DEBUG
     Serial.printf("[WAKEUP] Heure ne correspond pas: Actuelle %02d:%02d vs Trigger %02d:%02d (réveil à %02d:%02d)\n",
                   now.hour, now.minute, triggerHour, triggerMinute,
                   config.schedules[dayIndex].hour, config.schedules[dayIndex].minute);
-    
-    // Si on n'est plus dans la minute de déclenchement, réinitialiser les flags de déclenchement
+#endif
     if (s_state.lastTriggeredHour == triggerHour && 
         s_state.lastTriggeredMinute == triggerMinute) {
-      // On est sorti de la minute de déclenchement, réinitialiser pour permettre un nouveau déclenchement demain
+#ifdef DREAM_DEBUG
       Serial.println("[WAKEUP] Sortie de la minute de déclenchement, réinitialisation des flags");
-      s_state.lastTriggeredHour = 255;
-      s_state.lastTriggeredMinute = 255;
+#endif
+      ScheduleUtils::resetTriggeredFlags(s_state);
     }
   }
 }
@@ -618,7 +648,7 @@ bool WakeupManager::isWakeupEnabled() {
     return false;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   return config.schedules[dayIndex].activated;

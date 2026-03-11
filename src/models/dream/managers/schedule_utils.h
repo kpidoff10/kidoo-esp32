@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "dream_schedules.h"
+#include "dream_timing_constants.h"
 #include "schedule_state.h"
 
 /**
@@ -60,6 +61,12 @@ namespace ScheduleUtils {
     uint8_t currentDayOfWeek,
     bool configChanged
   );
+
+  /**
+   * Réinitialise les flags de déclenchement (lastTriggeredHour/Minute) pour permettre un nouveau déclenchement.
+   * @param state État du manager à réinitialiser
+   */
+  void resetTriggeredFlags(ScheduleState& state);
 
 } // namespace ScheduleUtils
 

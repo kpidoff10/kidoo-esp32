@@ -11,6 +11,9 @@
 #include "common/managers/wifi/wifi_manager.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#ifdef HAS_SD
+#include "common/managers/timezone/timezone_manager.h"
+#endif
 #ifdef HAS_WIFI
 #include <WiFi.h>
 #endif
@@ -18,6 +21,37 @@
 /**
  * Commandes Serial spécifiques au modèle Kidoo Dream
  */
+
+// Helper pour afficher l'offset GMT
+static void printGMTInfo() {
+#ifdef HAS_SD
+  const char* tz = RTCManager::getTimezoneId();
+  if (tz && strlen(tz) > 0) {
+    Serial.printf("Timezone: %s\n", tz);
+
+    // Obtenir l'offset actuel avec DST
+    if (RTCManager::isAvailable()) {
+      DateTime now = RTCManager::getDateTime();
+      long offsetSeconds = TimezoneManager::getTotalOffsetSeconds(tz, now.year, now.month, now.day);
+      int hours = offsetSeconds / 3600;
+      int minutes = (abs(offsetSeconds) % 3600) / 60;
+      if (offsetSeconds == 0) {
+        Serial.println("Offset: GMT+0 (UTC)");
+      } else if (offsetSeconds > 0) {
+        Serial.printf("Offset: GMT+%d:%02d\n", hours, minutes);
+      } else {
+        Serial.printf("Offset: GMT%d:%02d\n", hours, minutes);
+      }
+    }
+  } else {
+    Serial.println("Timezone: Non configuree (UTC par defaut)");
+    Serial.println("Offset: GMT+0");
+  }
+#else
+  Serial.println("Timezone: UTC (SD non disponible)");
+  Serial.println("Offset: GMT+0");
+#endif
+}
 
 bool ModelDreamSerialCommands::processCommand(const String& command) {
   // Séparer la commande et les arguments
@@ -48,7 +82,7 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
   }
   else if (cmd == "bedtime-show" || cmd == "show-bedtime") {
     BedtimeConfig config = BedtimeManager::getConfig();
-    
+
     Serial.println("");
     Serial.println("========================================");
     Serial.println("  CONFIGURATION BEDTIME (COUCHER)");
@@ -57,7 +91,12 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
     Serial.printf("Luminosite: %d%%\n", config.brightness);
     Serial.printf("Allume toute la nuit: %s\n", config.allNight ? "Oui" : "Non");
     Serial.println("");
-    Serial.println("Horaires par jour:");
+
+    // Afficher la timezone et l'offset GMT
+    printGMTInfo();
+    Serial.println("");
+
+    Serial.println("Horaires par jour (heure locale):");
     
     const char* weekdays[] = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
     bool hasAnySchedule = false;
@@ -101,7 +140,7 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
   }
   else if (cmd == "wakeup-show" || cmd == "show-wakeup") {
     WakeupConfig config = WakeupManager::getConfig();
-    
+
     Serial.println("");
     Serial.println("========================================");
     Serial.println("  CONFIGURATION WAKEUP (REVEIL)");
@@ -109,7 +148,12 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
     Serial.printf("Couleur: RGB(%d, %d, %d)\n", config.colorR, config.colorG, config.colorB);
     Serial.printf("Luminosite: %d%%\n", config.brightness);
     Serial.println("");
-    Serial.println("Horaires par jour:");
+
+    // Afficher la timezone et l'offset GMT
+    printGMTInfo();
+    Serial.println("");
+
+    Serial.println("Horaires par jour (heure locale):");
     Serial.println("(Le reveil commence 15 minutes avant l'heure indiquee)");
     
     const char* weekdays[] = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};

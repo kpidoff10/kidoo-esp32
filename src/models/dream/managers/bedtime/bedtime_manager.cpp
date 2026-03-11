@@ -1,5 +1,7 @@
 #include "bedtime_manager.h"
 #include "../dream_schedules.h"
+#include "../dream_timing_constants.h"
+#include "../dream_rtc_macros.h"
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
 #include "../../pubnub/model_pubnub_routes.h"
@@ -24,12 +26,8 @@ bool BedtimeManager::init() {
     return true;
   }
   
-  // Vérifier que le RTC est disponible
-  if (!RTCManager::isAvailable()) {
-    Serial.println("[BEDTIME] ERREUR: RTC non disponible");
-    return false;
-  }
-  
+  RTC_CHECK_OR_RETURN_FALSE("BEDTIME");
+
   // Charger la configuration depuis la SD
   if (!loadConfig()) {
     Serial.println("[BEDTIME] ERREUR: Impossible de charger la configuration");
@@ -40,7 +38,7 @@ bool BedtimeManager::init() {
   
   // Initialiser l'état de vérification
   if (RTCManager::isAvailable()) {
-    DateTime now = RTCManager::getDateTime();
+    DateTime now = RTCManager::getLocalDateTime();
     s_state.lastCheckedDay = now.dayOfWeek;
     updateCheckingState();
     
@@ -112,30 +110,55 @@ bool BedtimeManager::loadConfig() {
 }
 
 bool BedtimeManager::reloadConfig() {
+  Serial.println("[BEDTIME] >>> RELOAD CONFIG <<<");
+
   // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
-  s_state.lastTriggeredHour = 255;
-  s_state.lastTriggeredMinute = 255;
-  
+  ScheduleUtils::resetTriggeredFlags(s_state);
+
   bool result = loadConfig();
-  
+  Serial.printf("[BEDTIME] loadConfig() result: %s\n", result ? "true" : "false");
+
   // Si la config a changé, vérifier si la routine est activée pour aujourd'hui
   if (result && s_state.initialized && RTCManager::isAvailable()) {
-    if (configChanged()) {
+    DateTime now = RTCManager::getLocalDateTime();
+    uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
+
+    bool changed = configChanged();
+    Serial.printf("[BEDTIME] Config changed: %s\n", changed ? "true" : "false");
+
+    if (changed) {
+      Serial.printf("[BEDTIME] Nouvelle config: %02d:%02d (Jour: %d, Index: %d)\n",
+                    config.schedules[dayIndex].hour,
+                    config.schedules[dayIndex].minute,
+                    now.dayOfWeek, dayIndex);
       updateCheckingState();
+      Serial.printf("[BEDTIME] Checking enabled: %s\n", s_state.checkingEnabled ? "true" : "false");
       s_state.lastCheckTime = millis();
       if (s_state.checkingEnabled) {
+        Serial.println("[BEDTIME] Routine activée pour aujourd'hui - appel checkNow()");
         checkNow();
+      } else {
+        Serial.println("[BEDTIME] Routine non activée pour aujourd'hui");
       }
     } else {
+      Serial.println("[BEDTIME] Config identique");
       // Config identique, juste vérifier maintenant si déjà en cours de vérification
       if (s_state.checkingEnabled) {
+        Serial.println("[BEDTIME] Checking déjà activé - appel checkNow()");
         // Réinitialiser quand même s_state.lastCheckTime pour recalculer l'intervalle (au cas où l'heure aurait changé)
         s_state.lastCheckTime = millis();
         checkNow();
+      } else {
+        Serial.println("[BEDTIME] Checking non activé");
       }
     }
+  } else {
+    Serial.printf("[BEDTIME] Conditions non remplies pour vérifier: result=%s, initialized=%s, RTC available=%s\n",
+                  result ? "true" : "false",
+                  s_state.initialized ? "true" : "false",
+                  RTCManager::isAvailable() ? "true" : "false");
   }
-  
+
   return result;
 }
 
@@ -197,9 +220,9 @@ bool BedtimeManager::isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int 
   if (dayIndex >= 7) {
     return false;
   }
-  int bedtimeMinutes = config.schedules[dayIndex].hour * 60 + config.schedules[dayIndex].minute;
-  int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
-  int currentMinutes = nowHour * 60 + nowMinute;
+  int bedtimeMinutes = TimeUtils::timeToMinutes(config.schedules[dayIndex].hour, config.schedules[dayIndex].minute);
+  int wakeupMinutes = TimeUtils::timeToMinutes(wakeupHour, wakeupMinute);
+  int currentMinutes = TimeUtils::timeToMinutes(nowHour, nowMinute);
   // Cas typique : coucher le soir (ex. 20:30), lever le matin (ex. 07:00) → bedtimeMinutes > wakeupMinutes
   // Nuit = [bedtime, 24h[ U [0, wakeup[
   if (bedtimeMinutes > wakeupMinutes) {
@@ -214,15 +237,15 @@ static const int WAKEUP_WINDOW_MINUTES_BEFORE = 1;
 static const int WAKEUP_WINDOW_MINUTES_AFTER = 35;
 
 bool BedtimeManager::isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int wakeupHour, int wakeupMinute) {
-  int wakeupMinutes = wakeupHour * 60 + wakeupMinute;
-  int currentMinutes = nowHour * 60 + nowMinute;
+  int wakeupMinutes = TimeUtils::timeToMinutes(wakeupHour, wakeupMinute);
+  int currentMinutes = TimeUtils::timeToMinutes(nowHour, nowMinute);
   int wStart = wakeupMinutes - WAKEUP_WINDOW_MINUTES_BEFORE;
   int wEnd = wakeupMinutes + WAKEUP_WINDOW_MINUTES_AFTER;
   if (wStart < 0) {
-    wStart += 24 * 60;
+    wStart += DreamTiming::MINUTES_PER_DAY;
   }
-  if (wEnd > 24 * 60) {
-    wEnd -= 24 * 60;
+  if (wEnd > DreamTiming::MINUTES_PER_DAY) {
+    wEnd -= DreamTiming::MINUTES_PER_DAY;
   }
   // Fenêtre ne croisant pas minuit : [wStart, wEnd[
   if (wStart < wEnd) {
@@ -248,7 +271,7 @@ void BedtimeManager::update() {
     return;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   
   // Vérifier si le jour a changé
   if (s_state.lastCheckedDay != now.dayOfWeek) {
@@ -273,7 +296,7 @@ void BedtimeManager::update() {
     s_state.lastCheckTime = currentTime;
     // Si on n'est pas en bedtime mais qu'on est déjà dans la plage coucher->lever (ex: RTC sync après init), activer bedtime sauf si dans fenêtre wakeup
     if (!s_state.routineActive && !manuallyStarted && s_state.checkingEnabled) {
-      DateTime now = RTCManager::getDateTime();
+      DateTime now = RTCManager::getLocalDateTime();
       uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
       int wakeupHour = 7, wakeupMinute = 0;
       if (getWakeupScheduleForDay(dayIndex, wakeupHour, wakeupMinute) &&
@@ -334,7 +357,7 @@ void BedtimeManager::updateCheckingState() {
     return;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   // Vérifier si la routine est activée pour aujourd'hui
@@ -376,7 +399,7 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
     return CHECK_INTERVAL_MS;  // Par défaut, toutes les minutes
   }
 
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
 
   // Retourner l'intervalle en cache si le jour n'a pas changé
@@ -397,13 +420,13 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
   int targetMinute = config.schedules[dayIndex].minute;
 
   // Calculer les minutes jusqu'à l'heure de déclenchement
-  int currentMinutes = now.hour * 60 + now.minute;
-  int targetMinutes = targetHour * 60 + targetMinute;
+  int currentMinutes = TimeUtils::timeToMinutes(now.hour, now.minute);
+  int targetMinutes = TimeUtils::timeToMinutes(targetHour, targetMinute);
   int minutesUntilTarget = targetMinutes - currentMinutes;
 
   // Si l'heure de déclenchement est passée aujourd'hui, c'est pour demain
   if (minutesUntilTarget < 0) {
-    minutesUntilTarget += 24 * 60;  // Ajouter 24 heures
+    minutesUntilTarget += DreamTiming::MINUTES_PER_DAY;
   }
 
   // Convertir en heures
@@ -424,7 +447,7 @@ unsigned long BedtimeManager::calculateNextCheckInterval() {
 }
 
 void BedtimeManager::checkBedtimeTrigger() {
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   if (!config.schedules[dayIndex].activated) {
@@ -436,8 +459,8 @@ void BedtimeManager::checkBedtimeTrigger() {
   
   int targetHour = config.schedules[dayIndex].hour;
   int targetMinute = config.schedules[dayIndex].minute;
-  int currentMinutes = now.hour * 60 + now.minute;
-  int targetMinutes = targetHour * 60 + targetMinute;
+  int currentMinutes = TimeUtils::timeToMinutes(now.hour, now.minute);
+  int targetMinutes = TimeUtils::timeToMinutes(targetHour, targetMinute);
 
   // Vérifier si c'est l'heure de coucher exacte (dans la minute, secondes 0-59)
   // On vérifie toutes les minutes, donc on déclenche si on est dans la bonne minute
@@ -450,6 +473,7 @@ void BedtimeManager::checkBedtimeTrigger() {
       s_state.lastTriggeredHour = now.hour;
       s_state.lastTriggeredMinute = now.minute;
     } else {
+#ifdef DREAM_DEBUG
       if (s_state.routineActive) {
         Serial.println("[BEDTIME] Bedtime déjà actif, pas de nouveau déclenchement");
       } else if (manuallyStarted) {
@@ -457,6 +481,7 @@ void BedtimeManager::checkBedtimeTrigger() {
       } else {
         Serial.println("[BEDTIME] Déjà déclenché cette minute, pas de nouveau déclenchement");
       }
+#endif
     }
   } else {
     // Sécurité : si on a dépassé l'heure de coucher de 0 à 2 minutes et qu'on n'est pas en mode bedtime, déclencher
@@ -469,16 +494,17 @@ void BedtimeManager::checkBedtimeTrigger() {
       s_state.lastTriggeredHour = targetHour;
       s_state.lastTriggeredMinute = targetMinute;
     } else {
-      // Log pour comprendre pourquoi ça ne correspond pas
+#ifdef DREAM_DEBUG
       Serial.printf("[BEDTIME] Heure ne correspond pas: Actuelle %02d:%02d vs Config %02d:%02d\n",
                     now.hour, now.minute, targetHour, targetMinute);
-
+#endif
       // Si on n'est plus dans la minute de déclenchement, réinitialiser les flags
       if (s_state.lastTriggeredHour == config.schedules[dayIndex].hour &&
           s_state.lastTriggeredMinute == config.schedules[dayIndex].minute) {
+#ifdef DREAM_DEBUG
         Serial.println("[BEDTIME] Sortie de la minute de déclenchement, réinitialisation des flags");
-        s_state.lastTriggeredHour = 255;
-        s_state.lastTriggeredMinute = 255;
+#endif
+        ScheduleUtils::resetTriggeredFlags(s_state);
       }
     }
   }
@@ -582,7 +608,7 @@ bool BedtimeManager::isBedtimeEnabled() {
     return false;
   }
   
-  DateTime now = RTCManager::getDateTime();
+  DateTime now = RTCManager::getLocalDateTime();
   uint8_t dayIndex = ScheduleUtils::weekdayToIndex(now.dayOfWeek);
   
   return config.schedules[dayIndex].activated;

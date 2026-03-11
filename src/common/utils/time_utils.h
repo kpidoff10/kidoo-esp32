@@ -26,6 +26,16 @@ inline unsigned long calculateElapsed(unsigned long currentTime, unsigned long l
   }
 }
 
+/**
+ * Convertir heure et minute en nombre total de minutes depuis minuit.
+ * @param hour Heure (0-23)
+ * @param minute Minute (0-59)
+ * @return Minutes depuis minuit (0 à 1439)
+ */
+inline int timeToMinutes(int hour, int minute) {
+  return hour * 60 + minute;
+}
+
 }  // namespace TimeUtils
 
 #endif  // TIME_UTILS_H

@@ -8,6 +8,8 @@
 #include "common/managers/sd/sd_manager.h"
 #include "common/managers/rtc/rtc_manager.h"
 #include "common/managers/timezone/timezone_manager.h"
+#include <ArduinoJson.h>
+#include <SD.h>
 #include "../config/dream_config.h"
 #include "common/managers/nfc/nfc_manager.h"
 #include "common/managers/ota/ota_manager.h"
@@ -29,12 +31,6 @@
 /**
  * Routes PubNub spécifiques au modèle Kidoo Dream
  */
-
-/** Parse l'effet par défaut depuis la config (string → LEDEffect enum) */
-static LEDEffect parseDefaultEffect(const char* effectStr) {
-  // Utiliser LEDEffectParser pour la conversion uniforme
-  return LEDEffectParser::parse(effectStr);
-}
 
 // Déclaration anticipée pour handleGetInfo (définition complète plus bas)
 static bool testBedtimeActive = false;
@@ -808,7 +804,7 @@ void ModelDreamPubNubRoutes::checkNighttimeAlertAckTimeout() {
       delay(50);
       LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
       LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
-      LEDEffect defaultEffect = parseDefaultEffect(dreamConfig.default_effect);
+      LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
       LEDManager::setEffect(defaultEffect);
     } else {
       LEDManager::clear();
@@ -1641,15 +1637,43 @@ bool ModelDreamPubNubRoutes::handleSetTimezone(const JsonObject& json) {
 
   Serial.printf("[PUBNUB-ROUTE] set-timezone: Réception de %s\n", timezoneId);
 
-  // Obtenir les offsets UTC pour cette timezone
-  long offsetSeconds = TimezoneManager::getOffsetSeconds(timezoneId);
-  int daylightOffsetSeconds = TimezoneManager::getDaylightOffsetSeconds(timezoneId);
+  // Sauvegarder timezoneId dans config.json pour getLocalDateTime()
+  if (SDManager::isAvailable() && SDManager::configFileExists()) {
+    File configFile = SD.open("/config.json", FILE_READ);
+    if (configFile) {
+      const size_t maxSize = 4096;
+      char jsonBuffer[4096];
+      size_t fileSize = configFile.size();
+      if (fileSize > 0 && fileSize < maxSize) {
+        size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
+        jsonBuffer[bytesRead] = '\0';
+        configFile.close();
 
-  Serial.printf("[PUBNUB-ROUTE] set-timezone: offsetSeconds=%ld, daylightOffsetSeconds=%d\n",
-    offsetSeconds, daylightOffsetSeconds);
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        StaticJsonDocument<4096> doc;
+        #pragma GCC diagnostic pop
+        if (!deserializeJson(doc, jsonBuffer)) {
+          doc["timezoneId"] = timezoneId;
+          configFile = SD.open("/config.json", FILE_WRITE);
+          if (configFile) {
+            serializeJson(doc, configFile);
+            configFile.close();
+            RTCManager::setTimezoneId(timezoneId);
+            Serial.printf("[PUBNUB-ROUTE] set-timezone: timezoneId sauvegardé dans config.json\n");
+          }
+        } else {
+          configFile.close();
+        }
+      } else {
+        configFile.close();
+      }
+    }
+  }
 
-  // Synchroniser le RTC avec les nouveaux offsets
-  if (RTCManager::syncWithNTP(offsetSeconds, daylightOffsetSeconds)) {
+  // RTC stocke toujours UTC. syncWithNTP(0,0) pour garantir cohérence avec getLocalDateTime().
+  // Le fuseau est appliqué à la lecture via getLocalDateTime() (lit timezoneId dans config.json).
+  if (RTCManager::syncWithNTP(0, 0)) {
     Serial.printf("[PUBNUB-ROUTE] set-timezone: RTC synchronisé avec %s\n", timezoneId);
     return true;
   } else {
