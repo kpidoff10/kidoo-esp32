@@ -209,8 +209,8 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
   strcpy(envJson, ",\"env\":{\"available\":false}");
 #endif
 
-  // Construire le JSON de réponse (augmenté à 1200 bytes pour inclure env data)
-  char infoJson[1200];
+  // Construire le JSON de réponse (700 bytes suffisent pour info + env data)
+  char infoJson[700];
   snprintf(infoJson, sizeof(infoJson),
     "{"
       "\"type\":\"info\","
