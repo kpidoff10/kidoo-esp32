@@ -14,13 +14,8 @@
 ScheduleState WakeupManager::s_state;
 WakeupConfig WakeupManager::config;
 WakeupConfig WakeupManager::lastConfig;
-uint8_t WakeupManager::startColorR = 0;
-uint8_t WakeupManager::startColorG = 0;
-uint8_t WakeupManager::startColorB = 0;
+ColorState WakeupManager::s_color;
 uint8_t WakeupManager::startBrightness = 0;
-uint8_t WakeupManager::lastColorR = 255;
-uint8_t WakeupManager::lastColorG = 255;
-uint8_t WakeupManager::lastColorB = 255;
 uint8_t WakeupManager::lastBrightness = 255;
 
 // Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
@@ -140,16 +135,16 @@ void WakeupManager::loadBedtimeColor() {
 
   if (BedtimeManager::isBedtimeActive()) {
     // Bedtime en cours : récupérer la couleur réellement affichée (effet ou couleur fixe)
-    LEDManager::getCurrentColor(startColorR, startColorG, startColorB);
+    LEDManager::getCurrentColor(s_color.startR, s_color.startG, s_color.startB);
 #ifdef DREAM_DEBUG
     Serial.printf("[WAKEUP] Transition depuis bedtime -> couleur actuelle LEDs: RGB(%d, %d, %d)\n",
-                  startColorR, startColorG, startColorB);
+                  s_color.startR, s_color.startG, s_color.startB);
 #endif
   } else {
     // Bedtime inactif (ex: boot dans fenêtre wakeup) : utiliser la couleur de la config
-    startColorR = bedtimeConfig.colorR;
-    startColorG = bedtimeConfig.colorG;
-    startColorB = bedtimeConfig.colorB;
+    s_color.startR = bedtimeConfig.colorR;
+    s_color.startG = bedtimeConfig.colorG;
+    s_color.startB = bedtimeConfig.colorB;
   }
 }
 
@@ -513,17 +508,17 @@ void WakeupManager::startWakeup() {
   if (!LEDManager::setEffect(LED_EFFECT_NONE)) {
     Serial.println("[WAKEUP] WARN: setEffect(NONE) failed");
   }
-  if (!LEDManager::setColor(startColorR, startColorG, startColorB)) {
-    Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", startColorR, startColorG, startColorB);
+  if (!LEDManager::setColor(s_color.startR, s_color.startG, s_color.startB)) {
+    Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", s_color.startR, s_color.startG, s_color.startB);
   }
   if (!LEDManager::setBrightness(startBrightness)) {
     Serial.printf("[WAKEUP] WARN: setBrightness(%d) failed\n", startBrightness);
   }
   
   // Initialiser les dernières valeurs pour le fade-in
-  lastColorR = startColorR;
-  lastColorG = startColorG;
-  lastColorB = startColorB;
+  s_color.lastR = s_color.startR;
+  s_color.lastG = s_color.startG;
+  s_color.lastB = s_color.startB;
   lastBrightness = startBrightness;
 }
 
@@ -543,13 +538,13 @@ void WakeupManager::updateFadeIn() {
     s_state.fadeInActive = false;
     
     // Appliquer la couleur et brightness finales seulement si elles ont changé
-    if (lastColorR != config.colorR || lastColorG != config.colorG || lastColorB != config.colorB) {
+    if (s_color.lastR != config.colorR || s_color.lastG != config.colorG || s_color.lastB != config.colorB) {
       if (!LEDManager::setColor(config.colorR, config.colorG, config.colorB)) {
         Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", config.colorR, config.colorG, config.colorB);
       } else {
-        lastColorR = config.colorR;
-        lastColorG = config.colorG;
-        lastColorB = config.colorB;
+        s_color.lastR = config.colorR;
+        s_color.lastG = config.colorG;
+        s_color.lastB = config.colorB;
       }
     }
 
@@ -569,18 +564,18 @@ void WakeupManager::updateFadeIn() {
     uint8_t currentBrightness = (uint8_t)(startBrightness + ((targetBrightness - startBrightness) * elapsed) / FADE_IN_DURATION_MS);
 
     // Couleur: interpolation linéaire RGB de startColor vers config.color (utiliser entiers)
-    uint8_t currentR = (uint8_t)(startColorR + ((config.colorR - startColorR) * elapsed) / FADE_IN_DURATION_MS);
-    uint8_t currentG = (uint8_t)(startColorG + ((config.colorG - startColorG) * elapsed) / FADE_IN_DURATION_MS);
-    uint8_t currentB = (uint8_t)(startColorB + ((config.colorB - startColorB) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentR = (uint8_t)(s_color.startR + ((config.colorR - s_color.startR) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentG = (uint8_t)(s_color.startG + ((config.colorG - s_color.startG) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentB = (uint8_t)(s_color.startB + ((config.colorB - s_color.startB) * elapsed) / FADE_IN_DURATION_MS);
 
     // Ne mettre à jour que si la couleur ou brightness a changé
-    if (lastColorR != currentR || lastColorG != currentG || lastColorB != currentB) {
+    if (s_color.lastR != currentR || s_color.lastG != currentG || s_color.lastB != currentB) {
       if (!LEDManager::setColor(currentR, currentG, currentB)) {
         Serial.printf("[WAKEUP] WARN: setColor(%d,%d,%d) failed\n", currentR, currentG, currentB);
       } else {
-        lastColorR = currentR;
-        lastColorG = currentG;
-        lastColorB = currentB;
+        s_color.lastR = currentR;
+        s_color.lastG = currentG;
+        s_color.lastB = currentB;
       }
     }
 

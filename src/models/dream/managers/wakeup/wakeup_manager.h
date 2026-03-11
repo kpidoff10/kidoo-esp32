@@ -8,6 +8,7 @@
 #include "../../../../common/managers/led/led_manager.h"
 #include "../schedule_state.h"
 #include "../schedule_utils.h"
+#include "../color_state.h"
 
 /**
  * Gestionnaire automatique du wake-up pour le modèle Dream
@@ -106,17 +107,10 @@ private:
   static WakeupConfig lastConfig;  // Sauvegarde de la dernière config pour détecter les changements
 
   // Variables uniques à WakeupManager (transition couleur/brightness)
-  static uint8_t startColorR;
-  static uint8_t startColorG;
-  static uint8_t startColorB;
-  
-  // Brightness de départ (brightness actuelle au moment du déclenchement)
+  static ColorState s_color;
+
+  // Brightness de départ et dernière brightness appliquée (pour éviter les appels répétés)
   static uint8_t startBrightness;
-  
-  // Dernière couleur appliquée (pour éviter les appels répétés)
-  static uint8_t lastColorR;
-  static uint8_t lastColorG;
-  static uint8_t lastColorB;
   static uint8_t lastBrightness;
   
   // Fonctions privées
