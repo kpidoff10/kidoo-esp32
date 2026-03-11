@@ -126,30 +126,30 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
 
 bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
   // Format: { "action": "get-info" }
-  // Publie les informations complètes de l'appareil
-  
+  // Publie les informations complètes de l'appareil (incluant données env si disponibles)
+
   Serial.println("[PUBNUB-ROUTE] get-info: Préparation des informations du Kidoo...");
-  
+
   SDConfig config = SDManager::getConfig();
-  
+
   // Récupérer les infos de stockage
   uint64_t totalBytes = 0;
   uint64_t freeBytes = 0;
   uint64_t usedBytes = 0;
-  
+
   if (SDManager::isAvailable()) {
     totalBytes = SDManager::getTotalSpace();
     usedBytes = SDManager::getUsedSpace();
     freeBytes = SDManager::getFreeSpace();
   }
-  
+
   // Récupérer l'adresse MAC WiFi (utilisée pour PubNub)
   // Sur ESP32-C3, BLE et WiFi ont des adresses MAC différentes
   char macStr[18];
   if (!getMacAddressString(macStr, sizeof(macStr), ESP_MAC_WIFI_STA)) {
     strcpy(macStr, "00:00:00:00:00:00"); // Valeur par défaut en cas d'erreur
   }
-  
+
   // État courant du device (Dream: bedtime, wakeup, idle, manual) pour get-info
   // "manual" = routine démarrée manuellement (app ou tap) OU test en cours (config sauvegardée) OU couleur par défaut affichée par tap
   const char* deviceState = "idle";
@@ -167,8 +167,50 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
   Serial.printf("[PUBNUB-ROUTE] get-info: deviceState=%s (bedtimeActive=%d, manuallyStarted=%d, testBedtimeActive=%d, defaultColorDisplayed=%d)\n",
     deviceState, BedtimeManager::isBedtimeActive(), BedtimeManager::isManuallyStarted(), testBedtimeActive, DreamTouchHandler::isDefaultColorDisplayed());
 
-  // Construire le JSON de réponse
-  char infoJson[600];
+  // Préparer les données env (temperature, humidity, pressure)
+  char envJson[200] = "";
+#ifdef HAS_ENV_SENSOR
+  if (EnvSensorManager::isInitialized() && EnvSensorManager::isAvailable()) {
+    float t = EnvSensorManager::getTemperatureC();
+    float h = EnvSensorManager::getHumidityPercent();
+    float p = EnvSensorManager::getPressurePa();
+
+    // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
+    char tStr[16], hStr[16], pStr[16];
+    if (!isfinite(t) || isnan(t)) {
+      strcpy(tStr, "null");
+    } else {
+      int ti = (int)t;
+      int td = (int)((t - (float)ti) * 10);
+      if (td < 0) td = -td;
+      snprintf(tStr, sizeof(tStr), "%d.%d", ti, td);
+    }
+    if (!isfinite(h) || isnan(h)) {
+      strcpy(hStr, "null");
+    } else {
+      int hi = (int)h;
+      int hd = (int)((h - (float)hi) * 10);
+      if (hd < 0) hd = -hd;
+      snprintf(hStr, sizeof(hStr), "%d.%d", hi, hd);
+    }
+    if (!isfinite(p) || isnan(p) || p < 10000.0f || p > 120000.0f) {
+      strcpy(pStr, "null");
+    } else {
+      snprintf(pStr, sizeof(pStr), "%d", (int)p);
+    }
+
+    snprintf(envJson, sizeof(envJson),
+      ",\"env\":{\"available\":true,\"temperatureC\":%s,\"humidityPercent\":%s,\"pressurePa\":%s}",
+      tStr, hStr, pStr);
+  } else {
+    strcpy(envJson, ",\"env\":{\"available\":false}");
+  }
+#else
+  strcpy(envJson, ",\"env\":{\"available\":false}");
+#endif
+
+  // Construire le JSON de réponse (augmenté à 1200 bytes pour inclure env data)
+  char infoJson[1200];
   snprintf(infoJson, sizeof(infoJson),
     "{"
       "\"type\":\"info\","
@@ -193,7 +235,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
       "\"nfc\":{"
         "\"available\":%s"
       "},"
-      "\"deviceState\":\"%s\""
+      "\"deviceState\":\"%s\"%s"
     "}",
     DEFAULT_DEVICE_NAME,
     macStr,
@@ -209,15 +251,16 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     freeBytes,
     usedBytes,
     NFCManager::isAvailable() ? "true" : "false",
-    deviceState
+    deviceState,
+    envJson
   );
-  
+
   if (PubNubManager::publish(infoJson)) {
     Serial.println("[PUBNUB-ROUTE] get-info: Informations publiees avec succes");
   } else {
     Serial.println("[PUBNUB-ROUTE] get-info: Erreur lors de la publication des informations");
   }
-  
+
   return true;
 }
 
