@@ -1133,30 +1133,35 @@ bool ModelDreamPubNubRoutes::handleSetBedtimeConfig(const JsonObject& json) {
     
     // Recharger la configuration dans le BedtimeManager
     BedtimeManager::reloadConfig();
-    
-    // Déclencher automatiquement le test avec la nouvelle configuration
-    Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Déclenchement automatique du test...");
-    
-    // Créer un JsonObject avec les paramètres pour le test
-    // Utiliser les valeurs qui viennent d'être sauvegardées dans la config
-    JsonDocument testJson;
-    JsonObject testParams = testJson["params"].to<JsonObject>();
-    testParams["colorR"] = config.bedtime_colorR;
-    testParams["colorG"] = config.bedtime_colorG;
-    testParams["colorB"] = config.bedtime_colorB;
-    testParams["brightness"] = config.bedtime_brightness;
-    
-    // Ajouter l'effet si configuré
-    if (strlen(config.bedtime_effect) > 0 && strcmp(config.bedtime_effect, "none") != 0) {
-      testParams["effect"] = config.bedtime_effect;
-    }
-    
-    // Appeler handleStartTestBedtime avec les paramètres
-    // Le test affichera la couleur, brightness et effet configurés
-    if (handleStartTestBedtime(testJson.as<JsonObject>())) {
-      Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Test automatique démarré avec succès");
+
+    // Si on est en mode wakeup, ne pas lancer le test pour ne pas interrompre la routine
+    if (WakeupManager::isWakeupActive()) {
+      Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Mode wakeup actif, test non lancé pour ne pas interrompre");
     } else {
-      Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Erreur lors du démarrage du test automatique");
+      // Déclencher automatiquement le test avec la nouvelle configuration
+      Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Déclenchement automatique du test...");
+
+      // Créer un JsonObject avec les paramètres pour le test
+      // Utiliser les valeurs qui viennent d'être sauvegardées dans la config
+      JsonDocument testJson;
+      JsonObject testParams = testJson["params"].to<JsonObject>();
+      testParams["colorR"] = config.bedtime_colorR;
+      testParams["colorG"] = config.bedtime_colorG;
+      testParams["colorB"] = config.bedtime_colorB;
+      testParams["brightness"] = config.bedtime_brightness;
+
+      // Ajouter l'effet si configuré
+      if (strlen(config.bedtime_effect) > 0 && strcmp(config.bedtime_effect, "none") != 0) {
+        testParams["effect"] = config.bedtime_effect;
+      }
+
+      // Appeler handleStartTestBedtime avec les paramètres
+      // Le test affichera la couleur, brightness et effet configurés
+      if (handleStartTestBedtime(testJson.as<JsonObject>())) {
+        Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Test automatique démarré avec succès");
+      } else {
+        Serial.println("[PUBNUB-ROUTE] set-bedtime-config: Erreur lors du démarrage du test automatique");
+      }
     }
     
     return true;
@@ -1380,22 +1385,25 @@ bool ModelDreamPubNubRoutes::handleSetWakeupConfig(const JsonObject& json) {
     
     // Recharger la configuration dans le WakeupManager
     WakeupManager::reloadConfig();
-    
+
     // Si on est en mode bedtime, reprendre la config bedtime pour l'afficher (ne pas lancer le test wakeup)
     if (BedtimeManager::isBedtimeActive()) {
       Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Mode bedtime actif, réapplication de la config bedtime");
       BedtimeManager::restoreDisplayFromConfig();
+    } else if (WakeupManager::isWakeupActive()) {
+      // Wakeup actif, ne pas lancer le test pour ne pas interrompre la routine
+      Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Mode wakeup actif, test non lancé pour ne pas interrompre");
     } else {
       // Déclencher automatiquement le test avec la nouvelle configuration
       Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Déclenchement automatique du test...");
-      
+
       JsonDocument testJson;
       JsonObject testParams = testJson["params"].to<JsonObject>();
       testParams["colorR"] = config.wakeup_colorR;
       testParams["colorG"] = config.wakeup_colorG;
       testParams["colorB"] = config.wakeup_colorB;
       testParams["brightness"] = config.wakeup_brightness;
-      
+
       if (handleStartTestWakeup(testJson.as<JsonObject>())) {
         Serial.println("[PUBNUB-ROUTE] set-wakeup-config: Test automatique démarré avec succès");
       } else {
