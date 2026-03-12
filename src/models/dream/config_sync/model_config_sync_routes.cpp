@@ -248,6 +248,45 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
       Serial.println("[CONFIG-SYNC] Config couleur par defaut mise a jour depuis /config");
     }
 
+    // Traiter le timezoneId s'il est présent dans la réponse
+    if (doc["data"]["timezoneId"].is<const char*>()) {
+      const char* timezoneId = doc["data"]["timezoneId"].as<const char*>();
+      if (timezoneId && strlen(timezoneId) > 0) {
+        Serial.printf("[CONFIG-SYNC] Fuseau horaire reçu: %s\n", timezoneId);
+
+        // Sauvegarder dans config.json (créer si nécessaire)
+        if (SDManager::isAvailable()) {
+          File configFile = SD.open("/config.json", FILE_READ);
+          StaticJsonDocument<4096> configDoc;
+
+          if (configFile) {
+            // Fichier existe: charger, mettre à jour, sauvegarder
+            const size_t maxSize = 4096;
+            char jsonBuffer[4096];
+            size_t fileSize = configFile.size();
+            if (fileSize > 0 && fileSize < maxSize) {
+              size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
+              jsonBuffer[bytesRead] = '\0';
+              deserializeJson(configDoc, jsonBuffer);
+            }
+            configFile.close();
+          }
+
+          // Mettre à jour timezoneId
+          configDoc["timezoneId"] = timezoneId;
+
+          // Sauvegarder
+          configFile = SD.open("/config.json", FILE_WRITE);
+          if (configFile) {
+            serializeJson(configDoc, configFile);
+            configFile.close();
+            RTCManager::setTimezoneId(timezoneId);
+            Serial.println("[CONFIG-SYNC] timezoneId sauvegardé dans config.json");
+          }
+        }
+      }
+    }
+
     // Recharger les configurations dans les managers
     BedtimeManager::reloadConfig();
     WakeupManager::reloadConfig();
