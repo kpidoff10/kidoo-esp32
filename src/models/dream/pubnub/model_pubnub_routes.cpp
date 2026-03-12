@@ -1540,7 +1540,7 @@ bool ModelDreamPubNubRoutes::handleGetEnv(const JsonObject& json) {
 
   // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
   char tStr[16], hStr[16], pStr[16];
-  if (!isfinite(t) || isnan(t)) {
+  if (!isfinite(t) || isnan(t) || t < -50.0f || t > 150.0f) {
     strcpy(tStr, "null");
   } else {
     int ti = (int)t;
@@ -1548,7 +1548,7 @@ bool ModelDreamPubNubRoutes::handleGetEnv(const JsonObject& json) {
     if (td < 0) td = -td;
     snprintf(tStr, sizeof(tStr), "%d.%d", ti, td);
   }
-  if (!isfinite(h) || isnan(h)) {
+  if (!isfinite(h) || isnan(h) || h < 0.0f || h > 100.0f) {
     strcpy(hStr, "null");
   } else {
     int hi = (int)h;
