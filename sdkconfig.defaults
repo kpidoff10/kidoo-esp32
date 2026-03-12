@@ -1,8 +1,1 @@
-# Réduire la consommation mémoire mbedTLS pour OTA sur ESP32-C3 (sans PSRAM)
-# Au lieu de pré-allouer 16+4 KB de buffers TLS, allouer dynamiquement à la demande
-CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
-CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
-CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
-
-# BLE: augmenter la stack de BTC_TASK (défaut 3072 sur ESP32-C3, trop faible pour callbacks)
-CONFIG_BT_BTC_TASK_STACK_SIZE=5120
+CONFIG_ARDUINO_LOOP_STACK_SIZE=16384

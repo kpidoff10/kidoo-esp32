@@ -182,3 +182,44 @@ void DreamTouchHandler::triggerAlertFeedback(bool success) {
 bool DreamTouchHandler::isDefaultColorDisplayed() {
   return s_defaultColorDisplayed;
 }
+
+void DreamTouchHandler::simulateTap() {
+  unsigned long now = millis();
+
+  // Tap simulé: même logique qu'un tap physique au relâchement
+  if (BedtimeManager::isBedtimeActive()) {
+    BedtimeManager::stopBedtimeManually();
+    if (Serial) Serial.println("[DREAM-TAP] Routine coucher arretee");
+  } else if (WakeupManager::isWakeupActive()) {
+    WakeupManager::stopWakeupManually();
+    if (Serial) Serial.println("[DREAM-TAP] Routine reveil arretee");
+  } else {
+    if (BedtimeManager::isBedtimeEnabled()) {
+      BedtimeManager::startBedtimeManually();
+      if (Serial) Serial.println("[DREAM-TAP] Routine coucher lancee");
+    } else {
+      // Toggle couleur par défaut on/off
+      if (s_defaultColorDisplayed) {
+        // Couleur par défaut active → l'éteindre
+        LEDManager::clear();
+        s_defaultColorDisplayed = false;
+        ModelDreamPubNubRoutes::publishDefaultColorState();
+        if (Serial) Serial.println("[DREAM-TAP] Couleur par defaut eteinte");
+      } else {
+        // Couleur par défaut inactive → l'allumer
+        DreamConfig dreamConfig = DreamConfigManager::getConfig();
+        LEDManager::preventSleep();
+        LEDManager::wakeUp();
+        LEDManager::setColor(dreamConfig.default_color_r, dreamConfig.default_color_g, dreamConfig.default_color_b);
+        LEDManager::setBrightness(LEDManager::brightnessPercentTo255(dreamConfig.default_brightness));
+        LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
+        LEDManager::setEffect(defaultEffect);
+        s_defaultColorDisplayed = true;
+        ModelDreamPubNubRoutes::publishDefaultColorState();
+        if (Serial) Serial.printf("[DREAM-TAP] Couleur par defaut affichee (RGB:%d,%d,%d, effet:%s)\n",
+                                   dreamConfig.default_color_r, dreamConfig.default_color_g,
+                                   dreamConfig.default_color_b, dreamConfig.default_effect);
+      }
+    }
+  }
+}

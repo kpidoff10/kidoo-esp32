@@ -34,6 +34,15 @@ public:
    * @return true si la couleur par défaut est active, false sinon
    */
   static bool isDefaultColorDisplayed();
+
+  /**
+   * Simuler un tap sur le capteur (appelé par PubNub tap-sensor)
+   * Applique la même logique qu'un tap physique au relâchement:
+   * - Si bedtime actif → arrêter
+   * - Si wakeup actif → arrêter
+   * - Sinon → démarrer bedtime ou toggle couleur par défaut
+   */
+  static void simulateTap();
 };
 
 #endif // DREAM_TOUCH_HANDLER_H

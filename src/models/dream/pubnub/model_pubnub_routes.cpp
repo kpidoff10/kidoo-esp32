@@ -118,6 +118,11 @@ bool ModelDreamPubNubRoutes::processMessage(const JsonObject& json) {
   else if (strcmp(action, "set-timezone") == 0) {
     return handleSetTimezone(json);
   }
+  else if (strcmp(action, "tap-sensor") == 0) {
+    Serial.println("[PUBNUB-ROUTE] tap-sensor: Simulation d'un tap");
+    DreamTouchHandler::simulateTap();
+    return true;
+  }
 
   Serial.print("[PUBNUB-ROUTE] Action inconnue: ");
   Serial.println(action);

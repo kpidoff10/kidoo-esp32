@@ -46,7 +46,7 @@ static inline void updateBrightnessFromJson(const JsonObject& json, uint8_t& bri
 }
 
 void ModelDreamConfigSyncRoutes::onWiFiConnected() {
-  Serial.println("[CONFIG-SYNC] WiFi connecte - Recuperation de la configuration depuis l'API");
+  Serial.println("[CONFIG-SYNC] WiFi connecte - Lancement tache config-sync (16KB stack)");
 
   // IMPORTANT: Vérifier que le RTC est initialisé avant de faire les requêtes signées
   // (callback WiFi peut s'exécuter avant l'init complète du système)
@@ -61,15 +61,41 @@ void ModelDreamConfigSyncRoutes::onWiFiConnected() {
   RTCManager::autoSyncIfNeeded();
   #endif
 
-  // Essayer de récupérer et appliquer le fuseau horaire en premier (avant les configs)
-  fetchAndApplyTimezoneFromAPI();
-  // Puis récupérer les configurations bedtime/wakeup
-  fetchConfigFromAPI();
+  // Créer une tâche FreeRTOS avec 16KB de stack pour éviter débordement lors du parsing JSON
+  xTaskCreate(
+    configSyncTask,           // Fonction
+    "ConfigSync",             // Nom
+    16384,                     // Stack size (16KB)
+    nullptr,                   // Paramètre
+    1,                         // Priorité
+    nullptr                    // Handle
+  );
 }
 
 void ModelDreamConfigSyncRoutes::retryFetchConfig() {
-  Serial.println("[CONFIG-SYNC] Retry avec signature (RTC disponible)");
+  Serial.println("[CONFIG-SYNC] Retry avec signature (RTC disponible) - Lancement tache config-sync");
+
+  // Créer une tâche FreeRTOS avec 16KB de stack
+  xTaskCreate(
+    configSyncTask,           // Fonction
+    "ConfigSyncRetry",        // Nom
+    16384,                     // Stack size (16KB)
+    nullptr,                   // Paramètre
+    1,                         // Priorité
+    nullptr                    // Handle
+  );
+}
+
+void ModelDreamConfigSyncRoutes::configSyncTask(void* param) {
+  (void)param;  // Inutilisé
+
+  // Essayer de récupérer et appliquer le fuseau horaire en premier
+  fetchAndApplyTimezoneFromAPI();
+  // Puis récupérer les configurations bedtime/wakeup
   fetchConfigFromAPI();
+
+  // Supprimer la tâche (elle se termine)
+  vTaskDelete(nullptr);
 }
 
 bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
