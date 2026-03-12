@@ -257,7 +257,11 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
         // Sauvegarder dans config.json (créer si nécessaire)
         if (SDManager::isAvailable()) {
           File configFile = SD.open("/config.json", FILE_READ);
+
+          #pragma GCC diagnostic push
+          #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
           StaticJsonDocument<4096> configDoc;
+          #pragma GCC diagnostic pop
 
           if (configFile) {
             // Fichier existe: charger, mettre à jour, sauvegarder
