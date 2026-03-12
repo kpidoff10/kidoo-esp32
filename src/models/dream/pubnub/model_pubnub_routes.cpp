@@ -176,7 +176,7 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
     float p = EnvSensorManager::getPressurePa();
 
     // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
-    char tStr[16], hStr[16], pStr[16];
+    char tStr[16] = {0}, hStr[16] = {0}, pStr[16] = {0};
     if (!isfinite(t) || isnan(t) || t < -50.0f || t > 150.0f) {
       strcpy(tStr, "null");
     } else {
