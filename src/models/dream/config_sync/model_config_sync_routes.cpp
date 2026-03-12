@@ -132,11 +132,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 
   // Parser le JSON de la réponse
   // Format attendu: {"success": true, "data": {"bedtime": {...}, "wakeup": {...}, "defaultColor": {...}}}
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<768> doc;
-  #pragma GCC diagnostic pop
-
+  // Utiliser DynamicJsonDocument pour éviter débordement de pile
+  DynamicJsonDocument doc(512);
   DeserializationError error = deserializeJson(doc, payload);
   if (error) {
     Serial.print("[CONFIG-SYNC] Erreur parsing JSON: ");
@@ -258,11 +255,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
         if (SDManager::isAvailable()) {
           File configFile = SD.open("/config.json", FILE_READ);
 
-          #pragma GCC diagnostic push
-          #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-          StaticJsonDocument<512> configDoc;  // Réduit de 4096 → 512 (suffisant pour timezone)
-          #pragma GCC diagnostic pop
-
+          // Utiliser DynamicJsonDocument pour éviter débordement de pile
+          DynamicJsonDocument configDoc(256);
           bool shouldSave = false;
 
           if (configFile) {
@@ -361,11 +355,8 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   }
 
   // Parser le JSON de la réponse
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<256> doc;
-  #pragma GCC diagnostic pop
-
+  // Utiliser DynamicJsonDocument pour éviter débordement de pile
+  DynamicJsonDocument doc(256);
   DeserializationError error = deserializeJson(doc, payload);
   if (error) {
     Serial.print("[CONFIG-SYNC] Erreur parsing JSON fuseau horaire: ");
@@ -399,10 +390,8 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
         jsonBuffer[bytesRead] = '\0';
         configFile.close();
 
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        StaticJsonDocument<512> doc;
-        #pragma GCC diagnostic pop
+        // Utiliser DynamicJsonDocument pour éviter débordement de pile
+        DynamicJsonDocument doc(256);
         if (!deserializeJson(doc, jsonBuffer)) {
           doc["timezoneId"] = timezoneId;
           configFile = SD.open("/config.json", FILE_WRITE);
