@@ -260,13 +260,13 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 
           #pragma GCC diagnostic push
           #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-          StaticJsonDocument<4096> configDoc;
+          StaticJsonDocument<512> configDoc;  // Réduit de 4096 → 512 (suffisant pour timezone)
           #pragma GCC diagnostic pop
 
           if (configFile) {
             // Fichier existe: charger, mettre à jour, sauvegarder
-            const size_t maxSize = 4096;
-            char jsonBuffer[4096];
+            const size_t maxSize = 512;  // Réduit de 4096 → 512
+            char jsonBuffer[512];
             size_t fileSize = configFile.size();
             if (fileSize > 0 && fileSize < maxSize) {
               size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
