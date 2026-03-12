@@ -263,29 +263,38 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
           StaticJsonDocument<512> configDoc;  // Réduit de 4096 → 512 (suffisant pour timezone)
           #pragma GCC diagnostic pop
 
+          bool shouldSave = false;
+
           if (configFile) {
-            // Fichier existe: charger, mettre à jour, sauvegarder
-            const size_t maxSize = 512;  // Réduit de 4096 → 512
+            // Fichier existe: charger, mettre à jour
+            const size_t maxSize = 512;
             char jsonBuffer[512];
             size_t fileSize = configFile.size();
             if (fileSize > 0 && fileSize < maxSize) {
               size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
               jsonBuffer[bytesRead] = '\0';
-              deserializeJson(configDoc, jsonBuffer);
+              if (!deserializeJson(configDoc, jsonBuffer)) {
+                shouldSave = true;  // Désérialisation réussie
+              }
             }
             configFile.close();
+          } else {
+            // Fichier n'existe pas: créer un nouveau document
+            shouldSave = true;
           }
 
-          // Mettre à jour timezoneId
-          configDoc["timezoneId"] = timezoneId;
+          if (shouldSave) {
+            // Mettre à jour timezoneId
+            configDoc["timezoneId"] = timezoneId;
 
-          // Sauvegarder
-          configFile = SD.open("/config.json", FILE_WRITE);
-          if (configFile) {
-            serializeJson(configDoc, configFile);
-            configFile.close();
-            RTCManager::setTimezoneId(timezoneId);
-            Serial.println("[CONFIG-SYNC] timezoneId sauvegardé dans config.json");
+            // Sauvegarder
+            configFile = SD.open("/config.json", FILE_WRITE);
+            if (configFile) {
+              serializeJson(configDoc, configFile);
+              configFile.close();
+              RTCManager::setTimezoneId(timezoneId);
+              Serial.println("[CONFIG-SYNC] timezoneId sauvegardé dans config.json");
+            }
           }
         }
       }
