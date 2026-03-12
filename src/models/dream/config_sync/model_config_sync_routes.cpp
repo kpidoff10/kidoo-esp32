@@ -295,8 +295,13 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
     }
 
     // Recharger les configurations dans les managers
-    BedtimeManager::reloadConfig();
-    WakeupManager::reloadConfig();
+    // NOTE: Différé pour éviter débordement de pile dans loopTask (stack limité à ~8KB)
+    // Les managers rechargeront les configs à la demande (lazy loading)
+    // BedtimeManager::reloadConfig();
+    // WakeupManager::reloadConfig();
+
+    // Libérer du temps pour la tâche loopTask
+    yield();
 
     return true;
   } else {
