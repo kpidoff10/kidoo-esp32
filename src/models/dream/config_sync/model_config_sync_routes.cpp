@@ -134,7 +134,7 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
   // Format attendu: {"success": true, "data": {"bedtime": {...}, "wakeup": {...}, "defaultColor": {...}}}
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<1500> doc;
+  StaticJsonDocument<768> doc;
   #pragma GCC diagnostic pop
 
   DeserializationError error = deserializeJson(doc, payload);
@@ -391,8 +391,8 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   if (SDManager::isAvailable() && SDManager::configFileExists()) {
     File configFile = SD.open("/config.json", FILE_READ);
     if (configFile) {
-      const size_t maxSize = 4096;
-      char jsonBuffer[4096];
+      const size_t maxSize = 512;
+      char jsonBuffer[512];
       size_t fileSize = configFile.size();
       if (fileSize > 0 && fileSize < maxSize) {
         size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
@@ -401,7 +401,7 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
 
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        StaticJsonDocument<4096> doc;
+        StaticJsonDocument<512> doc;
         #pragma GCC diagnostic pop
         if (!deserializeJson(doc, jsonBuffer)) {
           doc["timezoneId"] = timezoneId;
