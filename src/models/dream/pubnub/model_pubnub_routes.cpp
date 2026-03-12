@@ -177,24 +177,30 @@ bool ModelDreamPubNubRoutes::handleGetInfo(const JsonObject& json) {
 
     // Format JSON garanti (évite locale/notation scientifique qui peut invalider le JSON)
     char tStr[16] = {0}, hStr[16] = {0}, pStr[16] = {0};
+
+    // Température
     if (!isfinite(t) || isnan(t) || t < -50.0f || t > 150.0f) {
-      strcpy(tStr, "null");
+      snprintf(tStr, sizeof(tStr), "null");
     } else {
       int ti = (int)t;
       int td = (int)((t - (float)ti) * 10);
       if (td < 0) td = -td;
       snprintf(tStr, sizeof(tStr), "%d.%d", ti, td);
     }
+
+    // Humidité
     if (!isfinite(h) || isnan(h) || h < 0.0f || h > 100.0f) {
-      strcpy(hStr, "null");
+      snprintf(hStr, sizeof(hStr), "null");
     } else {
       int hi = (int)h;
       int hd = (int)((h - (float)hi) * 10);
       if (hd < 0) hd = -hd;
       snprintf(hStr, sizeof(hStr), "%d.%d", hi, hd);
     }
+
+    // Pression
     if (!isfinite(p) || isnan(p) || p < 10000.0f || p > 120000.0f) {
-      strcpy(pStr, "null");
+      snprintf(pStr, sizeof(pStr), "null");
     } else {
       snprintf(pStr, sizeof(pStr), "%d", (int)p);
     }
