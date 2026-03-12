@@ -539,8 +539,14 @@ bool PubNubManager::publishStatus() {
     DEFAULT_DEVICE_NAME,
     WiFiManager::getLocalIP().c_str()
   );
-  
-  return publish(statusJson);
+
+  bool result = publish(statusJson);
+  if (result) {
+    Serial.println("[PUBNUB] Status 'online' publie");
+  } else {
+    Serial.println("[PUBNUB] Erreur: Impossible de publier status 'online'");
+  }
+  return result;
 }
 
 void PubNubManager::printInfo() {
