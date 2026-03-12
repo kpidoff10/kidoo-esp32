@@ -134,7 +134,6 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
   // Format attendu: {"success": true, "data": {"bedtime": {...}, "wakeup": {...}, "defaultColor": {...}}}
   // Utiliser JsonDocument pour éviter débordement de pile
   JsonDocument doc;
-  doc.reserve(512);
   DeserializationError error = deserializeJson(doc, payload);
   if (error) {
     Serial.print("[CONFIG-SYNC] Erreur parsing JSON: ");
@@ -258,7 +257,6 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 
           // Utiliser JsonDocument pour éviter débordement de pile
           JsonDocument configDoc;
-          configDoc.reserve(256);
           bool shouldSave = false;
 
           if (configFile) {
@@ -359,7 +357,6 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   // Parser le JSON de la réponse
   // Utiliser JsonDocument pour éviter débordement de pile
   JsonDocument doc;
-  doc.reserve(256);
   DeserializationError error = deserializeJson(doc, payload);
   if (error) {
     Serial.print("[CONFIG-SYNC] Erreur parsing JSON fuseau horaire: ");
@@ -395,7 +392,6 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
 
         // Utiliser JsonDocument pour éviter débordement de pile
         JsonDocument doc;
-        doc.reserve(256);
         if (!deserializeJson(doc, jsonBuffer)) {
           doc["timezoneId"] = timezoneId;
           configFile = SD.open("/config.json", FILE_WRITE);
