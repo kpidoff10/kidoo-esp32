@@ -20,7 +20,7 @@
  * - Charge la configuration depuis la SD
  * - Parse le weekdaySchedule (JSON)
  * - Vérifie l'heure toutes les minutes
- * - Déclenche l'effet wake-up automatiquement 15 minutes avant l'heure configurée
+ * - Déclenche l'effet wake-up automatiquement 5 minutes avant l'heure configurée
  * - Gère les transitions de fade-in (1 minute) avec transition de couleur
  * - Transition de la couleur de coucher vers la couleur de réveil
  * - Brightness part de la valeur actuelle vers la brightness cible (ne repart pas de 0)

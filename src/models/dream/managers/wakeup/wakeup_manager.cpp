@@ -22,7 +22,7 @@ uint8_t WakeupManager::lastBrightness = 255;
 static const unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute
 static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
 static const unsigned long FADE_UPDATE_INTERVAL_MS = 100;     // Mettre à jour le fade toutes les 100ms (10 fois par seconde)
-static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 15;         // Déclencher 15 minutes avant
+static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 5;          // Déclencher 5 minutes avant
 
 bool WakeupManager::init() {
   if (s_state.initialized) {
