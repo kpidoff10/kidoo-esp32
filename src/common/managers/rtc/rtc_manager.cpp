@@ -8,6 +8,7 @@
 #if defined(HAS_SD)
 #include "common/managers/sd/sd_manager.h"
 #include "common/managers/timezone/timezone_manager.h"
+#include "common/config/config_sizes.h"
 #include <ArduinoJson.h>
 #include <SD.h>
 #endif
@@ -85,8 +86,8 @@ void RTCManager::loadTimezoneFromConfig() {
     return;
   }
 
-  const size_t maxSize = 4096;  // Augmenté de 512 à 4096 pour fichiers plus gros
-  char jsonBuffer[4096];
+  const size_t maxSize = CONFIG_MAX_SIZE;
+  char jsonBuffer[CONFIG_MAX_SIZE];
   size_t fileSize = configFile.size();
   if (fileSize == 0 || fileSize > maxSize) {
     Serial.printf("[RTC] config.json invalide (size=%u), gardant valeur en mémoire: '%s'\n", fileSize, s_timezoneId);
@@ -100,7 +101,7 @@ void RTCManager::loadTimezoneFromConfig() {
 
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<4096> doc;
+  StaticJsonDocument<CONFIG_MAX_SIZE> doc;
   #pragma GCC diagnostic pop
   if (deserializeJson(doc, jsonBuffer)) {
     Serial.printf("[RTC] Erreur parsing config.json, gardant valeur en mémoire: '%s'\n", s_timezoneId);

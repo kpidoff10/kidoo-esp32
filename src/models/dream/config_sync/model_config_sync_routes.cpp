@@ -281,14 +281,14 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
         if (SDManager::isAvailable()) {
           File configFile = SD.open("/config.json", FILE_READ);
 
-          // Utiliser JsonDocument pour éviter débordement de pile
-          JsonDocument configDoc;
+          // Utiliser JsonDocument avec capacité suffisante (CONFIG_MAX_SIZE bytes)
+          StaticJsonDocument<CONFIG_MAX_SIZE> configDoc;
           bool shouldSave = false;
 
           if (configFile) {
             // Fichier existe: charger, mettre à jour
-            const size_t maxSize = 4096;
-            char jsonBuffer[4096];
+            const size_t maxSize = CONFIG_MAX_SIZE;
+            char jsonBuffer[CONFIG_MAX_SIZE];
             size_t fileSize = configFile.size();
             if (fileSize > 0 && fileSize < maxSize) {
               size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
@@ -411,15 +411,15 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   // Sauvegarder timezoneId dans config.json pour RTCManager::getLocalDateTime()
   Serial.printf("[CONFIG-SYNC] Tentative sauvegarde: SDManager::isAvailable()=%d\n", SDManager::isAvailable() ? 1 : 0);
   if (SDManager::isAvailable()) {
-    // Utiliser JsonDocument pour éviter débordement de pile
-    JsonDocument doc;
+    // Utiliser JsonDocument avec capacité suffisante (CONFIG_MAX_SIZE bytes)
+    StaticJsonDocument<CONFIG_MAX_SIZE> doc;
     bool fileLoaded = false;
 
     // Essayer de charger le fichier existant
     File configFile = SD.open("/config.json", FILE_READ);
     if (configFile) {
-      const size_t maxSize = 4096;
-      char jsonBuffer[4096];
+      const size_t maxSize = CONFIG_MAX_SIZE;
+      char jsonBuffer[CONFIG_MAX_SIZE];
       size_t fileSize = configFile.size();
       if (fileSize > 0 && fileSize < maxSize) {
         size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);

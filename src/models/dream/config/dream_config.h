@@ -3,11 +3,12 @@
 
 #include <Arduino.h>
 #include <cstdint>
+#include "common/config/config_sizes.h"
 
 /**
  * Configuration spécifique au modèle Dream
  * Stockée dans config.json sous la clé "dream"
- * 
+ *
  * Sépare la config Dream de la config commune (SDConfig)
  * pour une gestion par modèle propre.
  */
