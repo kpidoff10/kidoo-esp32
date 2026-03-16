@@ -1670,16 +1670,21 @@ void ModelDreamPubNubRoutes::updateEnvPublisher() {
 }
 
 void ModelDreamPubNubRoutes::publishRoutineState(const char* routine, const char* state) {
-  if (!PubNubManager::isConnected()) return;
+  // Utiliser isInitialized() plutôt que isConnected() car PubNubManager a une queue interne
+  // Cela permet de publier les messages même pendant la connexion initiale
+  if (!PubNubManager::isInitialized()) return;
   char json[128];
   snprintf(json, sizeof(json), "{\"type\":\"routine\",\"routine\":\"%s\",\"state\":\"%s\"}", routine, state);
   if (PubNubManager::publish(json)) {
     Serial.printf("[PUBNUB-ROUTE] routine: %s %s publie\n", routine, state);
+  } else {
+    Serial.printf("[PUBNUB-ROUTE] routine: %s %s ECHEC publication\n", routine, state);
   }
 }
 
 void ModelDreamPubNubRoutes::publishNighttimeAlertToggled(bool enabled) {
-  if (!PubNubManager::isConnected()) return;
+  // Utiliser isInitialized() plutôt que isConnected() pour permettre la mise en queue
+  if (!PubNubManager::isInitialized()) return;
   char json[64];
   snprintf(json, sizeof(json), "{\"type\":\"nighttime-alert-toggled\",\"enabled\":%s}", enabled ? "true" : "false");
   if (PubNubManager::publish(json)) {
@@ -1688,7 +1693,8 @@ void ModelDreamPubNubRoutes::publishNighttimeAlertToggled(bool enabled) {
 }
 
 void ModelDreamPubNubRoutes::publishDefaultColorState() {
-  if (!PubNubManager::isConnected()) return;
+  // Utiliser isInitialized() plutôt que isConnected() pour permettre la mise en queue
+  if (!PubNubManager::isInitialized()) return;
 
   // Déterminer le deviceState basé sur l'état courant
   const char* deviceState = "idle";
