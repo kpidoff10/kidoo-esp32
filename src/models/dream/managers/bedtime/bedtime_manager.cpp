@@ -17,9 +17,9 @@ BedtimeConfig BedtimeManager::lastConfig;
 bool BedtimeManager::manuallyStarted = false;
 
 // Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
-static const unsigned long FADE_IN_DURATION_MS = 30000;      // 30 secondes
-static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
+static const unsigned long FADE_IN_DURATION_MS = 30000;      // 30 secondes (spécifique au bedtime)
 static const unsigned long BEDTIME_DURATION_MS = 1800000;     // 30 minutes avant fade-out
+// FADE_OUT_DURATION_MS vient de DreamTiming (dream_timing_constants.h) = 300000ms = 5 minutes
 
 bool BedtimeManager::init() {
   if (s_state.initialized) {
@@ -232,8 +232,8 @@ bool BedtimeManager::isCurrentTimeBetweenBedtimeAndWakeup(uint8_t dayIndex, int 
   return (currentMinutes >= bedtimeMinutes) && (currentMinutes < wakeupMinutes);
 }
 
-// Fenêtre wakeup = 15 min avant lever jusqu'à 35 min après (fade-in + durée + fade-out)
-static const int WAKEUP_WINDOW_MINUTES_BEFORE = 1;
+// Fenêtre wakeup = 5 min avant lever jusqu'à 35 min après (doit correspondre à WAKEUP_TRIGGER_MINUTES_BEFORE)
+static const int WAKEUP_WINDOW_MINUTES_BEFORE = 5;
 static const int WAKEUP_WINDOW_MINUTES_AFTER = 35;
 
 bool BedtimeManager::isCurrentTimeInWakeupWindow(int nowHour, int nowMinute, int wakeupHour, int wakeupMinute) {
@@ -563,7 +563,7 @@ void BedtimeManager::updateFadeIn() {
 void BedtimeManager::updateFadeOut() {
   unsigned long elapsed = millis() - s_state.fadeStartTime;
 
-  if (elapsed >= FADE_OUT_DURATION_MS) {
+  if (elapsed >= DreamTiming::FADE_OUT_DURATION_MS) {
     // Fade-out terminé, éteindre complètement et arrêter le bedtime
     s_state.fadeOutActive = false;
     if (!LEDManager::clear()) {
@@ -574,7 +574,7 @@ void BedtimeManager::updateFadeOut() {
     manuallyStarted = false;
   } else {
     // Interpolation linéaire de la brightness vers 0
-    float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
+    float progress = (float)elapsed / (float)DreamTiming::FADE_OUT_DURATION_MS;
     uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
 

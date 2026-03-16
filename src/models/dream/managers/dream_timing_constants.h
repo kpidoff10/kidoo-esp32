@@ -14,6 +14,11 @@ constexpr int MINUTES_PER_DAY = 24 * 60;
 /** Valeur sentinelle pour "jamais déclenché" (lastTriggeredHour/Minute) */
 constexpr uint8_t TRIGGERED_NEVER = 255;
 
+/** Durées de transition (fade-in/fade-out) en millisecondes */
+constexpr unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute (transition vers couleur réveil)
+constexpr unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes (extinction progressive)
+constexpr unsigned long FADE_UPDATE_INTERVAL_MS = 100;    // 100ms (throttling des mises à jour LED)
+
 }  // namespace DreamTiming
 
 #endif  // DREAM_TIMING_CONSTANTS_H

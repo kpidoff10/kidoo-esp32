@@ -287,8 +287,8 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
 
           if (configFile) {
             // Fichier existe: charger, mettre à jour
-            const size_t maxSize = 512;
-            char jsonBuffer[512];
+            const size_t maxSize = 4096;
+            char jsonBuffer[4096];
             size_t fileSize = configFile.size();
             if (fileSize > 0 && fileSize < maxSize) {
               size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
@@ -320,11 +320,10 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
       }
     }
 
-    // Recharger les configurations dans les managers
-    // NOTE: Différé pour éviter débordement de pile dans loopTask (stack limité à ~8KB)
-    // Les managers rechargeront les configs à la demande (lazy loading)
-    // BedtimeManager::reloadConfig();
-    // WakeupManager::reloadConfig();
+    // Recharger les configurations dans les managers après timezone sync
+    // (les managers utilisent getLocalDateTime() qui dépend de la timezone)
+    BedtimeManager::reloadConfig();
+    WakeupManager::reloadConfig();
 
     // Libérer du temps pour la tâche loopTask
     yield();
@@ -410,32 +409,46 @@ bool ModelDreamConfigSyncRoutes::fetchAndApplyTimezoneFromAPI() {
   Serial.printf("[CONFIG-SYNC] Fuseau horaire: %s\n", timezoneId);
 
   // Sauvegarder timezoneId dans config.json pour RTCManager::getLocalDateTime()
-  if (SDManager::isAvailable() && SDManager::configFileExists()) {
+  Serial.printf("[CONFIG-SYNC] Tentative sauvegarde: SDManager::isAvailable()=%d\n", SDManager::isAvailable() ? 1 : 0);
+  if (SDManager::isAvailable()) {
+    // Utiliser JsonDocument pour éviter débordement de pile
+    JsonDocument doc;
+    bool fileLoaded = false;
+
+    // Essayer de charger le fichier existant
     File configFile = SD.open("/config.json", FILE_READ);
     if (configFile) {
-      const size_t maxSize = 512;
-      char jsonBuffer[512];
+      const size_t maxSize = 4096;
+      char jsonBuffer[4096];
       size_t fileSize = configFile.size();
       if (fileSize > 0 && fileSize < maxSize) {
         size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
         jsonBuffer[bytesRead] = '\0';
-        configFile.close();
-
-        // Utiliser JsonDocument pour éviter débordement de pile
-        JsonDocument doc;
         if (!deserializeJson(doc, jsonBuffer)) {
-          doc["timezoneId"] = timezoneId;
-          configFile = SD.open("/config.json", FILE_WRITE);
-          if (configFile) {
-            serializeJson(doc, configFile);
-            configFile.close();
-            RTCManager::setTimezoneId(timezoneId);
-            Serial.println("[CONFIG-SYNC] timezoneId sauvegardé dans config.json");
-          }
+          fileLoaded = true;  // Désérialisation réussie
+          Serial.println("[CONFIG-SYNC] config.json chargé avec succès");
+        } else {
+          Serial.println("[CONFIG-SYNC] config.json corrompu, création nouveau fichier");
         }
       } else {
-        configFile.close();
+        Serial.printf("[CONFIG-SYNC] config.json vide ou trop gros (%u bytes), création nouveau\n", fileSize);
       }
+      configFile.close();
+    } else {
+      Serial.println("[CONFIG-SYNC] config.json n'existe pas, création nouveau fichier");
+    }
+
+    // Sauvegarder le timezoneId (toujours, même si le fichier était corrompu)
+    doc["timezoneId"] = timezoneId;
+    configFile = SD.open("/config.json", FILE_WRITE);
+    if (configFile) {
+      size_t bytesWritten = serializeJson(doc, configFile);
+      configFile.flush();
+      configFile.close();
+      RTCManager::setTimezoneId(timezoneId);
+      Serial.printf("[CONFIG-SYNC] timezoneId sauvegardé dans config.json (%u bytes)\n", bytesWritten);
+    } else {
+      Serial.println("[CONFIG-SYNC] ERREUR: Impossible d'ouvrir config.json en écriture");
     }
   }
 

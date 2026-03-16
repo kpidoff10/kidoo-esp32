@@ -29,7 +29,7 @@
 // ============================================
 
 // Version du firmware Kidoo (spécifique au modèle)
-#define FIRMWARE_VERSION "1.0.41"
+#define FIRMWARE_VERSION "1.0.43"
 
 // Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
 // Subscribe Key (obligatoire pour recevoir des messages)

@@ -70,34 +70,48 @@ bool RTCManager::init() {
 
 void RTCManager::loadTimezoneFromConfig() {
 #if defined(HAS_SD)
-  s_timezoneId[0] = '\0';
+  Serial.printf("[RTC] Tentative chargement timezone: SD available=%d, configFileExists=%d\n",
+                SDManager::isAvailable() ? 1 : 0,
+                SDManager::configFileExists() ? 1 : 0);
+
   if (!SDManager::isAvailable() || !SDManager::configFileExists()) {
+    Serial.printf("[RTC] SD ou config.json indisponible au boot, gardant valeur en mémoire: '%s'\n", s_timezoneId);
+    return;  // Garder la valeur en mémoire plutôt que de réinitialiser
+  }
+
+  File configFile = SD.open("/config.json", FILE_READ);
+  if (!configFile) {
+    Serial.println("[RTC] Impossible d'ouvrir config.json");
     return;
   }
-  File configFile = SD.open("/config.json", FILE_READ);
-  if (!configFile) return;
 
-  const size_t maxSize = 512;
-  char jsonBuffer[512];
+  const size_t maxSize = 4096;  // Augmenté de 512 à 4096 pour fichiers plus gros
+  char jsonBuffer[4096];
   size_t fileSize = configFile.size();
   if (fileSize == 0 || fileSize > maxSize) {
+    Serial.printf("[RTC] config.json invalide (size=%u), gardant valeur en mémoire: '%s'\n", fileSize, s_timezoneId);
     configFile.close();
     return;
   }
+
   size_t bytesRead = configFile.readBytes(jsonBuffer, maxSize - 1);
   jsonBuffer[bytesRead] = '\0';
   configFile.close();
 
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<4096> doc;
   #pragma GCC diagnostic pop
-  if (deserializeJson(doc, jsonBuffer)) return;
+  if (deserializeJson(doc, jsonBuffer)) {
+    Serial.printf("[RTC] Erreur parsing config.json, gardant valeur en mémoire: '%s'\n", s_timezoneId);
+    return;
+  }
 
   const char* tz = doc["timezoneId"].as<const char*>();
   if (tz && strlen(tz) > 0) {
     strncpy(s_timezoneId, tz, TIMEZONE_ID_MAX - 1);
     s_timezoneId[TIMEZONE_ID_MAX - 1] = '\0';
+    Serial.printf("[RTC] Timezone chargée depuis config.json: %s\n", s_timezoneId);
   }
 #endif
 }

@@ -154,21 +154,21 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
     Serial.println("");
 
     Serial.println("Horaires par jour (heure locale):");
-    Serial.println("(Le reveil commence 15 minutes avant l'heure indiquee)");
-    
+    Serial.println("(Le reveil commence 5 minutes avant l'heure indiquee)");
+
     const char* weekdays[] = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
     bool hasAnySchedule = false;
-    
+
     for (int i = 0; i < 7; i++) {
       if (config.schedules[i].activated) {
-        // Calculer l'heure de début (15 minutes avant)
+        // Calculer l'heure de début (5 minutes avant)
         uint8_t startHour = config.schedules[i].hour;
         uint8_t startMinute = config.schedules[i].minute;
-        
-        if (startMinute >= 15) {
-          startMinute -= 15;
+
+        if (startMinute >= 5) {
+          startMinute -= 5;
         } else {
-          startMinute += 45;
+          startMinute += 55;
           if (startHour > 0) {
             startHour--;
           } else {

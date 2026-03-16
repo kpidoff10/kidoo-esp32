@@ -61,6 +61,7 @@ private:
   static void cmdRTC();
   static void cmdRTCSet(const String& args);
   static void cmdRTCSync();
+  static void cmdTimezone();
   static void cmdApiPing();
   static void cmdPotentiometer();
   static void cmdMemoryDebug();

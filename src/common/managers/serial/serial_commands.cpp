@@ -253,6 +253,8 @@ void SerialCommands::processCommand(const String& command) {
     cmdRTCSet(args);
   } else if (cmd == "rtc-sync" || cmd == "ntp" || cmd == "ntp-sync") {
     cmdRTCSync();
+  } else if (cmd == "tz" || cmd == "timezone" || cmd == "timezone-show") {
+    cmdTimezone();
   } else if (cmd == "api-ping" || cmd == "ping-api" || cmd == "ping-server") {
     cmdApiPing();
   } else if (cmd == "pot" || cmd == "potentiometer" || cmd == "volume") {
@@ -388,6 +390,7 @@ void SerialCommands::printHelp() {
     Serial.println("  rtc, time, date  - Afficher l'heure et la date du RTC");
     Serial.println("  rtc-set <timestamp|DD/MM/YYYY HH:MM:SS> - Definir l'heure");
     Serial.println("  rtc-sync, ntp    - Synchroniser l'heure via NTP (WiFi requis)");
+    Serial.println("  tz, timezone     - Afficher le fuseau horaire actuel");
   }
   #endif
   
@@ -1032,18 +1035,66 @@ void SerialCommands::cmdRTCSync() {
     Serial.println("[RTC] RTC non disponible");
     return;
   }
-  
+
   if (!WiFiManager::isConnected()) {
     Serial.println("[RTC] WiFi non connecte - connexion requise pour NTP");
     return;
   }
-  
+
   // Synchroniser avec le fuseau horaire français (GMT+1/+2)
   if (RTCManager::syncWithNTP(0, 0)) {
     Serial.println("[RTC] Synchronisation NTP reussie");
   } else {
     Serial.println("[RTC] Echec synchronisation NTP");
   }
+#endif
+}
+
+void SerialCommands::cmdTimezone() {
+#ifndef HAS_RTC
+  Serial.println("[RTC] RTC non disponible sur ce modele");
+  return;
+#else
+  Serial.println("");
+  Serial.println("========================================");
+  Serial.println("  FUSEAU HORAIRE ACTUEL");
+  Serial.println("========================================");
+
+#ifdef HAS_SD
+  const char* tz = RTCManager::getTimezoneId();
+  if (tz && strlen(tz) > 0) {
+    Serial.printf("Timezone: %s\n", tz);
+
+    // Obtenir l'offset actuel avec DST
+    if (RTCManager::isAvailable()) {
+      DateTime now = RTCManager::getDateTime();
+      #ifdef HAS_TIMEZONE_MANAGER
+      #include "common/managers/timezone/timezone_manager.h"
+      long offsetSeconds = TimezoneManager::getTotalOffsetSeconds(tz, now.year, now.month, now.day);
+      int hours = offsetSeconds / 3600;
+      int minutes = (abs(offsetSeconds) % 3600) / 60;
+      if (offsetSeconds == 0) {
+        Serial.println("Offset: GMT+0 (UTC)");
+      } else if (offsetSeconds > 0) {
+        Serial.printf("Offset: GMT+%d:%02d\n", hours, minutes);
+      } else {
+        Serial.printf("Offset: GMT%d:%02d\n", hours, minutes);
+      }
+      #else
+      Serial.println("Offset: (TimezoneManager non disponible)");
+      #endif
+    }
+  } else {
+    Serial.println("Timezone: Non configuree (UTC par defaut)");
+    Serial.println("Offset: GMT+0");
+  }
+#else
+  Serial.println("Timezone: UTC (SD non disponible)");
+  Serial.println("Offset: GMT+0");
+#endif
+
+  Serial.println("========================================");
+  Serial.println("");
 #endif
 }
 

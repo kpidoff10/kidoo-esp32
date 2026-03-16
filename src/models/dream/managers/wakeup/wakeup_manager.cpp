@@ -18,10 +18,8 @@ ColorState WakeupManager::s_color;
 uint8_t WakeupManager::startBrightness = 0;
 uint8_t WakeupManager::lastBrightness = 255;
 
-// Constantes (CHECK_INTERVAL_* partagées dans dream_schedules.h)
-static const unsigned long FADE_IN_DURATION_MS = 60000;      // 1 minute
-static const unsigned long FADE_OUT_DURATION_MS = 300000;    // 5 minutes
-static const unsigned long FADE_UPDATE_INTERVAL_MS = 100;     // Mettre à jour le fade toutes les 100ms (10 fois par seconde)
+// Constantes
+// Les durées FADE_IN/FADE_OUT/FADE_UPDATE sont dans DreamTiming (dream_timing_constants.h)
 static const int WAKEUP_TRIGGER_MINUTES_BEFORE = 5;          // Déclencher 5 minutes avant
 
 bool WakeupManager::init() {
@@ -151,8 +149,11 @@ void WakeupManager::loadBedtimeColor() {
 bool WakeupManager::reloadConfig() {
   Serial.println("[WAKEUP] >>> RELOAD CONFIG <<<");
 
-  // Réinitialiser les flags de déclenchement pour permettre un nouveau déclenchement
-  ScheduleUtils::resetTriggeredFlags(s_state);
+  // Réinitialiser les flags de déclenchement SEULEMENT si pas actif
+  // (ne pas interrompre une transition en cours)
+  if (!s_state.routineActive) {
+    ScheduleUtils::resetTriggeredFlags(s_state);
+  }
 
   bool result = loadConfig();
   Serial.printf("[WAKEUP] loadConfig() result: %s\n", result ? "true" : "false");
@@ -274,7 +275,7 @@ void WakeupManager::update() {
   if (s_state.fadeInActive) {
     unsigned long timeSinceLastFadeUpdate = TimeUtils::calculateElapsed(currentTime, s_state.lastFadeUpdateTime);
 
-    if (timeSinceLastFadeUpdate >= FADE_UPDATE_INTERVAL_MS) {
+    if (timeSinceLastFadeUpdate >= DreamTiming::FADE_UPDATE_INTERVAL_MS) {
       s_state.lastFadeUpdateTime = currentTime;
       updateFadeIn();
     }
@@ -295,7 +296,7 @@ void WakeupManager::update() {
 
     // Calculer le temps avant fade-out : fade-in + durée d'extinction
     unsigned long durationMs = (unsigned long)config.autoShutdownMinutes * 60000UL;
-    unsigned long fadeOutStartMs = FADE_IN_DURATION_MS + durationMs;
+    unsigned long fadeOutStartMs = DreamTiming::FADE_IN_DURATION_MS + durationMs;
 
     // Démarrer le fade-out après la durée d'extinction configurée
     if (elapsedSinceStart >= fadeOutStartMs) {
@@ -309,7 +310,7 @@ void WakeupManager::update() {
   if (s_state.fadeOutActive) {
     unsigned long timeSinceLastFadeUpdate = TimeUtils::calculateElapsed(currentTime, s_state.lastFadeUpdateTime);
 
-    if (timeSinceLastFadeUpdate >= FADE_UPDATE_INTERVAL_MS) {
+    if (timeSinceLastFadeUpdate >= DreamTiming::FADE_UPDATE_INTERVAL_MS) {
       s_state.lastFadeUpdateTime = currentTime;
       updateFadeOut();
     }
@@ -535,7 +536,7 @@ void WakeupManager::updateFadeIn() {
     elapsed = (ULONG_MAX - s_state.fadeStartTime) + currentTime;
   }
   
-  if (elapsed >= FADE_IN_DURATION_MS) {
+  if (elapsed >= DreamTiming::FADE_IN_DURATION_MS) {
     // Fade-in terminé
     s_state.fadeInActive = false;
     
@@ -563,12 +564,12 @@ void WakeupManager::updateFadeIn() {
 
     // Brightness: startBrightness → targetBrightness (ne pas repartir de 0)
     uint8_t targetBrightness = LEDManager::brightnessPercentTo255(config.brightness);
-    uint8_t currentBrightness = (uint8_t)(startBrightness + ((targetBrightness - startBrightness) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentBrightness = (uint8_t)(startBrightness + ((targetBrightness - startBrightness) * elapsed) / DreamTiming::FADE_IN_DURATION_MS);
 
     // Couleur: interpolation linéaire RGB de startColor vers config.color (utiliser entiers)
-    uint8_t currentR = (uint8_t)(s_color.startR + ((config.colorR - s_color.startR) * elapsed) / FADE_IN_DURATION_MS);
-    uint8_t currentG = (uint8_t)(s_color.startG + ((config.colorG - s_color.startG) * elapsed) / FADE_IN_DURATION_MS);
-    uint8_t currentB = (uint8_t)(s_color.startB + ((config.colorB - s_color.startB) * elapsed) / FADE_IN_DURATION_MS);
+    uint8_t currentR = (uint8_t)(s_color.startR + ((config.colorR - s_color.startR) * elapsed) / DreamTiming::FADE_IN_DURATION_MS);
+    uint8_t currentG = (uint8_t)(s_color.startG + ((config.colorG - s_color.startG) * elapsed) / DreamTiming::FADE_IN_DURATION_MS);
+    uint8_t currentB = (uint8_t)(s_color.startB + ((config.colorB - s_color.startB) * elapsed) / DreamTiming::FADE_IN_DURATION_MS);
 
     // Ne mettre à jour que si la couleur ou brightness a changé
     if (s_color.lastR != currentR || s_color.lastG != currentG || s_color.lastB != currentB) {
@@ -602,7 +603,7 @@ void WakeupManager::updateFadeOut() {
     elapsed = (ULONG_MAX - s_state.fadeStartTime) + currentTime;
   }
   
-  if (elapsed >= FADE_OUT_DURATION_MS) {
+  if (elapsed >= DreamTiming::FADE_OUT_DURATION_MS) {
     // Fade-out terminé, éteindre complètement et arrêter le wake-up
     s_state.fadeOutActive = false;
     LEDManager::clear();
@@ -610,7 +611,7 @@ void WakeupManager::updateFadeOut() {
     s_state.routineActive = false; // Arrêter le wake-up après le fade-out
   } else {
     // Interpolation linéaire de la brightness vers 0
-    float progress = (float)elapsed / (float)FADE_OUT_DURATION_MS;
+    float progress = (float)elapsed / (float)DreamTiming::FADE_OUT_DURATION_MS;
     uint8_t startBrightness = LEDManager::brightnessPercentTo255(config.brightness);
     uint8_t currentBrightness = (uint8_t)(startBrightness * (1.0f - progress));
 
@@ -660,6 +661,8 @@ bool WakeupManager::isWakeupActive() {
 }
 
 void WakeupManager::stopWakeupManually() {
-  // Arrêter le wake-up (qui réinitialisera aussi les états)
+  // Arrêter le wake-up et réinitialiser les flags de déclenchement
+  // pour empêcher un redéclenchement automatique la même journée
   stopWakeup();
+  ScheduleUtils::resetTriggeredFlags(s_state);
 }
