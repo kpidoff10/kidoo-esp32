@@ -281,7 +281,7 @@ void WakeupManager::update() {
     }
   }
   
-  // Vérifier si on doit démarrer le fade-out (seulement si l'extinction automatique est activée)
+  // Vérifier si on doit arrêter le wakeup (seulement si l'extinction automatique est activée)
   if (config.autoShutdown && s_state.routineActive && !s_state.fadeInActive && !s_state.fadeOutActive) {
     // Calculer le temps écoulé depuis le début du wake-up
     unsigned long elapsedSinceStart;
@@ -294,25 +294,14 @@ void WakeupManager::update() {
       elapsedSinceStart = (ULONG_MAX - s_state.startTime) + currentTime;
     }
 
-    // Calculer le temps avant fade-out : fade-in + durée d'extinction
+    // Calculer le temps total avant extinction : fade-in + durée d'affichage stable
     unsigned long durationMs = (unsigned long)config.autoShutdownMinutes * 60000UL;
-    unsigned long fadeOutStartMs = DreamTiming::FADE_IN_DURATION_MS + durationMs;
+    unsigned long totalDurationMs = DreamTiming::FADE_IN_DURATION_MS + durationMs;
 
-    // Démarrer le fade-out après la durée d'extinction configurée
-    if (elapsedSinceStart >= fadeOutStartMs) {
-      s_state.fadeOutActive = true;
-      s_state.fadeStartTime = currentTime;
-      Serial.printf("[WAKEUP] %u minutes écoulées, démarrage du fade-out (5 minutes de fade-out)\n", config.autoShutdownMinutes);
-    }
-  }
-  
-  // Mettre à jour le fade-out si actif (avec throttling)
-  if (s_state.fadeOutActive) {
-    unsigned long timeSinceLastFadeUpdate = TimeUtils::calculateElapsed(currentTime, s_state.lastFadeUpdateTime);
-
-    if (timeSinceLastFadeUpdate >= DreamTiming::FADE_UPDATE_INTERVAL_MS) {
-      s_state.lastFadeUpdateTime = currentTime;
-      updateFadeOut();
+    // Éteindre directement après la durée configurée (pas de fade-out)
+    if (elapsedSinceStart >= totalDurationMs) {
+      Serial.printf("[WAKEUP] %u minutes écoulées, extinction directe sans fade\n", config.autoShutdownMinutes);
+      stopWakeup();  // Arrêter directement (éteint les LEDs sans fade progressif)
     }
   }
 }
