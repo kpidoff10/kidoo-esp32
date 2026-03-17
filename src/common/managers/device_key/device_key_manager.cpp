@@ -8,7 +8,6 @@
 #ifdef HAS_SD
 
 #include <SD.h>
-#include <RNG.h>
 #include <Ed25519.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -99,7 +98,7 @@ bool DeviceKeyManager::getOrCreatePublicKeyBase64(char* outBuffer, size_t buffer
 
   // Générer une nouvelle paire de clés si nécessaire
   if (needGenerate) {
-    RNG.begin("ESP32");
+    // Le RNG hardware de l'ESP32 est utilisé automatiquement par la librairie Ed25519
     Ed25519::generatePrivateKey(privateKey);
 
     // Générer un IV aléatoire

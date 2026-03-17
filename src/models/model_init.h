@@ -7,7 +7,7 @@
  * Source: models.yaml
  */
 
-#if !defined(KIDOO_MODEL_DREAM) && !defined(KIDOO_MODEL_GOTCHI)
+#if !defined(KIDOO_MODEL_DREAM) && !defined(KIDOO_MODEL_GOTCHI) && !defined(KIDOO_MODEL_SOUND)
   #error "Aucun modele Kidoo defini. Definir KIDOO_MODEL_* dans platformio.ini"
 #endif
 
@@ -17,6 +17,9 @@
 #elif defined(KIDOO_MODEL_GOTCHI)
   #include "gotchi/init/init_model.h"
   #define InitModel InitModelGotchi
+#elif defined(KIDOO_MODEL_SOUND)
+  #include "sound/init/init_model.h"
+  #define InitModel InitModelSound
 #endif
 
 #endif // MODEL_INIT_H

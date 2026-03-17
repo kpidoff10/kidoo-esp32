@@ -73,18 +73,20 @@
   #define CORE_MAIN         0
   #define CORE_OTA          0   // Même cœur, priorité plus basse que LED pour laisser l’arc-en-ciel fluide
 #else
-  // ESP32/S3 Dual-core :
-  // Core 0 : WiFi stack + Réseau + BLE + LED (tâches moins critiques)
+  // ESP32/S3 Dual-core (architecture optimale) :
+  //
+  // Core 0 : WiFi stack + Réseau + BLE (radio time-sensitive)
+  // Core 1 : Tâches applicatives (loop, LEDs, Audio, OTA)
+
   #define CORE_WIFI         0   // WiFi stack (automatique ESP-IDF)
   #define CORE_PUBNUB       0   // PubNub (HTTP, dépend WiFi)
-  #define CORE_WIFI_RETRY   0   // WiFi retry thread
-  #define CORE_BLE          0   // BLE sur Core 0 (partage avec WiFi, même radio)
-  #define CORE_LED          0   // LEDManager sur Core 0 (FastLED désactive les interruptions)
+  #define CORE_WIFI_RETRY   1   // WiFi retry/connect async sur Core 1 (Core 0 occupé par WiFi stack)
+  #define CORE_BLE          0   // BLE sur Core 0 (partage radio avec WiFi)
 
-  // Core 1 : OTA (écriture flash) + Audio + loop — isoler l’écriture flash du cœur LED
-  #define CORE_OTA          1   // OTA sur Core 1 pour ne pas bloquer l’arc-en-ciel pendant esp_ota_write()
-  #define CORE_AUDIO        1   // AudioManager (I2S, DOIT être isolé des LEDs)
-  #define CORE_MAIN         1   // loop() Arduino (automatique)
+  #define CORE_OTA          1   // OTA sur Core 1 (n'interfère pas avec WiFi)
+  #define CORE_AUDIO        1   // AudioManager/I2S sur Core 1 (isolé WiFi)
+  #define CORE_LED          1   // LEDManager sur Core 1 (isolé WiFi - pas de flashs!)
+  #define CORE_MAIN         1   // loop() Arduino (automatique sur Core 1)
 #endif
 
 // ============================================

@@ -13,6 +13,9 @@
 #elif defined(KIDOO_MODEL_GOTCHI)
   #include "gotchi/pubnub/model_pubnub_routes.h"
   typedef ModelGotchiPubNubRoutes ModelPubNubRoutes;
+#elif defined(KIDOO_MODEL_SOUND)
+  #include "sound/pubnub/model_pubnub_routes.h"
+  typedef ModelSoundPubNubRoutes ModelPubNubRoutes;
 #else
   #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
 #endif

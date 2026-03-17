@@ -18,6 +18,9 @@
     static void onWiFiConnected() {}
   };
   typedef ModelGotchiConfigSyncRoutes ModelConfigSyncRoutes;
+#elif defined(KIDOO_MODEL_SOUND)
+  #include "sound/config_sync/model_config_sync_routes.h"
+  typedef ModelSoundConfigSyncRoutes ModelConfigSyncRoutes;
 #else
   #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
 #endif

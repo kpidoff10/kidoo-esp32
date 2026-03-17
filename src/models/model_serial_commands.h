@@ -7,7 +7,7 @@
  * Source: models.yaml
  */
 
-#if !defined(KIDOO_MODEL_DREAM) && !defined(KIDOO_MODEL_GOTCHI)
+#if !defined(KIDOO_MODEL_DREAM) && !defined(KIDOO_MODEL_GOTCHI) && !defined(KIDOO_MODEL_SOUND)
   #error "Aucun modele Kidoo defini. Definir KIDOO_MODEL_* dans platformio.ini"
 #endif
 
@@ -17,6 +17,9 @@
 #elif defined(KIDOO_MODEL_GOTCHI)
   #include "gotchi/serial/model_serial_commands.h"
   #define ModelSerialCommands ModelGotchiSerialCommands
+#elif defined(KIDOO_MODEL_SOUND)
+  #include "sound/serial/model_serial_commands.h"
+  #define ModelSerialCommands ModelSoundSerialCommands
 #endif
 
 #endif // MODEL_SERIAL_COMMANDS_H

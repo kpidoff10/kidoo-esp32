@@ -50,6 +50,9 @@ struct SetupAsyncContext {
 };
 
 static void onSetupConnectComplete(bool success, void* userData) {
+  Serial.println("[BLE-COMMAND] ========== CALLBACK onSetupConnectComplete() APPELE ==========");
+  Serial.print("[BLE-COMMAND] WiFi success: ");
+  Serial.println(success ? "true" : "false");
   SetupAsyncContext* ctx = static_cast<SetupAsyncContext*>(userData);
   bool wifiConnected = success;
   

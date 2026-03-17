@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Génère platformio.ini et les dispatchers à partir de models.yaml
- * Usage: node scripts/generate.js
+ * Peut aussi créer la structure d'un nouveau modèle
+ *
+ * Usage:
+ *   node scripts/generate.js                    # Génère les dispatchers
+ *   node scripts/generate.js --create-model <id> <board> [display-name]
+ *   Example: node scripts/generate.js --create-model sound esp32-s3-devkitc-1 Sound
+ *
  * Requis: Node.js 18+ (pour fs et path built-in)
  *
  * Include paths (build_flags -I) :
@@ -217,6 +223,339 @@ ${branches}
 }
 
 
+function createDirectory(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+    return true;
+  }
+  return false;
+}
+
+function createModelStructure(modelId, board, displayName) {
+  console.log(`\nCréation de la structure pour le modèle '${modelId}'...`);
+
+  const modelDir = path.join(SRC_MODELS, modelId);
+  const dirs = ['config', 'init', 'pubnub', 'serial', 'config_sync', 'managers', 'utils'];
+
+  // Créer les répertoires
+  dirs.forEach(dir => {
+    const dirPath = path.join(modelDir, dir);
+    if (createDirectory(dirPath)) {
+      console.log(`  ✓ ${dir}/`);
+    }
+  });
+
+  const capitalizedId = modelId.charAt(0).toUpperCase() + modelId.slice(1);
+  const displayNameFormatted = displayName || capitalizedId;
+
+  // config/config.h - Détecter le type de board pour les pins par défaut
+  const isS3 = board.includes('esp32-s3');
+  const defaultRtcSda = isS3 ? 8 : 8;
+  const defaultRtcScl = isS3 ? 9 : 9;
+  const defaultSdMosi = isS3 ? 11 : 6;
+  const defaultSdMiso = isS3 ? 13 : 5;
+  const defaultSdSck = isS3 ? 12 : 4;
+  const defaultSdCs = isS3 ? 10 : 7;
+
+  fs.writeFileSync(path.join(modelDir, 'config', 'config.h'), `#ifndef CONFIG_${modelId.toUpperCase()}_H
+#define CONFIG_${modelId.toUpperCase()}_H
+
+#include <Arduino.h>
+
+/**
+ * Configuration matérielle du modèle ${displayNameFormatted}
+ * Pins GPIO pour SD, RTC, etc.
+ */
+
+// ============================================
+// Configuration RTC DS3231 (I2C)
+// ============================================
+
+#define RTC_SDA_PIN ${defaultRtcSda}
+#define RTC_SCL_PIN ${defaultRtcScl}
+#define RTC_I2C_ADDRESS 0x68
+
+// ============================================
+// Configuration de la carte SD (SPI)
+// ============================================
+
+#define SD_MOSI_PIN ${defaultSdMosi}
+#define SD_MISO_PIN ${defaultSdMiso}
+#define SD_SCK_PIN ${defaultSdSck}
+#define SD_CS_PIN ${defaultSdCs}
+
+// ============================================
+// Composants disponibles sur ce modèle
+// ============================================
+
+#define HAS_SD_CARD true
+#define HAS_RTC true
+#define HAS_BLE true
+#define HAS_PUBNUB true
+
+#endif // CONFIG_${modelId.toUpperCase()}_H
+`);
+  console.log(`  ✓ config/config.h`);
+
+  // config/default_config.h
+  const capitalizedDisplayName = displayNameFormatted.charAt(0).toUpperCase() + displayNameFormatted.slice(1);
+  fs.writeFileSync(path.join(modelDir, 'config', 'default_config.h'), `#ifndef DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+#define DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+
+/**
+ * Configuration par défaut du modèle Kidoo ${capitalizedDisplayName}
+ *
+ * Ces valeurs sont utilisées lorsque :
+ * - Le fichier config.json n'existe pas sur la carte SD
+ * - Le fichier config.json est invalide
+ * - Première utilisation du Kidoo ${capitalizedDisplayName}
+ */
+
+// ============================================
+// Configuration par défaut - ${capitalizedDisplayName}
+// ============================================
+
+// Nom du dispositif par défaut (utilisé pour le Bluetooth)
+#define DEFAULT_DEVICE_NAME "Kidoo-${capitalizedDisplayName}"
+
+// Configuration WiFi par défaut (vide = non configuré)
+#define DEFAULT_WIFI_SSID ""
+#define DEFAULT_WIFI_PASSWORD ""
+
+// Luminosité LED par défaut (0-255)
+#define DEFAULT_LED_BRIGHTNESS 128
+
+// ============================================
+// Configuration PubNub - ${capitalizedDisplayName}
+// ============================================
+
+// Version du firmware Kidoo (spécifique au modèle)
+#define FIRMWARE_VERSION "1.0.0"
+
+// Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
+// Subscribe Key (obligatoire pour recevoir des messages)
+#define DEFAULT_PUBNUB_SUBSCRIBE_KEY "sub-c-5f6c027d-31ec-4d2d-96f4-f7a63fa5e747"
+
+// Publish Key (obligatoire pour envoyer des messages)
+#define DEFAULT_PUBNUB_PUBLISH_KEY "pub-c-54932998-4a9f-44da-acd1-dface15b1cb7"
+
+#endif // DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+`);
+  console.log(`  ✓ config/default_config.h`);
+
+  // init/init_model.h
+  fs.writeFileSync(path.join(modelDir, 'init', 'init_model.h'), `#ifndef INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+#define INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+
+#include <Arduino.h>
+
+/**
+ * Initialisation spécifique au modèle Kidoo ${displayNameFormatted}
+ */
+
+class InitModel${displayNameFormatted} {
+public:
+  static bool init();
+  static bool configure();
+  static void update();
+};
+
+#endif // INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+`);
+  console.log(`  ✓ init/init_model.h`);
+
+  // init/init_model.cpp
+  fs.writeFileSync(path.join(modelDir, 'init', 'init_model.cpp'), `#include "init_model.h"
+
+bool InitModel${displayNameFormatted}::init() {
+  // TODO: Initialisation du modèle ${displayNameFormatted}
+  return true;
+}
+
+bool InitModel${displayNameFormatted}::configure() {
+  // TODO: Configuration du modèle ${displayNameFormatted}
+  return true;
+}
+
+void InitModel${displayNameFormatted}::update() {
+  // TODO: Boucle update du modèle ${displayNameFormatted}
+}
+`);
+  console.log(`  ✓ init/init_model.cpp`);
+
+  // pubnub/model_pubnub_routes.h
+  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+
+#include <Arduino.h>
+
+/**
+ * Routes PubNub pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}PubNubRoutes {
+public:
+  // TODO: Ajouter les handlers PubNub spécifiques
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+`);
+  console.log(`  ✓ pubnub/model_pubnub_routes.h`);
+
+  // pubnub/model_pubnub_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.cpp'), `#include "model_pubnub_routes.h"
+
+// Implémentation des routes PubNub pour ${displayNameFormatted}
+`);
+  console.log(`  ✓ pubnub/model_pubnub_routes.cpp`);
+
+  // serial/model_serial_commands.h
+  fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.h'), `#ifndef MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+#define MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+
+#include <Arduino.h>
+
+/**
+ * Commandes Serial pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}SerialCommands {
+public:
+  // TODO: Ajouter les commandes Serial spécifiques
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+`);
+  console.log(`  ✓ serial/model_serial_commands.h`);
+
+  // serial/model_serial_commands.cpp
+  fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.cpp'), `#include "model_serial_commands.h"
+
+// Implémentation des commandes Serial pour ${displayNameFormatted}
+`);
+  console.log(`  ✓ serial/model_serial_commands.cpp`);
+
+  // config_sync/model_config_sync_routes.h
+  fs.writeFileSync(path.join(modelDir, 'config_sync', 'model_config_sync_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+
+#include <Arduino.h>
+
+/**
+ * Routes de synchronisation de configuration pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}ConfigSyncRoutes {
+public:
+  static void onWiFiConnected();
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+`);
+  console.log(`  ✓ config_sync/model_config_sync_routes.h`);
+
+  // config_sync/model_config_sync_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'config_sync', 'model_config_sync_routes.cpp'), `#include "model_config_sync_routes.h"
+
+void Model${displayNameFormatted}ConfigSyncRoutes::onWiFiConnected() {
+  // TODO: Synchronisation de la config au WiFi connect pour ${displayNameFormatted}
+}
+`);
+  console.log(`  ✓ config_sync/model_config_sync_routes.cpp`);
+
+  // SPECIFICATIONS.md
+  fs.writeFileSync(path.join(modelDir, 'SPECIFICATIONS.md'), `# Spécifications du modèle ${displayNameFormatted}
+
+## Vue d'ensemble
+Boîte à musique ${displayNameFormatted}
+
+## Hardware
+- **Board**: ${board}
+- **CPU**: ESP32
+- **RAM**: TBD
+- **Flash**: TBD
+- **Features**:
+  - WiFi
+  - SD Card
+
+## Architecture
+
+### Managers
+- TODO: Ajouter les managers spécifiques
+
+### Config
+- Fichiers de configuration: \`config/\`
+- Synchronisation: \`config_sync/\`
+
+### Communication
+- PubNub: \`pubnub/\`
+- Serial: \`serial/\`
+`);
+  console.log(`  ✓ SPECIFICATIONS.md`);
+
+  return true;
+}
+
+function addModelToYaml(modelId, board, displayName) {
+  console.log(`\nAjout du modèle à models.yaml...`);
+
+  const content = fs.readFileSync(MODELS_YAML, 'utf8');
+  const lines = content.split('\n');
+
+  // Trouver la fin de la section models (avant dispatcher_config)
+  let insertIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim().startsWith('# Config pour les dispatchers')) {
+      insertIndex = i - 1;
+      break;
+    }
+  }
+
+  if (insertIndex === -1) {
+    console.error('Impossible de trouver où insérer le modèle dans models.yaml');
+    return false;
+  }
+
+  const capitalizedId = modelId.charAt(0).toUpperCase() + modelId.slice(1);
+  const displayNameFormatted = displayName || capitalizedId;
+
+  const modelEntry = `
+  ${modelId}:
+    macro: KIDOO_MODEL_${modelId.toUpperCase()}
+    id: ${modelId}
+    display_name: ${displayNameFormatted}
+    board: ${board}
+    board_config:
+      partitions: default_16MB.csv
+      flash_mode: qio
+      upload_flash_size: 16MB
+      memory_type: qio_opi
+      upload_speed: 460800
+    build_flags:
+      - KIDOO_MODEL_${modelId.toUpperCase()}
+      - 'KIDOO_MODEL_ID=\\"${modelId}\\"'
+      - HAS_WIFI
+      - HAS_SD
+      - BOARD_HAS_PSRAM
+    lib_deps: []
+    lib_ignore: []
+`;
+
+  lines.splice(insertIndex + 1, 0, modelEntry, '');
+
+  // Ajouter aussi dans dispatcher_config.config_sync
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(`gotchi: { type: inline }`)) {
+      lines[i] += `\n    ${modelId}: { type: include, path: "${modelId}/config_sync/model_config_sync_routes.h", typedef: "Model${displayNameFormatted}ConfigSyncRoutes" }`;
+      break;
+    }
+  }
+
+  fs.writeFileSync(MODELS_YAML, lines.join('\n'));
+  console.log(`  ✓ Modèle ajouté à models.yaml`);
+  return true;
+}
+
 function generatePlatformioIni(config) {
   const models = config.models;
   const modelIds = Object.keys(models);
@@ -326,11 +665,9 @@ platform = espressif32 @ 6.4.0
 framework = arduino
 platform_packages = tool-esptoolpy@~1.40501.0
 
-build_flags = 
+build_flags =
 	-I $PROJECT_DIR/src
 	-I $PROJECT_DIR
-	-DARDUINO_USB_MODE=1
-	-DARDUINO_USB_CDC_ON_BOOT=1
 	-DCORE_DEBUG_LEVEL=0
 	-Os
 	-ffunction-sections
@@ -352,20 +689,451 @@ upload_speed = 921600
 }
 
 // Point d'entrée
-console.log('Chargement models.yaml...');
-const config = loadConfig();
+const readline = require('readline');
+const args = process.argv.slice(2);
 
-fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
-fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
-fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
-fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
-fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
-fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
+function prompt(question) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
 
-console.log('Génération terminée:');
-console.log('  - platformio.ini');
-console.log('  - src/models/model_config.h');
-console.log('  - src/models/model_init.h');
-console.log('  - src/models/model_pubnub_routes.h');
-console.log('  - src/models/model_serial_commands.h');
-console.log('  - src/models/model_config_sync_routes.h');
+function interactiveCreateModel() {
+  console.log('\n🔧 Assistant de création de modèle Kidoo\n');
+
+  // Récupérer les arguments passés
+  const argv = process.argv.slice(2);
+  let modelId = null;
+  let isS3 = true;
+  let enabledFeatures = ['rtc', 'wifi', 'sd', 'ble']; // par défaut
+
+  // Chercher les arguments
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--model' && argv[i + 1]) {
+      modelId = argv[i + 1];
+    }
+    if (argv[i] === '--esp' && argv[i + 1]) {
+      isS3 = argv[i + 1] !== 'c3';
+    }
+    if (argv[i] === '--features' && argv[i + 1]) {
+      enabledFeatures = argv[i + 1].toLowerCase().split(',').map(f => f.trim());
+    }
+  }
+
+  // S'il manque des infos, on demande à l'utilisateur
+  if (!modelId) {
+    const modelIdArg = process.argv.slice(2).find((_, i, arr) => arr[i - 1] === '--model');
+    if (!modelIdArg) {
+      console.error('Usage: node scripts/generate.js --create-model [--model <name>] [--esp s3|c3] [--features rtc,ble,wifi,sd]');
+      console.error('Example: node scripts/generate.js --create-model --model sound --esp s3 --features rtc,ble,wifi,sd');
+      process.exit(1);
+    }
+  }
+
+  const displayName = modelId.charAt(0).toUpperCase() + modelId.slice(1);
+
+  // Créer la structure
+  console.log(`\n🚀 Création du modèle '${modelId}' sur ${board}...\n`);
+  if (!createModelStructure(modelId, board, displayName, enabledFeatures)) {
+    console.error('Erreur lors de la création de la structure du modèle');
+    process.exit(1);
+  }
+
+  // Ajouter à models.yaml
+  if (!addModelToYaml(modelId, board, displayName)) {
+    console.error('Erreur lors de l\'ajout à models.yaml');
+    process.exit(1);
+  }
+
+  // Générer les dispatchers
+  console.log('\n⚙️ Génération des dispatchers...');
+  const config = loadConfig();
+
+  fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
+
+  console.log('\n✅ Modèle créé avec succès!\n');
+  console.log('📦 Fichiers créés:');
+  console.log(`  • src/models/${modelId}/config/`);
+  console.log(`  • src/models/${modelId}/init/`);
+  console.log(`  • src/models/${modelId}/pubnub/`);
+  console.log(`  • src/models/${modelId}/serial/`);
+  console.log(`  • src/models/${modelId}/config_sync/`);
+  console.log(`  • platformio.ini [env:${modelId}]`);
+  console.log('\n📝 Prochaines étapes:');
+  console.log(`  1. Implémenter src/models/${modelId}/init/init_model.cpp`);
+  console.log(`  2. Ajouter les managers spécifiques en src/models/${modelId}/managers/`);
+  console.log(`  3. Configurer les pins dans src/models/${modelId}/config/config.h si besoin`);
+}
+
+// Patch createModelStructure pour supporter features
+const originalCreateModelStructure = createModelStructure;
+function createModelStructure(modelId, board, displayName, features = ['rtc', 'wifi', 'sd', 'ble']) {
+  console.log(`Création de la structure pour le modèle '${modelId}'...`);
+
+  const modelDir = path.join(SRC_MODELS, modelId);
+  const dirs = ['config', 'init', 'pubnub', 'serial', 'config_sync', 'managers', 'utils'];
+
+  dirs.forEach(dir => {
+    const dirPath = path.join(modelDir, dir);
+    if (createDirectory(dirPath)) {
+      console.log(`  ✓ ${dir}/`);
+    }
+  });
+
+  const capitalizedId = modelId.charAt(0).toUpperCase() + modelId.slice(1);
+  const displayNameFormatted = displayName || capitalizedId;
+  const isS3 = board.includes('esp32-s3');
+
+  // Déterminer les features habilitées
+  const hasRTC = features.includes('rtc');
+  const hasSD = features.includes('sd');
+  const hasNFC = features.includes('nfc');
+  const hasBLE = features.includes('ble');
+  const hasWiFi = features.includes('wifi');
+
+  // config/config.h
+  const defaultRtcSda = isS3 ? 8 : 8;
+  const defaultRtcScl = isS3 ? 9 : 9;
+  const defaultSdMosi = isS3 ? 11 : 6;
+  const defaultSdMiso = isS3 ? 13 : 5;
+  const defaultSdSck = isS3 ? 12 : 4;
+  const defaultSdCs = isS3 ? 10 : 7;
+
+  let configH = `#ifndef CONFIG_${modelId.toUpperCase()}_H
+#define CONFIG_${modelId.toUpperCase()}_H
+
+#include <Arduino.h>
+
+/**
+ * Configuration matérielle du modèle ${displayNameFormatted}
+ * Pins GPIO pour SD, RTC, etc.
+ */
+`;
+
+  if (hasRTC) {
+    configH += `
+// ============================================
+// Configuration RTC DS3231 (I2C)
+// ============================================
+
+#define RTC_SDA_PIN ${defaultRtcSda}
+#define RTC_SCL_PIN ${defaultRtcScl}
+#define RTC_I2C_ADDRESS 0x68
+`;
+  }
+
+  if (hasSD) {
+    configH += `
+// ============================================
+// Configuration de la carte SD (SPI)
+// ============================================
+
+#define SD_MOSI_PIN ${defaultSdMosi}
+#define SD_MISO_PIN ${defaultSdMiso}
+#define SD_SCK_PIN ${defaultSdSck}
+#define SD_CS_PIN ${defaultSdCs}
+`;
+  }
+
+  if (hasNFC) {
+    configH += `
+// ============================================
+// Configuration NFC PN532 (I2C)
+// ============================================
+
+#define NFC_SDA_PIN ${defaultRtcSda}
+#define NFC_SCL_PIN ${defaultRtcScl}
+#define NFC_I2C_ADDRESS 0x24
+`;
+  }
+
+  configH += `
+// ============================================
+// Composants disponibles sur ce modèle
+// ============================================
+`;
+
+  if (hasSD) configH += '\n#define HAS_SD_CARD true';
+  if (hasRTC) configH += '\n#define HAS_RTC true';
+  if (hasNFC) configH += '\n#define HAS_NFC true';
+  if (hasBLE) configH += '\n#define HAS_BLE true';
+  if (hasWiFi) configH += '\n#define HAS_WIFI true';
+  configH += '\n#define HAS_PUBNUB true';
+
+  configH += `
+
+#endif // CONFIG_${modelId.toUpperCase()}_H
+`;
+
+  fs.writeFileSync(path.join(modelDir, 'config', 'config.h'), configH);
+  console.log(`  ✓ config/config.h`);
+
+  // Reste des fichiers (inchangé)
+  fs.writeFileSync(path.join(modelDir, 'config', 'default_config.h'), `#ifndef DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+#define DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+
+/**
+ * Configuration par défaut pour ${displayNameFormatted}
+ * Valeurs initiales pour le stockage SD
+ */
+
+#endif // DEFAULT_CONFIG_${modelId.toUpperCase()}_H
+`);
+  console.log(`  ✓ config/default_config.h`);
+
+  // init/init_model.h
+  fs.writeFileSync(path.join(modelDir, 'init', 'init_model.h'), `#ifndef INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+#define INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+
+#include <Arduino.h>
+
+/**
+ * Initialisation spécifique au modèle Kidoo ${displayNameFormatted}
+ */
+
+class InitModel${displayNameFormatted} {
+public:
+  static bool init();
+  static bool configure();
+  static void update();
+};
+
+#endif // INIT_MODEL_${displayNameFormatted.toUpperCase()}_H
+`);
+  console.log(`  ✓ init/init_model.h`);
+
+  // init/init_model.cpp
+  fs.writeFileSync(path.join(modelDir, 'init', 'init_model.cpp'), `#include "init_model.h"
+
+bool InitModel${displayNameFormatted}::init() {
+  // TODO: Initialisation du modèle ${displayNameFormatted}
+  return true;
+}
+
+bool InitModel${displayNameFormatted}::configure() {
+  // TODO: Configuration du modèle ${displayNameFormatted}
+  return true;
+}
+
+void InitModel${displayNameFormatted}::update() {
+  // TODO: Boucle update du modèle ${displayNameFormatted}
+}
+`);
+  console.log(`  ✓ init/init_model.cpp`);
+
+  // pubnub/model_pubnub_routes.h
+  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+
+#include <Arduino.h>
+
+/**
+ * Routes PubNub pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}PubNubRoutes {
+public:
+  // TODO: Ajouter les handlers PubNub spécifiques
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+`);
+  console.log(`  ✓ pubnub/model_pubnub_routes.h`);
+
+  // pubnub/model_pubnub_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.cpp'), `#include "model_pubnub_routes.h"
+
+// Implémentation des routes PubNub pour ${displayNameFormatted}
+`);
+  console.log(`  ✓ pubnub/model_pubnub_routes.cpp`);
+
+  // serial/model_serial_commands.h
+  fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.h'), `#ifndef MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+#define MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+
+#include <Arduino.h>
+
+/**
+ * Commandes Serial pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}SerialCommands {
+public:
+  // TODO: Ajouter les commandes Serial spécifiques
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
+`);
+  console.log(`  ✓ serial/model_serial_commands.h`);
+
+  // serial/model_serial_commands.cpp
+  fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.cpp'), `#include "model_serial_commands.h"
+
+// Implémentation des commandes Serial pour ${displayNameFormatted}
+`);
+  console.log(`  ✓ serial/model_serial_commands.cpp`);
+
+  // config_sync/model_config_sync_routes.h
+  fs.writeFileSync(path.join(modelDir, 'config_sync', 'model_config_sync_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+
+#include <Arduino.h>
+
+/**
+ * Routes de synchronisation de configuration pour ${displayNameFormatted}
+ */
+
+class Model${displayNameFormatted}ConfigSyncRoutes {
+public:
+  static void onWiFiConnected();
+};
+
+#endif // MODEL_${modelId.toUpperCase()}_CONFIG_SYNC_ROUTES_H
+`);
+  console.log(`  ✓ config_sync/model_config_sync_routes.h`);
+
+  // config_sync/model_config_sync_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'config_sync', 'model_config_sync_routes.cpp'), `#include "model_config_sync_routes.h"
+
+void Model${displayNameFormatted}ConfigSyncRoutes::onWiFiConnected() {
+  // TODO: Synchronisation de la config au WiFi connect pour ${displayNameFormatted}
+}
+`);
+  console.log(`  ✓ config_sync/model_config_sync_routes.cpp`);
+
+  // SPECIFICATIONS.md
+  fs.writeFileSync(path.join(modelDir, 'SPECIFICATIONS.md'), `# Spécifications du modèle ${displayNameFormatted}
+
+## Vue d'ensemble
+Modèle ${displayNameFormatted}
+
+## Hardware
+- **Board**: ${board}
+- **CPU**: ESP32
+- **RAM**: TBD
+- **Flash**: TBD
+- **Features**:
+${hasWiFi ? '  - WiFi\n' : ''}${hasSD ? '  - SD Card\n' : ''}${hasRTC ? '  - RTC\n' : ''}${hasBLE ? '  - Bluetooth\n' : ''}${hasNFC ? '  - NFC\n' : ''}
+## Architecture
+
+### Managers
+- TODO: Ajouter les managers spécifiques
+
+### Config
+- Fichiers de configuration: \`config/\`
+- Synchronisation: \`config_sync/\`
+
+### Communication
+- PubNub: \`pubnub/\`
+- Serial: \`serial/\`
+`);
+  console.log(`  ✓ SPECIFICATIONS.md`);
+
+  return true;
+}
+
+// Fonction pour parser les arguments
+function parseCreateModelArgs() {
+  const argv = process.argv.slice(2);
+  const args = { model: null, esp: 's3', features: ['wifi', 'ble', 'rtc', 'sd'] };
+
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--model' && argv[i + 1]) {
+      args.model = argv[i + 1];
+    }
+    if (argv[i] === '--esp' && argv[i + 1]) {
+      args.esp = argv[i + 1];
+    }
+    if (argv[i] === '--features' && argv[i + 1]) {
+      args.features = argv[i + 1].split(',').map(f => f.trim());
+    }
+  }
+  return args;
+}
+
+// Point d'entrée
+const argv = process.argv.slice(2);
+
+if (argv.includes('--create-model')) {
+  // Mode création de modèle
+  const args = parseCreateModelArgs();
+
+  if (!args.model) {
+    console.error('Usage: node scripts/generate.js --create-model --model <name> [--esp s3|c3] [--features rtc,ble,wifi,sd]');
+    console.error('Example: node scripts/generate.js --create-model --model sound --esp s3 --features rtc,ble,wifi,sd');
+    process.exit(1);
+  }
+
+  const modelId = args.model;
+  const isS3 = args.esp !== 'c3';
+  const board = isS3 ? 'esp32-s3-devkitc-1' : 'esp32-c3-devkitm-1';
+  const displayName = modelId.charAt(0).toUpperCase() + modelId.slice(1);
+
+  // Créer la structure
+  console.log(`🚀 Création du modèle '${modelId}' sur ${board}...\n`);
+  if (!createModelStructure(modelId, board, displayName, args.features)) {
+    console.error('Erreur lors de la création de la structure du modèle');
+    process.exit(1);
+  }
+
+  // Ajouter à models.yaml
+  if (!addModelToYaml(modelId, board, displayName)) {
+    console.error('Erreur lors de l\'ajout à models.yaml');
+    process.exit(1);
+  }
+
+  // Générer les dispatchers
+  console.log('\n⚙️  Génération des dispatchers...');
+  const config = loadConfig();
+
+  fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
+
+  console.log('\n✅ Modèle créé avec succès!\n');
+  console.log('📦 Fichiers créés:');
+  console.log(`  • src/models/${modelId}/config/`);
+  console.log(`  • src/models/${modelId}/init/`);
+  console.log(`  • src/models/${modelId}/pubnub/`);
+  console.log(`  • src/models/${modelId}/serial/`);
+  console.log(`  • src/models/${modelId}/config_sync/`);
+  console.log(`  • platformio.ini [env:${modelId}]`);
+  console.log('\n📝 Prochaines étapes:');
+  console.log(`  1. Implémenter src/models/${modelId}/init/init_model.cpp`);
+  console.log(`  2. Ajouter les managers spécifiques en src/models/${modelId}/managers/`);
+  console.log(`  3. Configurer les pins dans src/models/${modelId}/config/config.h si besoin`);
+} else {
+  // Mode normal: juste générer les dispatchers
+  console.log('Chargement models.yaml...');
+  const config = loadConfig();
+
+  fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
+
+  console.log('Génération terminée:');
+  console.log('  - platformio.ini');
+  console.log('  - src/models/model_config.h');
+  console.log('  - src/models/model_init.h');
+  console.log('  - src/models/model_pubnub_routes.h');
+  console.log('  - src/models/model_serial_commands.h');
+  console.log('  - src/models/model_config_sync_routes.h');
+}

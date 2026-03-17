@@ -219,13 +219,23 @@ struct ConnectAsyncParams {
 void WiFiManager::connectAsync(const char* ssid, const char* password, uint32_t timeoutMs,
                               void (*callback)(bool success, void* userData), void* userData) {
 #ifndef HAS_WIFI
+  Serial.println("[WIFI] connectAsync: HAS_WIFI non defini");
   if (callback) callback(false, userData);
   return;
 #else
+  Serial.print("[WIFI] connectAsync: available=");
+  Serial.print(available ? "true" : "false");
+  Serial.print(" ssid=");
+  Serial.print(ssid ? "OK" : "NULL");
+  Serial.print(" callback=");
+  Serial.println(callback ? "OK" : "NULL");
+
   if (!available || !ssid || !callback) {
+    Serial.println("[WIFI] connectAsync: Conditions non remplies - callback immédiat");
     if (callback) callback(false, userData);
     return;
   }
+  Serial.println("[WIFI] connectAsync: Creation de la tache WiFi...");
   ConnectAsyncParams* params = new ConnectAsyncParams();
   strncpy(params->ssid, ssid, sizeof(params->ssid) - 1);
   params->ssid[sizeof(params->ssid) - 1] = '\0';
@@ -248,12 +258,25 @@ void WiFiManager::connectAsync(const char* ssid, const char* password, uint32_t 
 
 void WiFiManager::connectTaskFunction(void* parameter) {
 #ifdef HAS_WIFI
+  Serial.println("[WIFI-TASK] ========== connectTaskFunction() DEMARREE ==========");
   ConnectAsyncParams* params = static_cast<ConnectAsyncParams*>(parameter);
+  Serial.print("[WIFI-TASK] Tentative connexion SSID: ");
+  Serial.println(params->ssid);
   bool success = connect(params->ssid, params->password[0] ? params->password : nullptr, params->timeoutMs);
+  Serial.print("[WIFI-TASK] connect() result: ");
+  Serial.println(success ? "SUCCESS" : "FAILED");
   void (*cb)(bool, void*) = params->callback;
   void* ud = params->userData;
   delete params;
-  if (cb) cb(success, ud);
+  Serial.print("[WIFI-TASK] Appel du callback avec success=");
+  Serial.println(success ? "true" : "false");
+  if (cb) {
+    cb(success, ud);
+    Serial.println("[WIFI-TASK] Callback appele");
+  } else {
+    Serial.println("[WIFI-TASK] ERREUR: Callback est nullptr!");
+  }
+  Serial.println("[WIFI-TASK] ========== connectTaskFunction() TERMINEE ==========");
   vTaskDelete(nullptr);
 #endif
 }

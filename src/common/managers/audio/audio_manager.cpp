@@ -110,8 +110,7 @@ bool AudioManager::init() {
     // Convertir le volume % en valeur interne (0-21)
     uint8_t internalVolume = (currentVolume * 21) / 100;
     audio.setVolume(internalVolume);
-    
-    LogManager::info("[AUDIO] Buffer d'entree: %d octets", audio.getInBufferSize());
+
     xSemaphoreGive(audioMutex);
   } else {
     Serial.println("[AUDIO] ERREUR: Timeout mutex pendant init");

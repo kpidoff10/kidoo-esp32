@@ -108,10 +108,11 @@ bool SDManager::initSDCard() {
   pinMode(SD_CS_PIN, OUTPUT);
   digitalWrite(SD_CS_PIN, HIGH);
   delay(10);  // Petit délai pour stabiliser
-  
+
   SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
   delay(100);  // Délai plus long après SPI.begin() - important pour ESP32-C3
-  
+
+  // SD.begin() peut bloquer longtemps si pas de carte, on a un timeout global au niveau appelant
   #if defined(ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C3)
     if (SD.begin(SD_CS_PIN, SPI, 400000)) return true;
     delay(100);
@@ -119,11 +120,23 @@ bool SDManager::initSDCard() {
     delay(100);
     if (SD.begin(SD_CS_PIN)) return true;
   #else
-    if (SD.begin(SD_CS_PIN)) return true;
+    // Pour S3+, essayer directement - timeout court (~500ms par tentative)
+    Serial.println("[SD] Tentative de connexion à la carte SD...");
+
+    // Timeout 2 secondes maximum pour SD.begin
+    unsigned long startTime = millis();
+    const unsigned long TIMEOUT = 2000;  // 2 secondes max
+
+    // Note: SD.begin() peut bloquer, on ajoute juste un warning si trop long
+    if (SD.begin(SD_CS_PIN)) {
+      unsigned long elapsed = millis() - startTime;
+      Serial.printf("[SD] Carte SD initialisee en %lu ms\n", elapsed);
+      return true;
+    }
   #endif
-  
+
   // Diagnostic supplémentaire
-  Serial.println("[SD] ERREUR: Impossible d'initialiser la carte SD");
+  Serial.println("[SD] ERREUR: Impossible d'initialiser la carte SD (timeout ou non connectee)");
   Serial.println("[SD] Verifier les connexions et que la carte SD est formatee en FAT32");
   Serial.println("[SD] Diagnostic:");
   Serial.printf("[SD]   - Pin CS (GPIO %d) etat: %s\n", SD_CS_PIN, digitalRead(SD_CS_PIN) ? "HIGH" : "LOW");

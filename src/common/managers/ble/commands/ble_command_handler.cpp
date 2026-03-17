@@ -119,7 +119,11 @@ void BLECommandHandler::sendResponse(bool success, const String& message) {
 }
 
 void BLECommandHandler::sendSetupCompletionResponse(bool success, bool wifiConnected) {
-  if (pTxCharacteristic == nullptr) return;
+  Serial.println("[BLE-COMMAND] sendSetupCompletionResponse() appelée");
+  if (pTxCharacteristic == nullptr) {
+    Serial.println("[BLE-COMMAND] ERREUR: pTxCharacteristic est nullptr - notification non envoyee!");
+    return;
+  }
   
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -169,14 +173,10 @@ void BLECommandHandler::sendSetupCompletionResponse(bool success, bool wifiConne
   if (LEDManager::isInitialized()) {
     if (wifiConnected) {
       blinkGreenWithFade(2, 200);
-      #ifdef HAS_BLE
-      #ifdef BLE_CONFIG_BUTTON_PIN
-      if (BLEConfigManager::isInitialized() && BLEConfigManager::isBLEEnabled()) {
-        delay(500);
-        BLEConfigManager::disableBLE();
-      }
-      #endif
-      #endif
+      // NOTE: Ne pas appeler disableBLE() immédiatement car cela ferme la connexion BLE
+      // avant que le client reçoive la notification (timeout)
+      // La notification est asynchrone - laisser le client la recevoir d'abord
+      // disableBLE() sera appelé automatiquement si BLE config button est pressé
     } else {
       LEDManager::setEffect(LED_EFFECT_NONE);
       delay(50);
