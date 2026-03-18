@@ -24,5 +24,5 @@ Modèle Sound
 - Synchronisation: `config_sync/`
 
 ### Communication
-- PubNub: `pubnub/`
+- MQTT: `mqtt/`
 - Serial: `serial/`

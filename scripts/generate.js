@@ -117,7 +117,7 @@ ${branches}
 `;
 }
 
-function generateModelPubnubRoutes(config) {
+function generateModelmqttRoutes(config) {
   const models = config.models;
   const modelIds = Object.keys(models);
 
@@ -125,25 +125,25 @@ function generateModelPubnubRoutes(config) {
     const m = models[id];
     const cond = i === 0 ? `#ifdef ${m.macro}` : `#elif defined(${m.macro})`;
     return `${cond}
-  #include "${id}/pubnub/model_pubnub_routes.h"
-  typedef Model${m.display_name}PubNubRoutes ModelPubNubRoutes;`;
+  #include "${id}/mqtt/model_mqtt_routes.h"
+  typedef Model${m.display_name}mqttRoutes ModelmqttRoutes;`;
   }).join('\n') + `
 #else
   #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
 #endif`;
 
-  return `#ifndef MODEL_PUBNUB_ROUTES_H
-#define MODEL_PUBNUB_ROUTES_H
+  return `#ifndef MODEL_mqtt_ROUTES_H
+#define MODEL_mqtt_ROUTES_H
 
 /**
- * Inclusion des routes PubNub spécifiques au modèle
+ * Inclusion des routes mqtt spécifiques au modèle
  * Généré par: node scripts/generate.js
  * Source: models.yaml
  */
 
 ${branches}
 
-#endif // MODEL_PUBNUB_ROUTES_H
+#endif // MODEL_mqtt_ROUTES_H
 `;
 }
 
@@ -235,7 +235,7 @@ function createModelStructure(modelId, board, displayName) {
   console.log(`\nCréation de la structure pour le modèle '${modelId}'...`);
 
   const modelDir = path.join(SRC_MODELS, modelId);
-  const dirs = ['config', 'init', 'pubnub', 'serial', 'config_sync', 'managers', 'utils'];
+  const dirs = ['config', 'init', 'mqtt', 'serial', 'config_sync', 'managers', 'utils'];
 
   // Créer les répertoires
   dirs.forEach(dir => {
@@ -291,7 +291,7 @@ function createModelStructure(modelId, board, displayName) {
 #define HAS_SD_CARD true
 #define HAS_RTC true
 #define HAS_BLE true
-#define HAS_PUBNUB true
+#define HAS_mqtt true
 
 #endif // CONFIG_${modelId.toUpperCase()}_H
 `);
@@ -326,18 +326,18 @@ function createModelStructure(modelId, board, displayName) {
 #define DEFAULT_LED_BRIGHTNESS 128
 
 // ============================================
-// Configuration PubNub - ${capitalizedDisplayName}
+// Configuration mqtt - ${capitalizedDisplayName}
 // ============================================
 
 // Version du firmware Kidoo (spécifique au modèle)
 #define FIRMWARE_VERSION "1.0.0"
 
-// Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
+// Clés mqtt (créer un compte gratuit sur https://www.mqtt.com/)
 // Subscribe Key (obligatoire pour recevoir des messages)
-#define DEFAULT_PUBNUB_SUBSCRIBE_KEY "sub-c-5f6c027d-31ec-4d2d-96f4-f7a63fa5e747"
+#define DEFAULT_mqtt_SUBSCRIBE_KEY "sub-c-5f6c027d-31ec-4d2d-96f4-f7a63fa5e747"
 
 // Publish Key (obligatoire pour envoyer des messages)
-#define DEFAULT_PUBNUB_PUBLISH_KEY "pub-c-54932998-4a9f-44da-acd1-dface15b1cb7"
+#define DEFAULT_mqtt_PUBLISH_KEY "pub-c-54932998-4a9f-44da-acd1-dface15b1cb7"
 
 #endif // DEFAULT_CONFIG_${modelId.toUpperCase()}_H
 `);
@@ -383,31 +383,31 @@ void InitModel${displayNameFormatted}::update() {
 `);
   console.log(`  ✓ init/init_model.cpp`);
 
-  // pubnub/model_pubnub_routes.h
-  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
-#define MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+  // mqtt/model_mqtt_routes.h
+  fs.writeFileSync(path.join(modelDir, 'mqtt', 'model_mqtt_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
 
 #include <Arduino.h>
 
 /**
- * Routes PubNub pour ${displayNameFormatted}
+ * Routes mqtt pour ${displayNameFormatted}
  */
 
-class Model${displayNameFormatted}PubNubRoutes {
+class Model${displayNameFormatted}mqttRoutes {
 public:
-  // TODO: Ajouter les handlers PubNub spécifiques
+  // TODO: Ajouter les handlers mqtt spécifiques
 };
 
-#endif // MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+#endif // MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
 `);
-  console.log(`  ✓ pubnub/model_pubnub_routes.h`);
+  console.log(`  ✓ mqtt/model_mqtt_routes.h`);
 
-  // pubnub/model_pubnub_routes.cpp
-  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.cpp'), `#include "model_pubnub_routes.h"
+  // mqtt/model_mqtt_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'mqtt', 'model_mqtt_routes.cpp'), `#include "model_mqtt_routes.h"
 
-// Implémentation des routes PubNub pour ${displayNameFormatted}
+// Implémentation des routes mqtt pour ${displayNameFormatted}
 `);
-  console.log(`  ✓ pubnub/model_pubnub_routes.cpp`);
+  console.log(`  ✓ mqtt/model_mqtt_routes.cpp`);
 
   // serial/model_serial_commands.h
   fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.h'), `#ifndef MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
@@ -488,7 +488,7 @@ Boîte à musique ${displayNameFormatted}
 - Synchronisation: \`config_sync/\`
 
 ### Communication
-- PubNub: \`pubnub/\`
+- mqtt: \`mqtt/\`
 - Serial: \`serial/\`
 `);
   console.log(`  ✓ SPECIFICATIONS.md`);
@@ -564,7 +564,7 @@ function generatePlatformioIni(config) {
 	+<common/**>
 	+<models/model_config.h>
 	+<models/model_init.h>
-	+<models/model_pubnub_routes.h>
+	+<models/model_mqtt_routes.h>
 	+<models/model_serial_commands.h>
 	+<models/model_config_sync_routes.h>`;
 
@@ -759,7 +759,7 @@ function interactiveCreateModel() {
   fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
-  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_mqtt_routes.h'), generateModelmqttRoutes(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
 
@@ -767,7 +767,7 @@ function interactiveCreateModel() {
   console.log('📦 Fichiers créés:');
   console.log(`  • src/models/${modelId}/config/`);
   console.log(`  • src/models/${modelId}/init/`);
-  console.log(`  • src/models/${modelId}/pubnub/`);
+  console.log(`  • src/models/${modelId}/mqtt/`);
   console.log(`  • src/models/${modelId}/serial/`);
   console.log(`  • src/models/${modelId}/config_sync/`);
   console.log(`  • platformio.ini [env:${modelId}]`);
@@ -783,7 +783,7 @@ function createModelStructure(modelId, board, displayName, features = ['rtc', 'w
   console.log(`Création de la structure pour le modèle '${modelId}'...`);
 
   const modelDir = path.join(SRC_MODELS, modelId);
-  const dirs = ['config', 'init', 'pubnub', 'serial', 'config_sync', 'managers', 'utils'];
+  const dirs = ['config', 'init', 'mqtt', 'serial', 'config_sync', 'managers', 'utils'];
 
   dirs.forEach(dir => {
     const dirPath = path.join(modelDir, dir);
@@ -870,7 +870,7 @@ function createModelStructure(modelId, board, displayName, features = ['rtc', 'w
   if (hasNFC) configH += '\n#define HAS_NFC true';
   if (hasBLE) configH += '\n#define HAS_BLE true';
   if (hasWiFi) configH += '\n#define HAS_WIFI true';
-  configH += '\n#define HAS_PUBNUB true';
+  configH += '\n#define HAS_mqtt true';
 
   configH += `
 
@@ -933,31 +933,31 @@ void InitModel${displayNameFormatted}::update() {
 `);
   console.log(`  ✓ init/init_model.cpp`);
 
-  // pubnub/model_pubnub_routes.h
-  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
-#define MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+  // mqtt/model_mqtt_routes.h
+  fs.writeFileSync(path.join(modelDir, 'mqtt', 'model_mqtt_routes.h'), `#ifndef MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
+#define MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
 
 #include <Arduino.h>
 
 /**
- * Routes PubNub pour ${displayNameFormatted}
+ * Routes mqtt pour ${displayNameFormatted}
  */
 
-class Model${displayNameFormatted}PubNubRoutes {
+class Model${displayNameFormatted}mqttRoutes {
 public:
-  // TODO: Ajouter les handlers PubNub spécifiques
+  // TODO: Ajouter les handlers mqtt spécifiques
 };
 
-#endif // MODEL_${modelId.toUpperCase()}_PUBNUB_ROUTES_H
+#endif // MODEL_${modelId.toUpperCase()}_mqtt_ROUTES_H
 `);
-  console.log(`  ✓ pubnub/model_pubnub_routes.h`);
+  console.log(`  ✓ mqtt/model_mqtt_routes.h`);
 
-  // pubnub/model_pubnub_routes.cpp
-  fs.writeFileSync(path.join(modelDir, 'pubnub', 'model_pubnub_routes.cpp'), `#include "model_pubnub_routes.h"
+  // mqtt/model_mqtt_routes.cpp
+  fs.writeFileSync(path.join(modelDir, 'mqtt', 'model_mqtt_routes.cpp'), `#include "model_mqtt_routes.h"
 
-// Implémentation des routes PubNub pour ${displayNameFormatted}
+// Implémentation des routes mqtt pour ${displayNameFormatted}
 `);
-  console.log(`  ✓ pubnub/model_pubnub_routes.cpp`);
+  console.log(`  ✓ mqtt/model_mqtt_routes.cpp`);
 
   // serial/model_serial_commands.h
   fs.writeFileSync(path.join(modelDir, 'serial', 'model_serial_commands.h'), `#ifndef MODEL_${modelId.toUpperCase()}_SERIAL_COMMANDS_H
@@ -1036,7 +1036,7 @@ ${hasWiFi ? '  - WiFi\n' : ''}${hasSD ? '  - SD Card\n' : ''}${hasRTC ? '  - RTC
 - Synchronisation: \`config_sync/\`
 
 ### Communication
-- PubNub: \`pubnub/\`
+- mqtt: \`mqtt/\`
 - Serial: \`serial/\`
 `);
   console.log(`  ✓ SPECIFICATIONS.md`);
@@ -1101,7 +1101,7 @@ if (argv.includes('--create-model')) {
   fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
-  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_mqtt_routes.h'), generateModelmqttRoutes(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
 
@@ -1109,7 +1109,7 @@ if (argv.includes('--create-model')) {
   console.log('📦 Fichiers créés:');
   console.log(`  • src/models/${modelId}/config/`);
   console.log(`  • src/models/${modelId}/init/`);
-  console.log(`  • src/models/${modelId}/pubnub/`);
+  console.log(`  • src/models/${modelId}/mqtt/`);
   console.log(`  • src/models/${modelId}/serial/`);
   console.log(`  • src/models/${modelId}/config_sync/`);
   console.log(`  • platformio.ini [env:${modelId}]`);
@@ -1125,7 +1125,7 @@ if (argv.includes('--create-model')) {
   fs.writeFileSync(path.join(ROOT, 'platformio.ini'), generatePlatformioIni(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config.h'), generateModelConfig(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_init.h'), generateModelInit(config));
-  fs.writeFileSync(path.join(SRC_MODELS, 'model_pubnub_routes.h'), generateModelPubnubRoutes(config));
+  fs.writeFileSync(path.join(SRC_MODELS, 'model_mqtt_routes.h'), generateModelmqttRoutes(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_serial_commands.h'), generateModelSerialCommands(config));
   fs.writeFileSync(path.join(SRC_MODELS, 'model_config_sync_routes.h'), generateModelConfigSyncRoutes(config));
 
@@ -1133,7 +1133,7 @@ if (argv.includes('--create-model')) {
   console.log('  - platformio.ini');
   console.log('  - src/models/model_config.h');
   console.log('  - src/models/model_init.h');
-  console.log('  - src/models/model_pubnub_routes.h');
+  console.log('  - src/models/model_mqtt_routes.h');
   console.log('  - src/models/model_serial_commands.h');
   console.log('  - src/models/model_config_sync_routes.h');
 }

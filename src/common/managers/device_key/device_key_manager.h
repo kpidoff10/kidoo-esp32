@@ -29,6 +29,14 @@ public:
   static bool getOrCreatePublicKeyBase64(char* outBuffer, size_t bufferSize);
 
   /**
+   * Obtenir la clé publique en base64 (sans créer si manquante).
+   * @param outBuffer Buffer de sortie pour la clé base64
+   * @param bufferSize Taille du buffer (au moins 48 pour base64 de 32 bytes)
+   * @return true si la clé existe et a pu être chargée, false sinon
+   */
+  static bool getPublicKeyBase64(char* outBuffer, size_t bufferSize);
+
+  /**
    * Signer un message avec la clé privée.
    * @param message Message à signer (UTF-8)
    * @param messageLen Longueur du message

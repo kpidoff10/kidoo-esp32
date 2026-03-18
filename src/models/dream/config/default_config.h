@@ -31,11 +31,7 @@
 // Version du firmware Kidoo (spécifique au modèle)
 #define FIRMWARE_VERSION "1.0.43"
 
-// Configuration EMQX Cloud broker
-// Broker host (ex: "45.10.161.70" pour le VPS ou "mqtt.example.com")
-#define DEFAULT_MQTT_BROKER_HOST "yd6fff17.ala.eu-central-1.emqxsl.com"
-
-// Broker port (par défaut 1883 pour MQTT, 8883 pour MQTT over TLS)
-#define DEFAULT_MQTT_BROKER_PORT 8883
+// Configuration EMQX Cloud broker (centralisée dans include/mqtt_config.h)
+#include "../../../../include/mqtt_config.h"
 
 #endif // MODEL_DREAM_DEFAULT_CONFIG_H

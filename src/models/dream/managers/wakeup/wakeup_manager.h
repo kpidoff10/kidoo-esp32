@@ -96,7 +96,7 @@ public:
   static bool isWakeupActive();
 
   /**
-   * Arrêter le wake-up manuellement (via PubNub)
+   * Arrêter le wake-up manuellement (via MQTT)
    */
   static void stopWakeupManually();
 

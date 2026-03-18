@@ -61,7 +61,7 @@
 #ifndef HAS_RTC
 #define HAS_RTC true
 #endif
-#define HAS_PUBNUB true
+#define HAS_MQTT true
 #define HAS_TOUCH true
 
 // ============================================

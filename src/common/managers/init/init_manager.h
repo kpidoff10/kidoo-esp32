@@ -30,7 +30,7 @@ struct SystemStatus {
   InitStatus nfc;           // Gestionnaire NFC
   InitStatus ble;           // Gestionnaire BLE
   InitStatus wifi;          // Gestionnaire WiFi
-  InitStatus pubnub;        // Gestionnaire PubNub
+  InitStatus mqtt;        // Gestionnaire MQTT
   InitStatus rtc;           // Gestionnaire RTC DS3231
   InitStatus potentiometer; // Gestionnaire Potentiomètre
   InitStatus audio;         // Gestionnaire Audio I2S
@@ -83,7 +83,7 @@ private:
   static bool initNFC();
   static bool initBLE();
   static bool initWiFi();
-  static bool initPubNub();
+  static bool initMqtt();
   static bool initRTC();
   static bool initPotentiometer();
   static bool initAudio();

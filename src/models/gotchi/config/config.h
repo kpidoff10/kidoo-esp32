@@ -99,7 +99,7 @@
 #define HAS_LCD true
 #define HAS_BLE true
 #define HAS_NFC true
-#define HAS_PUBNUB true
+#define HAS_MQTT true
 #define HAS_RTC true
 #define HAS_VIBRATOR true
 #define HAS_TOUCH true

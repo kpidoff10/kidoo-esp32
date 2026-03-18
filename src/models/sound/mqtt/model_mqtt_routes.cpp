@@ -1,10 +1,10 @@
-#include "model_pubnub_routes.h"
+#include "model_mqtt_routes.h"
 #include "app_config.h"
 #include "common/config/default_config.h"
 #include "../config/default_config.h"
 #include "common/managers/log/log_manager.h"
 #include "common/managers/sd/sd_manager.h"
-#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/mqtt/mqtt_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/init/init_manager.h"
 #include "common/managers/rtc/rtc_manager.h"
@@ -15,27 +15,27 @@
 #include <cstdint>
 
 /**
- * Implémentation des routes PubNub pour Sound
+ * Implémentation des routes MQTT pour Sound
  */
 
 // Forward declarations
 static bool handleGetInfo(const JsonObject& json);
 static bool handleBrightness(const JsonObject& json);
 
-bool ModelSoundPubNubRoutes::processMessage(const JsonObject& json) {
+bool ModelSoundMqttRoutes::processMessage(const JsonObject& json) {
   // Vérifier que l'action est présente
   if (!json["action"].is<const char*>()) {
-    Serial.println("[PUBNUB-ROUTE-SOUND] Erreur: action manquante");
+    Serial.println("[MQTT-ROUTE-SOUND] Erreur: action manquante");
     return false;
   }
 
   const char* action = json["action"].as<const char*>();
   if (action == nullptr) {
-    Serial.println("[PUBNUB-ROUTE-SOUND] Erreur: action est null");
+    Serial.println("[MQTT-ROUTE-SOUND] Erreur: action est null");
     return false;
   }
 
-  Serial.print("[PUBNUB-ROUTE-SOUND] Action reçue: ");
+  Serial.print("[MQTT-ROUTE-SOUND] Action reçue: ");
   Serial.println(action);
 
   // Router vers le bon handler
@@ -46,12 +46,12 @@ bool ModelSoundPubNubRoutes::processMessage(const JsonObject& json) {
     return handleBrightness(json);
   }
 
-  Serial.println("[PUBNUB-ROUTE-SOUND] Action inconnue");
+  Serial.println("[MQTT-ROUTE-SOUND] Action inconnue");
   return false;
 }
 
-void ModelSoundPubNubRoutes::printRoutes() {
-  Serial.println("\n=== Routes PubNub - Sound ===");
+void ModelSoundMqttRoutes::printRoutes() {
+  Serial.println("\n=== Routes MQTT - Sound ===");
   Serial.println("  - get-info: Récupérer les infos (stockage, firmware, MAC, etc.)");
   Serial.println("  - brightness: Changer la luminosité");
   Serial.println("\nExemples:");
@@ -63,7 +63,7 @@ void ModelSoundPubNubRoutes::printRoutes() {
  * Récupère et publie les informations complètes du Kidoo Sound
  */
 static bool handleGetInfo(const JsonObject& json) {
-  Serial.println("[PUBNUB-ROUTE-SOUND] get-info: Préparation des informations...");
+  Serial.println("[MQTT-ROUTE-SOUND] get-info: Préparation des informations...");
 
   // Récupérer les infos de stockage SD
   uint64_t totalBytes = 0;
@@ -74,9 +74,9 @@ static bool handleGetInfo(const JsonObject& json) {
     totalBytes = SDManager::getTotalSpace();
     usedBytes = SDManager::getUsedSpace();
     freeBytes = SDManager::getFreeSpace();
-    Serial.printf("[PUBNUB-ROUTE-SOUND] Storage: total=%llu, used=%llu, free=%llu\n", totalBytes, usedBytes, freeBytes);
+    Serial.printf("[MQTT-ROUTE-SOUND] Storage: total=%llu, used=%llu, free=%llu\n", totalBytes, usedBytes, freeBytes);
   } else {
-    Serial.println("[PUBNUB-ROUTE-SOUND] SD non disponible");
+    Serial.println("[MQTT-ROUTE-SOUND] SD non disponible");
   }
 
   // Récupérer la MAC address WiFi
@@ -115,12 +115,12 @@ static bool handleGetInfo(const JsonObject& json) {
     usedBytes
   );
 
-  // Publier via PubNub
-  if (PubNubManager::publish(infoJson)) {
-    Serial.println("[PUBNUB-ROUTE-SOUND] get-info: Infos publiées avec succès");
+  // Publier via MQTT
+  if (MqttManager::publish(infoJson)) {
+    Serial.println("[MQTT-ROUTE-SOUND] get-info: Infos publiées avec succès");
     return true;
   } else {
-    Serial.println("[PUBNUB-ROUTE-SOUND] get-info: Erreur lors de la publication");
+    Serial.println("[MQTT-ROUTE-SOUND] get-info: Erreur lors de la publication");
     return false;
   }
 }
@@ -130,17 +130,17 @@ static bool handleGetInfo(const JsonObject& json) {
  */
 static bool handleBrightness(const JsonObject& json) {
   if (!json["value"].is<int>()) {
-    Serial.println("[PUBNUB-ROUTE-SOUND] brightness: value manquante");
+    Serial.println("[MQTT-ROUTE-SOUND] brightness: value manquante");
     return false;
   }
 
   int brightness = json["value"];
   if (brightness < 0 || brightness > 100) {
-    Serial.println("[PUBNUB-ROUTE-SOUND] brightness: valeur hors limites (0-100)");
+    Serial.println("[MQTT-ROUTE-SOUND] brightness: valeur hors limites (0-100)");
     return false;
   }
 
-  Serial.printf("[PUBNUB-ROUTE-SOUND] brightness: %d%%\n", brightness);
+  Serial.printf("[MQTT-ROUTE-SOUND] brightness: %d%%\n", brightness);
   // TODO: Appliquer la luminosité au modèle Sound quand le manager existe
 
   return true;

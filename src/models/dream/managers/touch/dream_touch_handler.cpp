@@ -9,7 +9,7 @@
 #include "../wakeup/wakeup_manager.h"
 #include "../../config/dream_config.h"
 #include "../../api/dream_api_routes.h"
-#include "../../pubnub/model_pubnub_routes.h"
+#include "../../mqtt/model_mqtt_routes.h"
 #include "../../utils/led_effect_parser.h"
 #include "../../../../common/managers/touch/touch_manager.h"
 #include "../../../../common/managers/led/led_manager.h"
@@ -139,7 +139,7 @@ void DreamTouchHandler::update() {
             // Default color is on → turn it off
             LEDManager::clear();
             s_defaultColorDisplayed = false;
-            ModelDreamPubNubRoutes::publishDefaultColorState();
+            ModelDreamMQTTRoutes::publishDefaultColorState();
             if (Serial) Serial.println("[DREAM] Tap: couleur par defaut eteinte");
           } else {
             // Default color is off → turn it on
@@ -151,7 +151,7 @@ void DreamTouchHandler::update() {
             LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
             LEDManager::setEffect(defaultEffect);
             s_defaultColorDisplayed = true;
-            ModelDreamPubNubRoutes::publishDefaultColorState();
+            ModelDreamMQTTRoutes::publishDefaultColorState();
             if (Serial) Serial.printf("[DREAM] Tap: couleur par defaut affichee (RGB:%d,%d,%d, effet:%s)\n",
                                        dreamConfig.default_color_r, dreamConfig.default_color_g,
                                        dreamConfig.default_color_b, dreamConfig.default_effect);
@@ -203,7 +203,7 @@ void DreamTouchHandler::simulateTap() {
         // Couleur par défaut active → l'éteindre
         LEDManager::clear();
         s_defaultColorDisplayed = false;
-        ModelDreamPubNubRoutes::publishDefaultColorState();
+        ModelDreamMQTTRoutes::publishDefaultColorState();
         if (Serial) Serial.println("[DREAM-TAP] Couleur par defaut eteinte");
       } else {
         // Couleur par défaut inactive → l'allumer
@@ -215,7 +215,7 @@ void DreamTouchHandler::simulateTap() {
         LEDEffect defaultEffect = LEDEffectParser::parse(dreamConfig.default_effect);
         LEDManager::setEffect(defaultEffect);
         s_defaultColorDisplayed = true;
-        ModelDreamPubNubRoutes::publishDefaultColorState();
+        ModelDreamMQTTRoutes::publishDefaultColorState();
         if (Serial) Serial.printf("[DREAM-TAP] Couleur par defaut affichee (RGB:%d,%d,%d, effet:%s)\n",
                                    dreamConfig.default_color_r, dreamConfig.default_color_g,
                                    dreamConfig.default_color_b, dreamConfig.default_effect);

@@ -25,17 +25,13 @@
 #define DEFAULT_LED_BRIGHTNESS 128
 
 // ============================================
-// Configuration PubNub - Sound
+// Configuration MQTT - Sound
 // ============================================
 
 // Version du firmware Kidoo (spécifique au modèle)
 #define FIRMWARE_VERSION "1.0.0"
 
-// Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
-// Subscribe Key (obligatoire pour recevoir des messages)
-#define DEFAULT_PUBNUB_SUBSCRIBE_KEY "sub-c-d0d7ee43-448a-4a84-a732-c935c7026e10"
-
-// Publish Key (obligatoire pour envoyer des messages)
-#define DEFAULT_PUBNUB_PUBLISH_KEY "pub-c-ca8e9630-69f5-48da-a032-eb03eb3941aa"
+// Configuration EMQX Cloud broker (centralisée dans include/mqtt_config.h)
+#include "../../../../include/mqtt_config.h"
 
 #endif // DEFAULT_CONFIG_SOUND_H

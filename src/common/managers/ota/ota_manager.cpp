@@ -10,7 +10,7 @@
 #include "models/model_config.h"
 #include "common/config/core_config.h"
 #include "common/managers/log/log_manager.h"
-#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/mqtt/mqtt_manager.h"
 #ifdef HAS_BLE
 #include "common/managers/ble/ble_manager.h"
 #endif
@@ -124,18 +124,18 @@ static bool s_otaFreedResources = false;
 static bool s_otaFreedLed = false;
 static bool s_otaFreedBle = false;
 
-/** Mode OTA : arrêt complet PubNub (task+queue), LED (task+queue+strip), BLE (deinit+mem_release) */
+/** Mode OTA : arrêt complet MQTT (task+queue), LED (task+queue+strip), BLE (deinit+mem_release) */
 static void enterOtaMode() {
   s_otaFreedResources = true;  // Bloque reconnexions auto (main loop, wifi_manager)
 
   logHeap("avant enterOtaMode");
 
-#ifdef HAS_PUBNUB
-  if (PubNubManager::isInitialized()) {
-    LogManager::info("[OTA] PubNub shutdownForOta...");
-    PubNubManager::shutdownForOta();
+#ifdef HAS_MQTT
+  if (MqttManager::isInitialized()) {
+    LogManager::info("[OTA] MQTT shutdownForOta...");
+    MqttManager::shutdownForOta();
     vTaskDelay(pdMS_TO_TICKS(100));
-    logHeap("apres PubNub shutdown");
+    logHeap("apres MQTT shutdown");
   }
 #endif
 
@@ -194,13 +194,13 @@ static void otaAllowSleep(void) {
 #endif
 }
 
-/** Publie directement (avant enterOtaMode, PubNub actif). */
+/** Publie directement (avant enterOtaMode, MQTT actif). */
 static void publishFirmwareUpdateFailed(const char* version, const char* error) {
   char msg[256];
   snprintf(msg, sizeof(msg),
     "{\"type\":\"firmware-update-failed\",\"version\":\"%s\",\"error\":\"%s\"}",
     version, error);
-  PubNubManager::publish(msg);
+  MqttManager::publish(msg);
 }
 
 /** Stocke l'erreur OTA en NVS puis redémarre. La publication se fera au prochain boot. */
@@ -220,7 +220,7 @@ static const char* OTA_DONE_FILE = "/ota_done.txt";
 /** Publie le statut OTA stocké en NVS ou SD (succès ou échec). L'app attend firmware-update-done ou firmware-update-failed.
  *  Peut être rappelé plusieurs fois. SD utilisée comme fallback si NVS échoue (persistance après OTA). */
 void OTAManager::publishLastOtaErrorIfAny() {
-#ifdef HAS_PUBNUB
+#ifdef HAS_MQTT
   String successVer;
   String err;
   String ver;
@@ -249,7 +249,7 @@ void OTAManager::publishLastOtaErrorIfAny() {
     LogManager::info("[OTA] last_success_version=%s", successVer.c_str());
     char msg[128];
     snprintf(msg, sizeof(msg), "{\"type\":\"firmware-update-done\",\"version\":\"%s\"}", successVer.c_str());
-    if (PubNubManager::publish(msg)) {
+    if (MqttManager::publish(msg)) {
       if (prefs.begin("ota", false)) {
         prefs.remove("last_success_version");
         prefs.end();
@@ -261,7 +261,7 @@ void OTAManager::publishLastOtaErrorIfAny() {
 #endif
       LogManager::info("[OTA] Succes OTA publie: %s", successVer.c_str());
     } else {
-      LogManager::info("[OTA] Publication OTA succes impossible (PubNub hors ligne) -> retry plus tard");
+      LogManager::info("[OTA] Publication OTA succes impossible (MQTT hors ligne) -> retry plus tard");
     }
   }
 
@@ -270,7 +270,7 @@ void OTAManager::publishLastOtaErrorIfAny() {
     snprintf(msg, sizeof(msg),
       "{\"type\":\"firmware-update-failed\",\"version\":\"%s\",\"error\":\"%s\"}",
       ver.c_str(), err.c_str());
-    if (PubNubManager::publish(msg)) {
+    if (MqttManager::publish(msg)) {
       if (prefs.begin("ota", false)) {
         prefs.remove("last_error");
         prefs.remove("last_version");
@@ -278,7 +278,7 @@ void OTAManager::publishLastOtaErrorIfAny() {
       }
       LogManager::info("[OTA] Erreur precedente publiee: %s", err.c_str());
     } else {
-      LogManager::info("[OTA] Publication OTA erreur impossible (PubNub hors ligne) -> retry plus tard");
+      LogManager::info("[OTA] Publication OTA erreur impossible (MQTT hors ligne) -> retry plus tard");
     }
   }
 #endif

@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "common/managers/init/init_manager.h"
 #include "common/managers/serial/serial_commands.h"
-#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/mqtt/mqtt_manager.h"
 #include "common/managers/ota/ota_manager.h"
 #include "common/managers/potentiometer/potentiometer_manager.h"
 #include "models/model_config.h"
@@ -36,7 +36,7 @@
  * La configuration s'adapte automatiquement au type de chip :
  * 
  * ESP32-S3 (Basic) : Dual-core + PSRAM
- * - Core 0 : WiFi stack, PubNub, WiFi retry
+ * - Core 0 : WiFi stack, MQTT, WiFi retry
  * - Core 1 : loop(), LEDManager, BLE
  * - PSRAM pour les buffers
  * 
@@ -111,29 +111,29 @@ void loop() {
   }
   #endif
   
-  #ifdef HAS_PUBNUB
-  // Note: PubNubManager::loop() ne fait plus rien - le thread gère tout
+  #ifdef HAS_MQTT
+  // Note: MqttManager::loop() ne fait plus rien - le thread gère tout
   // On garde l'appel pour compatibilité mais il est vide
-  PubNubManager::loop();
+  MqttManager::loop();
 
   // Retry périodique publication statut OTA (firmware-update-done/failed) pendant 60 s au boot
-  // Au cas où l'appel en init échoue (PubNub pas encore prêt), on réessaie
+  // Au cas où l'appel en init échoue (MQTT pas encore prêt), on réessaie
   static unsigned long lastOtaPublishRetry = 0;
   if (millis() < 60000 && (millis() - lastOtaPublishRetry > 3000)) {
     lastOtaPublishRetry = millis();
     OTAManager::publishLastOtaErrorIfAny();
   }
   
-  // Vérifier si PubNub doit se connecter automatiquement quand le WiFi devient disponible
-  // (si PubNub est initialisé mais pas connecté, et que le WiFi est maintenant connecté)
-  // Ne pas tenter pendant OTA : on a libéré PubNub volontairement, on le reconnecte nous-mêmes en cas d'échec
-  static unsigned long lastPubNubConnectAttempt = 0;
-  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+  // Vérifier si MQTT doit se connecter automatiquement quand le WiFi devient disponible
+  // (si MQTT est initialisé mais pas connecté, et que le WiFi est maintenant connecté)
+  // Ne pas tenter pendant OTA : on a libéré MQTT volontairement, on le reconnecte nous-mêmes en cas d'échec
+  static unsigned long lastMQTTConnectAttempt = 0;
+  if (MqttManager::isInitialized() && !MqttManager::isConnected()
       && !OTAManager::isOtaInProgress()) {
     #ifdef HAS_WIFI
-    if (WiFiManager::isConnected() && (millis() - lastPubNubConnectAttempt > 5000)) {
-      lastPubNubConnectAttempt = millis();
-      PubNubManager::connect();
+    if (WiFiManager::isConnected() && (millis() - lastMQTTConnectAttempt > 5000)) {
+      lastMQTTConnectAttempt = millis();
+      MqttManager::connect();
     }
     #endif
   }
@@ -170,13 +170,13 @@ void loop() {
     // Note: La synchronisation de configuration est gérée automatiquement
     // par WiFiManager via ModelConfigSyncRoutes::onWiFiConnected()
 
-    // Initialiser PubNub (lazy init) - seulement s'il n'est pas déjà initialisé
-    #ifdef HAS_PUBNUB
-    if (HAS_PUBNUB && !PubNubManager::isInitialized()) {
+    // Initialiser MQTT (lazy init) - seulement s'il n'est pas déjà initialisé
+    #ifdef HAS_MQTT
+    if (HAS_MQTT && !MqttManager::isInitialized()) {
       if (Serial) {
-        Serial.println("[MAIN] WiFi connecte - Initialisation PubNub");
+        Serial.println("[MAIN] WiFi connecte - Initialisation MQTT");
       }
-      PubNubManager::init();
+      MqttManager::init();
     }
     #endif
   }
@@ -205,7 +205,7 @@ void loop() {
   // Threads indépendants (gérés par FreeRTOS, ne pas appeler ici) :
   // - LEDManager   : CORE_LED, PRIORITY_LED, animations temps-réel
   // - AudioManager : CORE_AUDIO, PRIORITY_AUDIO, lecture I2S temps-réel
-  // - PubNubManager: CORE_PUBNUB, PRIORITY_PUBNUB, HTTP polling
+  // - MqttManager: CORE_mqtt, PRIORITY_mqtt, HTTP polling
   // - WiFi retry   : CORE_WIFI_RETRY, PRIORITY_WIFI_RETRY, reconnexion
   // (voir core_config.h pour les valeurs selon le chip)
   // ====================================================================

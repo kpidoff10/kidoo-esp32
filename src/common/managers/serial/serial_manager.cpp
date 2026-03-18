@@ -153,8 +153,8 @@ void SerialManager::printMemoryInfo() {
     Serial.println("  [!] ATTENTION: Memoire critique!");
     Serial.println("  Causes possibles:");
     Serial.println("    - WiFi + BLE actifs simultanement (~70-100 KB)");
-    #ifdef HAS_PUBNUB
-    Serial.println("    - PubNub connecte (~20-30 KB)");
+    #ifdef HAS_mqtt
+    Serial.println("    - MQTT connecte (~20-30 KB)");
     #endif
     Serial.println("    - Gros documents JSON en memoire");
   }

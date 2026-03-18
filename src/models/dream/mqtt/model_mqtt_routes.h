@@ -1,12 +1,12 @@
-#ifndef MODEL_DREAM_PUBNUB_ROUTES_H
-#define MODEL_DREAM_PUBNUB_ROUTES_H
+#ifndef MODEL_DREAM_MQTT_ROUTES_H
+#define MODEL_DREAM_MQTT_ROUTES_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "common/managers/led/led_manager.h"
 
 /**
- * Routes PubNub spécifiques au modèle Kidoo Dream
+ * Routes MQTT spécifiques au modèle Kidoo Dream
  * 
  * Actions disponibles:
  * - get-info: Récupérer les informations complètes de l'appareil
@@ -52,10 +52,10 @@
  * { "action": "set-timezone", "timezoneId": "Europe/Paris" }
  */
 
-class ModelDreamPubNubRoutes {
+class ModelDreamMqttRoutes {
 public:
   /**
-   * Traiter un message JSON reçu via PubNub
+   * Traiter un message JSON reçu via MQTT
    * @param json Le message JSON à traiter
    * @return true si le message a été traité, false sinon
    */
@@ -92,7 +92,7 @@ public:
   static void checkNighttimeAlertAckTimeout();
 
   /**
-   * Publier env via PubNub si température ou humidité a changé (à appeler périodiquement dans loop)
+   * Publier env via MQTT si température ou humidité a changé (à appeler périodiquement dans loop)
    */
   static void updateEnvPublisher();
 
@@ -151,4 +151,4 @@ private:
   static bool handleSetTimezone(const JsonObject& json);
 };
 
-#endif // MODEL_DREAM_PUBNUB_ROUTES_H
+#endif // MODEL_DREAM_MQTT_ROUTES_H

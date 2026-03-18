@@ -1,16 +1,16 @@
-#ifndef MODEL_GOTCHI_PUBNUB_ROUTES_H
-#define MODEL_GOTCHI_PUBNUB_ROUTES_H
+#ifndef MODEL_GOTCHI_MQTT_ROUTES_H
+#define MODEL_GOTCHI_MQTT_ROUTES_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
 /**
- * Routes PubNub spécifiques au modèle Kidoo Gotchi
+ * Routes MQTT spécifiques au modèle Kidoo Gotchi
  *
  * Actions: brightness, sleep, led, status, firmware-update
  */
 
-class ModelGotchiPubNubRoutes {
+class ModelGotchiMqttRoutes {
 public:
   static bool processMessage(const JsonObject& json);
   static void printRoutes();
@@ -23,4 +23,4 @@ private:
   static bool handleFirmwareUpdate(const JsonObject& json);
 };
 
-#endif // MODEL_GOTCHI_PUBNUB_ROUTES_H
+#endif // MODEL_GOTCHI_MQTT_ROUTES_H

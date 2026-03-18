@@ -16,8 +16,8 @@
 #include "app_config.h"
 #include "ssl_config.h"
 #endif
-#ifdef HAS_PUBNUB
-#include "common/managers/pubnub/pubnub_manager.h"
+#ifdef HAS_MQTT
+#include "common/managers/mqtt/mqtt_manager.h"
 #endif
 #include "common/managers/rtc/rtc_manager.h"
 #include "common/managers/potentiometer/potentiometer_manager.h"
@@ -45,8 +45,8 @@
 #ifdef KIDOO_MODEL_DREAM
 #include "models/dream/config_sync/model_config_sync_routes.h"
 #endif
-#ifdef HAS_PUBNUB
-#include "models/model_pubnub_routes.h"
+#ifdef HAS_MQTT
+#include "models/model_mqtt_routes.h"
 #endif
 #include "models/model_config.h"
 #include <Arduino.h>
@@ -235,17 +235,17 @@ void SerialCommands::processCommand(const String& command) {
     cmdConfigRetry();
   } else if (cmd == "device-key" || cmd == "public-key" || cmd == "cle-device") {
     cmdDeviceKey();
-  #ifdef HAS_PUBNUB
-  } else if (cmd == "pubnub" || cmd == "pubnub-status") {
-    cmdPubNub();
-  } else if (cmd == "pubnub-connect") {
-    cmdPubNubConnect();
-  } else if (cmd == "pubnub-disconnect") {
-    cmdPubNubDisconnect();
-  } else if (cmd == "pubnub-publish" || cmd == "pubnub-pub") {
-    cmdPubNubPublish(args);
-  } else if (cmd == "pubnub-routes" || cmd == "routes") {
-    cmdPubNubRoutes();
+  #ifdef HAS_MQTT
+  } else if (cmd == "mqtt" || cmd == "mqtt-status") {
+    cmdMqtt();
+  } else if (cmd == "mqtt-connect") {
+    cmdMqttConnect();
+  } else if (cmd == "mqtt-disconnect") {
+    cmdMqttDisconnect();
+  } else if (cmd == "mqtt-publish" || cmd == "mqtt-pub") {
+    cmdMqttPublish(args);
+  } else if (cmd == "mqtt-routes" || cmd == "routes") {
+    cmdMqttRoutes();
   #endif
   } else if (cmd == "rtc" || cmd == "time" || cmd == "date") {
     cmdRTC();
@@ -375,13 +375,13 @@ void SerialCommands::printHelp() {
   }
   #endif
   
-  #ifdef HAS_PUBNUB
-  if (HAS_PUBNUB) {
-    Serial.println("  pubnub           - Afficher l'etat PubNub");
-    Serial.println("  pubnub-connect   - Se connecter a PubNub");
-    Serial.println("  pubnub-disconnect - Se deconnecter de PubNub");
-    Serial.println("  pubnub-pub <msg> - Publier un message");
-    Serial.println("  pubnub-routes    - Afficher les routes PubNub disponibles");
+  #ifdef HAS_MQTT
+  if (HAS_MQTT) {
+    Serial.println("  mqtt             - Afficher l'etat MQTT");
+    Serial.println("  mqtt-connect   - Se connecter a MQTT");
+    Serial.println("  mqtt-disconnect - Se deconnecter de MQTT");
+    Serial.println("  mqtt-pub <msg> - Publier un message");
+    Serial.println("  mqtt-routes    - Afficher les routes MQTT disponibles");
   }
   #endif
   
@@ -866,89 +866,89 @@ void SerialCommands::cmdDeviceKey() {
 #endif
 }
 
-void SerialCommands::cmdPubNub() {
-  PubNubManager::printInfo();
+void SerialCommands::cmdMqtt() {
+  MqttManager::printInfo();
 }
 
-void SerialCommands::cmdPubNubConnect() {
-#ifndef HAS_PUBNUB
-  Serial.println("[PUBNUB] PubNub non disponible sur ce modele");
+void SerialCommands::cmdMqttConnect() {
+#ifndef HAS_MQTT
+  Serial.println("[MQTT] MQTT non disponible sur ce modele");
   return;
 #else
-  if (!PubNubManager::isInitialized()) {
+  if (!MqttManager::isInitialized()) {
     // Tenter d'initialiser
-    if (!PubNubManager::init()) {
-      Serial.println("[PUBNUB] Echec initialisation");
+    if (!MqttManager::init()) {
+      Serial.println("[MQTT] Echec initialisation");
       return;
     }
   }
   
   // Vérifier si déjà connecté
-  if (PubNubManager::isConnected()) {
-    Serial.println("[PUBNUB] Deja connecte");
+  if (MqttManager::isConnected()) {
+    Serial.println("[MQTT] Deja connecte");
     return;
   }
   
   // Se connecter
-  Serial.println("[PUBNUB] Tentative de connexion...");
-  if (PubNubManager::connect()) {
-    Serial.println("[PUBNUB] Connexion reussie!");
+  Serial.println("[MQTT] Tentative de connexion...");
+  if (MqttManager::connect()) {
+    Serial.println("[MQTT] Connexion reussie!");
   } else {
-    Serial.println("[PUBNUB] Echec de connexion");
+    Serial.println("[MQTT] Echec de connexion");
   }
 #endif
 }
 
-void SerialCommands::cmdPubNubDisconnect() {
-#ifndef HAS_PUBNUB
-  Serial.println("[PUBNUB] PubNub non disponible sur ce modele");
+void SerialCommands::cmdMqttDisconnect() {
+#ifndef HAS_MQTT
+  Serial.println("[MQTT] MQTT non disponible sur ce modele");
   return;
 #else
-  if (!PubNubManager::isConnected()) {
-    Serial.println("[PUBNUB] Pas connecte");
+  if (!MqttManager::isConnected()) {
+    Serial.println("[MQTT] Pas connecte");
     return;
   }
   
-  PubNubManager::disconnect();
-  Serial.println("[PUBNUB] Deconnecte");
+  MqttManager::disconnect();
+  Serial.println("[MQTT] Deconnecte");
 #endif
 }
 
-void SerialCommands::cmdPubNubPublish(const String& args) {
-#ifndef HAS_PUBNUB
-  Serial.println("[PUBNUB] PubNub non disponible sur ce modele");
+void SerialCommands::cmdMqttPublish(const String& args) {
+#ifndef HAS_MQTT
+  Serial.println("[MQTT] MQTT non disponible sur ce modele");
   return;
 #else
-  if (!PubNubManager::isConnected()) {
-    Serial.println("[PUBNUB] Non connecte");
+  if (!MqttManager::isConnected()) {
+    Serial.println("[MQTT] Non connecte");
     return;
   }
   
   if (args.length() == 0) {
     // Publier le statut par défaut
-    if (PubNubManager::publishStatus()) {
-      Serial.println("[PUBNUB] Statut publie");
+    if (MqttManager::publishStatus()) {
+      Serial.println("[MQTT] Statut publie");
     } else {
-      Serial.println("[PUBNUB] Echec publication");
+      Serial.println("[MQTT] Echec publication");
     }
   } else {
     // Publier le message
-    if (PubNubManager::publish(args.c_str())) {
-      Serial.print("[PUBNUB] Message publie: ");
+    if (MqttManager::publish(args.c_str())) {
+      Serial.print("[MQTT] Message publie: ");
       Serial.println(args);
     } else {
-      Serial.println("[PUBNUB] Echec publication");
+      Serial.println("[MQTT] Echec publication");
     }
   }
 #endif
 }
 
-void SerialCommands::cmdPubNubRoutes() {
-#ifndef HAS_PUBNUB
-  Serial.println("[PUBNUB] PubNub non disponible sur ce modele");
+void SerialCommands::cmdMqttRoutes() {
+#ifndef HAS_MQTT
+  Serial.println("[MQTT] MQTT non disponible sur ce modele");
   return;
 #else
-  ModelPubNubRoutes::printRoutes();
+  ModelMqttRoutes::printRoutes();
 #endif
 }
 
@@ -1252,17 +1252,17 @@ void SerialCommands::cmdMemoryDebug() {
     Serial.println("  BLE:                       Non init (0%)");
   }
   
-  // PubNub
-  #ifdef HAS_PUBNUB
-  if (PubNubManager::isConnected()) {
-    estimatedUsed += printComponent("PubNub (connecte):   ", 20, 30);
-  } else if (PubNubManager::isInitialized()) {
-    estimatedUsed += printComponent("PubNub (init):       ", 5, 10);
+  // MQTT
+  #ifdef HAS_MQTT
+  if (MqttManager::isConnected()) {
+    estimatedUsed += printComponent("MQTT (connecte):   ", 20, 30);
+  } else if (MqttManager::isInitialized()) {
+    estimatedUsed += printComponent("MQTT (init):       ", 5, 10);
   } else {
-    Serial.println("  PubNub:                    Non init (0%)");
+    Serial.println("  MQTT:                    Non init (0%)");
   }
   #else
-  Serial.println("  PubNub:                    Non disponible (0%)");
+  Serial.println("  MQTT:                    Non disponible (0%)");
   #endif
   
   // LEDs (FastLED)
@@ -1638,11 +1638,7 @@ void SerialCommands::cmdConfigGet(const String& args) {
   
   if (args.length() == 0) {
     Serial.println("[CONFIG] Usage: config-get <key>");
-    #ifdef HAS_PUBNUB
-    Serial.println("[CONFIG] Exemple: config-get pubnub_subscribe_key");
-    #else
     Serial.println("[CONFIG] Exemple: config-get wifi_ssid");
-    #endif
     return;
   }
   
@@ -1728,10 +1724,6 @@ void SerialCommands::cmdConfigSet(const String& args) {
   if (args.length() == 0) {
     Serial.println("[CONFIG] Usage: config-set <key> <value>");
     Serial.println("[CONFIG] Exemples:");
-    #ifdef HAS_PUBNUB
-    Serial.println("[CONFIG]   config-set pubnub_subscribe_key sub-c-xxx");
-    Serial.println("[CONFIG]   config-set pubnub_publish_key pub-c-xxx");
-    #endif
     Serial.println("[CONFIG]   config-set my_custom_key my_value");
     Serial.println("[CONFIG]   config-set led_brightness 128");
     return;

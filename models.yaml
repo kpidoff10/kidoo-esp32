@@ -81,9 +81,9 @@ dispatcher_config:
   init:
     path_template: "{model}/init/init_model.h"
     define_template: "InitModel InitModel{DisplayName}"
-  pubnub:
-    path_template: "{model}/pubnub/model_pubnub_routes.h"
-    typedef_template: "Model{DisplayName}PubNubRoutes"
+  mqtt:
+    path_template: "{model}/mqtt/model_mqtt_routes.h"
+    typedef_template: "Model{DisplayName}MqttRoutes"
   serial:
     path_template: "{model}/serial/model_serial_commands.h"
     define_template: "ModelSerialCommands Model{DisplayName}SerialCommands"

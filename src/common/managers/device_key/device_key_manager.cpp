@@ -155,6 +155,61 @@ bool DeviceKeyManager::getOrCreatePublicKeyBase64(char* outBuffer, size_t buffer
   return encodeBase64(publicKey, 32, outBuffer, bufferSize);
 }
 
+bool DeviceKeyManager::getPublicKeyBase64(char* outBuffer, size_t bufferSize) {
+  if (!outBuffer || bufferSize < 48) return false;
+  if (!SDManager::isAvailable()) return false;
+  if (!SD.exists(DEVICE_KEY_FILE)) return false;
+
+  uint8_t privateKey[32];
+  uint8_t publicKey[32];
+  uint8_t encryptionKey[16];
+  uint8_t iv[16];
+  uint8_t macAddress[6];
+
+  // Récupérer l'adresse MAC HARDWARE (stable)
+  esp_wifi_get_mac(WIFI_IF_STA, macAddress);
+
+  // Dériver la clé de chiffrement depuis le MAC address
+  if (!deriveEncryptionKey(macAddress, DEVICE_KEY_CONTEXT, DEVICE_KEY_CONTEXT_LEN, encryptionKey, 16)) {
+    return false;
+  }
+
+  // Lire la clé chiffrée depuis la SD
+  File f = SD.open(DEVICE_KEY_FILE, FILE_READ);
+  if (!f || f.size() < 64) {
+    if (f) f.close();
+    return false;
+  }
+
+  size_t read = f.read(iv, 16);
+  if (read != 16) {
+    f.close();
+    return false;
+  }
+
+  uint8_t encryptedData[48];
+  read = f.read(encryptedData, 48);
+  f.close();
+
+  if (read != 48) {
+    return false;
+  }
+
+  // Déchiffrer la clé privée
+  size_t decryptedLen = 0;
+  if (!aesDecrypt(encryptedData, 48, encryptionKey, iv, privateKey, &decryptedLen)) {
+    return false;
+  }
+
+  if (decryptedLen != 32) {
+    return false;
+  }
+
+  // Dériver et encoder la clé publique
+  Ed25519::derivePublicKey(publicKey, privateKey);
+  return encodeBase64(publicKey, 32, outBuffer, bufferSize);
+}
+
 bool DeviceKeyManager::signMessage(const uint8_t* message, size_t messageLen, uint8_t signatureOut[64]) {
   if (!message || !signatureOut) return false;
   if (!SDManager::isAvailable()) return false;

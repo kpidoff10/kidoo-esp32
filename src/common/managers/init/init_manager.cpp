@@ -7,7 +7,7 @@
 #include "common/managers/ble/ble_manager.h"
 #include "common/managers/ble_config/ble_config_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
-#include "common/managers/pubnub/pubnub_manager.h"
+#include "common/managers/mqtt/mqtt_manager.h"
 #include "common/managers/ota/ota_manager.h"
 #include "common/managers/rtc/rtc_manager.h"
 #include "common/managers/potentiometer/potentiometer_manager.h"
@@ -37,7 +37,7 @@ SystemStatus InitManager::systemStatus = {
   INIT_NOT_STARTED,  // nfc
   INIT_NOT_STARTED,  // ble
   INIT_NOT_STARTED,  // wifi
-  INIT_NOT_STARTED,  // pubnub
+  INIT_NOT_STARTED,  // mqtt
   INIT_NOT_STARTED,  // rtc
   INIT_NOT_STARTED,  // potentiometer
   INIT_NOT_STARTED,  // audio
@@ -207,14 +207,14 @@ bool InitManager::init() {
   }
   #endif
   
-  // ÉTAPE 6 : Initialiser PubNub (LAZY - seulement quand WiFi connecté)
-  // PubNub sera initialisé dans main.cpp lors de la connexion WiFi
+  // ÉTAPE 6 : Initialiser MQTT (LAZY - seulement quand WiFi connecté)
+  // MQTT sera initialisé dans main.cpp lors de la connexion WiFi
   // Cela économise ~15-20KB RAM au boot
-  #ifdef HAS_PUBNUB
-  if (HAS_PUBNUB) {
-    systemStatus.pubnub = INIT_NOT_STARTED;  // Sera initialisé en lazy
+  #ifdef HAS_MQTT
+  if (HAS_MQTT) {
+    systemStatus.mqtt = INIT_NOT_STARTED;  // Sera initialisé en lazy
     if (serialAvailable) {
-      LogManager::debug("[INIT] PubNub mode lazy (initialisation a la connexion WiFi)");
+      LogManager::debug("[INIT] MQTT mode lazy (initialisation a la connexion WiFi)");
     }
   }
   #endif
@@ -280,7 +280,7 @@ bool InitManager::init() {
   
   initialized = true;
 
-#ifdef HAS_PUBNUB
+#ifdef HAS_MQTT
   OTAManager::publishLastOtaErrorIfAny();
 #endif
   
@@ -322,7 +322,7 @@ bool InitManager::init() {
 }
 
 // Les fonctions d'initialisation communes sont dans common/init/
-// common/init/init_serial.cpp, init_sd.cpp, init_led.cpp, init_nfc.cpp, init_ble.cpp, init_wifi.cpp, init_pubnub.cpp
+// common/init/init_serial.cpp, init_sd.cpp, init_led.cpp, init_nfc.cpp, init_ble.cpp, init_wifi.cpp, init_mqtt.cpp
 
 SystemStatus InitManager::getStatus() {
   return systemStatus;
@@ -347,8 +347,8 @@ InitStatus InitManager::getComponentStatus(const char* componentName) {
     return systemStatus.ble;
   } else if (strcmp(componentName, "wifi") == 0) {
     return systemStatus.wifi;
-  } else if (strcmp(componentName, "pubnub") == 0) {
-    return systemStatus.pubnub;
+  } else if (strcmp(componentName, "mqtt") == 0) {
+    return systemStatus.mqtt;
   } else if (strcmp(componentName, "rtc") == 0) {
     return systemStatus.rtc;
   } else if (strcmp(componentName, "potentiometer") == 0) {
@@ -462,23 +462,23 @@ void InitManager::printStatus() {
   }
   #endif
   
-  #ifdef HAS_PUBNUB
-  if (HAS_PUBNUB) {
-    const char* pubnubStr = "?";
-    switch (systemStatus.pubnub) {
-      case INIT_NOT_STARTED: pubnubStr = "Non demarre"; break;
-      case INIT_IN_PROGRESS: pubnubStr = "En cours"; break;
+  #ifdef HAS_MQTT
+  if (HAS_MQTT) {
+    const char* mqttStr = "?";
+    switch (systemStatus.mqtt) {
+      case INIT_NOT_STARTED: mqttStr = "Non demarre"; break;
+      case INIT_IN_PROGRESS: mqttStr = "En cours"; break;
       case INIT_SUCCESS:
-        LogManager::info("[INIT] PubNub: OK");
-        if (PubNubManager::isConnected()) {
-          LogManager::info("[INIT]   -> Channel: %s", PubNubManager::getChannel());
+        LogManager::info("[INIT] MQTT: OK");
+        if (MqttManager::isConnected()) {
+          LogManager::info("[INIT]   -> Topic: %s", MqttManager::getTelemetryTopic());
         }
-        pubnubStr = nullptr;
+        mqttStr = nullptr;
         break;
-      case INIT_FAILED: pubnubStr = "Non configure"; break;
+      case INIT_FAILED: mqttStr = "Non configure"; break;
     }
-    if (pubnubStr != nullptr) {
-      LogManager::info("[INIT] PubNub: %s", pubnubStr);
+    if (mqttStr != nullptr) {
+      LogManager::info("[INIT] MQTT: %s", mqttStr);
     }
   }
   #endif

@@ -1,6 +1,6 @@
 #include "model_serial_commands.h"
 #include "models/model_config.h"
-#include "models/model_pubnub_routes.h"
+#include "models/model_mqtt_routes.h"
 #include "common/managers/rtc/rtc_manager.h"
 #include "models/dream/config/dream_config.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
@@ -319,7 +319,7 @@ bool ModelDreamSerialCommands::processCommand(const String& command) {
     StaticJsonDocument<64> doc;
     #pragma GCC diagnostic pop
     doc["action"] = "nighttime-alert-ack";
-    ModelPubNubRoutes::processMessage(doc.as<JsonObject>());
+    ModelMQTTRoutes::processMessage(doc.as<JsonObject>());
     return true;
   }
   return false; // Commande non reconnue
@@ -341,7 +341,7 @@ void ModelDreamSerialCommands::printHelp() {
   Serial.println("  breathe on         - Activer l'effet respiration (respiration avec changement de couleur)");
   Serial.println("  breathe off        - Desactiver l'effet respiration");
   Serial.println("  alert              - Envoyer alerte veilleuse (test)");
-  Serial.println("  nighttime-alert-ack - Simuler J'arrive (rotate rainbow 5 sec, recu via PubNub)");
+  Serial.println("  nighttime-alert-ack - Simuler J'arrive (rotate rainbow 5 sec, recu via MQTT)");
   Serial.println("========================================");
   Serial.println("");
 }

@@ -367,7 +367,7 @@ bool SDManager::saveConfig(const SDConfig& config) {
   }
   
   // Document JSON : lire l'existant pour ne mettre à jour que les champs SDConfig,
-  // et préserver les autres clés (characterId, pubnub_*, emotionsSyncLastAt, etc.)
+  // et préserver les autres clés (characterId, emotionsSyncLastAt, etc.)
   static const size_t CONFIG_JSON_MAX = 4096;
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"

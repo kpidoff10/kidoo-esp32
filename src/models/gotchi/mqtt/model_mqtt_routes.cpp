@@ -1,16 +1,16 @@
-#include "model_pubnub_routes.h"
+#include "model_mqtt_routes.h"
 #include "../../../common/managers/led/led_manager.h"
 #include "../../../common/managers/init/init_manager.h"
 #include "../../../common/managers/wifi/wifi_manager.h"
-#include "../../../common/managers/pubnub/pubnub_manager.h"
+#include "../../../common/managers/mqtt/mqtt_manager.h"
 #include "../../../common/managers/sd/sd_manager.h"
 #include "../../../common/managers/ota/ota_manager.h"
 
 /**
- * Routes PubNub spécifiques au modèle Kidoo Gotchi
+ * Routes MQTT spécifiques au modèle Kidoo Gotchi
  */
 
-bool ModelGotchiPubNubRoutes::processMessage(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::processMessage(const JsonObject& json) {
   if (!json["action"].is<const char*>()) {
     return false;
   }
@@ -20,7 +20,7 @@ bool ModelGotchiPubNubRoutes::processMessage(const JsonObject& json) {
     return false;
   }
 
-  Serial.print("[PUBNUB-ROUTE] Action: ");
+  Serial.print("[MQTT-ROUTE] Action: ");
   Serial.println(action);
 
   if (strcmp(action, "brightness") == 0) {
@@ -42,7 +42,7 @@ bool ModelGotchiPubNubRoutes::processMessage(const JsonObject& json) {
   return false;
 }
 
-bool ModelGotchiPubNubRoutes::handleBrightness(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::handleBrightness(const JsonObject& json) {
   if (!json["value"].is<int>()) {
     return false;
   }
@@ -57,7 +57,7 @@ bool ModelGotchiPubNubRoutes::handleBrightness(const JsonObject& json) {
     SDConfig config = SDManager::getConfig();
     config.led_brightness = brightness;
     SDManager::saveConfig(config);
-    Serial.print("[PUBNUB-ROUTE] Luminosite: ");
+    Serial.print("[MQTT-ROUTE] Luminosite: ");
     Serial.print(value);
     Serial.println("%");
     return true;
@@ -66,12 +66,12 @@ bool ModelGotchiPubNubRoutes::handleBrightness(const JsonObject& json) {
   return false;
 }
 
-bool ModelGotchiPubNubRoutes::handleSleep(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::handleSleep(const JsonObject& json) {
   if (json["enabled"].is<bool>() && !json["enabled"].as<bool>()) {
     SDConfig config = SDManager::getConfig();
     config.sleep_timeout_ms = 0;
     SDManager::saveConfig(config);
-    Serial.println("[PUBNUB-ROUTE] Sleep mode desactive");
+    Serial.println("[MQTT-ROUTE] Sleep mode desactive");
     return true;
   }
 
@@ -83,7 +83,7 @@ bool ModelGotchiPubNubRoutes::handleSleep(const JsonObject& json) {
     config.sleep_timeout_ms = timeout;
     SDManager::saveConfig(config);
 
-    Serial.print("[PUBNUB-ROUTE] Sleep timeout: ");
+    Serial.print("[MQTT-ROUTE] Sleep timeout: ");
     Serial.println(timeout);
     return true;
   }
@@ -91,7 +91,7 @@ bool ModelGotchiPubNubRoutes::handleSleep(const JsonObject& json) {
   return false;
 }
 
-bool ModelGotchiPubNubRoutes::handleLed(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::handleLed(const JsonObject& json) {
   bool handled = false;
 
   if (json["color"].is<const char*>()) {
@@ -134,7 +134,7 @@ bool ModelGotchiPubNubRoutes::handleLed(const JsonObject& json) {
   return handled;
 }
 
-bool ModelGotchiPubNubRoutes::handleStatus(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::handleStatus(const JsonObject& json) {
   SDConfig config = SDManager::getConfig();
 
   char statusJson[256];
@@ -145,11 +145,11 @@ bool ModelGotchiPubNubRoutes::handleStatus(const JsonObject& json) {
     (LEDManager::getCurrentBrightness() * 100) / 255
   );
 
-  PubNubManager::publish(statusJson);
+  MqttManager::publish(statusJson);
   return true;
 }
 
-bool ModelGotchiPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
+bool ModelGotchiMqttRoutes::handleFirmwareUpdate(const JsonObject& json) {
   const char* version = nullptr;
   if (json["params"].is<JsonObject>()) {
     JsonObject params = json["params"].as<JsonObject>();
@@ -157,22 +157,22 @@ bool ModelGotchiPubNubRoutes::handleFirmwareUpdate(const JsonObject& json) {
   }
   if (json["version"].is<const char*>()) version = json["version"].as<const char*>();
   if (version == nullptr || strlen(version) == 0) {
-    Serial.println("[PUBNUB-ROUTE] firmware-update: version manquante");
+    Serial.println("[MQTT-ROUTE] firmware-update: version manquante");
     return false;
   }
-  Serial.print("[PUBNUB-ROUTE] firmware-update: version cible ");
+  Serial.print("[MQTT-ROUTE] firmware-update: version cible ");
   Serial.println(version);
 #ifdef HAS_WIFI
   return OTAManager::startUpdateTask(version);
 #else
-  Serial.println("[PUBNUB-ROUTE] firmware-update: WiFi non disponible sur ce build");
+  Serial.println("[MQTT-ROUTE] firmware-update: WiFi non disponible sur ce build");
   return false;
 #endif
 }
 
-void ModelGotchiPubNubRoutes::printRoutes() {
+void ModelGotchiMqttRoutes::printRoutes() {
   Serial.println("");
-  Serial.println("========== Routes PubNub Gotchi ==========");
+  Serial.println("========== Routes MQTT Gotchi ==========");
   Serial.println("{ \"action\": \"brightness\", \"value\": 0-100 }");
   Serial.println("{ \"action\": \"sleep\", \"timeout\": ms }");
   Serial.println("{ \"action\": \"led\", \"color\": \"#RRGGBB\" }");

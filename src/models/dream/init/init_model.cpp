@@ -1,8 +1,8 @@
 #include "init_model.h"
 #include "common/managers/init/init_manager.h"
 #include "common/managers/wifi/wifi_manager.h"
-#include "models/model_pubnub_routes.h"
-#include "models/dream/pubnub/model_pubnub_routes.h"
+#include "models/model_mqtt_routes.h"
+#include "models/dream/mqtt/model_mqtt_routes.h"
 #include "models/dream/config_sync/model_config_sync_routes.h"
 #include "models/dream/managers/bedtime/bedtime_manager.h"
 #include "models/dream/managers/wakeup/wakeup_manager.h"
@@ -22,7 +22,7 @@ bool InitModelDream::init() {
   // Note: Dream n'a pas de NFC, donc pas d'initialisation du handler NFC
 
   // Réinitialiser les flags de test au démarrage
-  ModelDreamPubNubRoutes::resetTestFlags();
+  ModelDreamMqttRoutes::resetTestFlags();
 
   // Initialiser le gestionnaire bedtime automatique
   if (!BedtimeManager::init()) {
@@ -49,11 +49,11 @@ bool InitModelDream::init() {
 }
 
 void InitModelDream::update() {
-  ModelPubNubRoutes::checkTestBedtimeTimeout();
-  ModelPubNubRoutes::checkTestWakeupTimeout();
-  ModelPubNubRoutes::checkTestDefaultConfigTimeout();
-  ModelPubNubRoutes::checkNighttimeAlertAckTimeout();
-  ModelPubNubRoutes::updateEnvPublisher();
+  ModelMQTTRoutes::checkTestBedtimeTimeout();
+  ModelMQTTRoutes::checkTestWakeupTimeout();
+  ModelMQTTRoutes::checkTestDefaultConfigTimeout();
+  ModelMQTTRoutes::checkNighttimeAlertAckTimeout();
+  ModelMQTTRoutes::updateEnvPublisher();
 
   BedtimeManager::update();
   WakeupManager::update();

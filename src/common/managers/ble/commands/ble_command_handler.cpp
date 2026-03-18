@@ -161,7 +161,13 @@ void BLECommandHandler::sendSetupCompletionResponse(bool success, bool wifiConne
   responseDoc["brightness"] = brightnessPercent;
   responseDoc["sleepTimeout"] = config.sleep_timeout_ms;
   responseDoc["firmwareVersion"] = firmwareVersion;
-  
+
+  // Ajouter la clé publique Ed25519 pour l'authentification device
+  char pubKeyB64[96] = {0};
+  if (DeviceKeyManager::getPublicKeyBase64(pubKeyB64, sizeof(pubKeyB64))) {
+    responseDoc["publicKey"] = pubKeyB64;
+  }
+
   String responseJson;
   serializeJson(responseDoc, responseJson);
   pTxCharacteristic->setValue(responseJson.c_str());
@@ -306,15 +312,15 @@ bool BLECommandHandler::handleCommand(const String& data) {
         // Récupérer la version du firmware Kidoo (définie dans default_config.h)
         String firmwareVersion = FIRMWARE_VERSION;
         
-        // Récupérer l'adresse MAC WiFi (utilisée pour PubNub)
+        // Récupérer l'adresse MAC WiFi (utilisée pour MQTT)
         // Sur ESP32-C3, BLE et WiFi ont des adresses MAC différentes
-        // IMPORTANT: Utiliser EXACTEMENT la même méthode que PubNub pour garantir la cohérence
+        // IMPORTANT: Utiliser EXACTEMENT la même méthode que MQTT pour garantir la cohérence
         #ifdef HAS_WIFI
         char macStr[18];
         if (!getMacAddressString(macStr, sizeof(macStr), ESP_MAC_WIFI_STA)) {
           strcpy(macStr, "00:00:00:00:00:00"); // Valeur par défaut en cas d'erreur
         }
-        Serial.print("[BLE-COMMAND] Adresse MAC WiFi (pour PubNub): ");
+        Serial.print("[BLE-COMMAND] Adresse MAC WiFi (pour MQTT): ");
         Serial.println(macStr);
         #else
         const char* macStr = "";
@@ -332,7 +338,7 @@ bool BLECommandHandler::handleCommand(const String& data) {
         responseDoc["wifiConnected"] = wifiConnected;
         responseDoc["deviceId"] = uuid; // UUID unique du device
         #ifdef HAS_WIFI
-        responseDoc["macAddress"] = macStr; // Adresse MAC WiFi (utilisée pour PubNub)
+        responseDoc["macAddress"] = macStr; // Adresse MAC WiFi (utilisée pour MQTT)
         #endif
         
         // Ajouter les informations de configuration depuis la SD card

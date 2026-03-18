@@ -36,7 +36,7 @@ public:
   static bool isDefaultColorDisplayed();
 
   /**
-   * Simuler un tap sur le capteur (appelé par PubNub tap-sensor)
+   * Simuler un tap sur le capteur (appelé par MQTT tap-sensor)
    * Applique la même logique qu'un tap physique au relâchement:
    * - Si bedtime actif → arrêter
    * - Si wakeup actif → arrêter

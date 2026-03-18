@@ -11,7 +11,7 @@ Le modèle **Dream** est une veilleuse intelligente pour enfant qui aide à appr
 - **Stockage** : Configuration sauvegardée sur carte SD (fichier config JSON)
 - **Communication** :
   - **Setup initial** : BLE (Bluetooth Low Energy)
-  - **Commandes** : PubNub (via WiFi)
+  - **Commandes** : MQTT (via WiFi)
 
 ## Fonctionnalités principales
 
@@ -180,9 +180,9 @@ Si aucune configuration n'est définie :
 
 ### BLEConfigManager
 - Utilisé uniquement pour le setup initial (activation BLE via bouton)
-- Une fois configuré, les commandes passent par PubNub
+- Une fois configuré, les commandes passent par MQTT
 
-### PubNubManager
+### MQTTManager
 - Réception des commandes de configuration depuis l'application mobile
 - Commandes possibles :
   - Mise à jour de la configuration du rituel
@@ -242,7 +242,7 @@ Si aucune configuration n'est définie :
 - Les modifications ne peuvent pas être sauvegardées
 - Logger un avertissement
 
-## Commandes PubNub
+## Commandes MQTT
 
 ### Mise à jour de la configuration
 ```json

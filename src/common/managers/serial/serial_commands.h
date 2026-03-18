@@ -53,11 +53,11 @@ private:
   static void cmdWiFiScan();
   static void cmdConfigRetry();
   static void cmdDeviceKey();
-  static void cmdPubNub();
-  static void cmdPubNubConnect();
-  static void cmdPubNubDisconnect();
-  static void cmdPubNubPublish(const String& args);
-  static void cmdPubNubRoutes();
+  static void cmdMqtt();
+  static void cmdMqttConnect();
+  static void cmdMqttDisconnect();
+  static void cmdMqttPublish(const String& args);
+  static void cmdMqttRoutes();
   static void cmdRTC();
   static void cmdRTCSet(const String& args);
   static void cmdRTCSync();

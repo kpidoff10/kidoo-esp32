@@ -8,7 +8,7 @@
  * 
  * ESP32-S3 (Dual-core + PSRAM) - Modèle Basic
  * -------------------------------------------
- * - Core 0 : WiFi stack, BLE, PubNub, WiFi retry (radio et réseau)
+ * - Core 0 : WiFi stack, BLE, MQTT, WiFi retry (radio et réseau)
  * - Core 1 : loop(), LEDManager (temps-réel isolé)
  * - PSRAM : Buffers LED, caches
  * - FastLED utilise le driver RMT (hardware) pour éviter les conflits
@@ -65,7 +65,7 @@
 #if IS_SINGLE_CORE
   // ESP32-C3/S2 : Tout sur Core 0 (seul cœur disponible)
   #define CORE_WIFI         0
-  #define CORE_PUBNUB       0
+  #define CORE_MQTT       0
   #define CORE_WIFI_RETRY   0
   #define CORE_LED          0
   #define CORE_BLE          0
@@ -79,7 +79,7 @@
   // Core 1 : Tâches applicatives (loop, LEDs, Audio, OTA)
 
   #define CORE_WIFI         0   // WiFi stack (automatique ESP-IDF)
-  #define CORE_PUBNUB       0   // PubNub (HTTP, dépend WiFi)
+  #define CORE_MQTT       0   // MQTT (HTTP, dépend WiFi)
   #define CORE_WIFI_RETRY   1   // WiFi retry/connect async sur Core 1 (Core 0 occupé par WiFi stack)
   #define CORE_BLE          0   // BLE sur Core 0 (partage radio avec WiFi)
 
@@ -98,8 +98,8 @@
   #define PRIORITY_AUDIO      4   // La plus haute acceptable
   #define PRIORITY_LED        3   // Animations fluides sans casser le RTOS
   #define PRIORITY_OTA        2   // Sous LED pour laisser l’arc-en-ciel fluide pendant l’écriture
-  #define PRIORITY_PUBNUB     2   // Réseau
-  #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que PubNub)
+  #define PRIORITY_MQTT     2   // Réseau
+  #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que MQTT)
   #define PRIORITY_WIFI_RETRY 1   // Background
 #else
   // Dual-core : Plus de marge car les tâches sont réparties
@@ -107,8 +107,8 @@
   #define PRIORITY_LED        10  // Moyenne - LEDs moins critiques que l'audio
   #define PRIORITY_AUDIO      23  // Maximale - audio temps-réel (égal à WiFi)
   #define PRIORITY_OTA        3   // OTA sur Core 1, n’affecte pas les LEDs (Core 0)
-  #define PRIORITY_PUBNUB     2   // Basse - réseau non critique
-  #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que PubNub)
+  #define PRIORITY_MQTT     2   // Basse - réseau non critique
+  #define PRIORITY_BLE_COMMAND 2  // Traitement commandes BLE (même priorité que MQTT)
   #define PRIORITY_WIFI_RETRY 1   // Très basse - retry en background
 #endif
 
@@ -130,7 +130,7 @@
 
 #define STACK_SIZE_LED          4096    // LEDManager
 #define STACK_SIZE_AUDIO        16384   // AudioManager (décodage MP3/streaming) - augmenté pour buffer
-#define STACK_SIZE_PUBNUB       8192    // PubNubManager (HTTP + JSON)
+#define STACK_SIZE_MQTT       8192    // MQTTManager (HTTP + JSON)
 #define STACK_SIZE_WIFI_RETRY   4096    // WiFi retry
 #define STACK_SIZE_WIFI_CONNECT 16384   // Tâche connexion WiFi async (config BLE)
 #define STACK_SIZE_BLE_COMMAND  16384   // Tâche BLE (config WiFi, HTTP, JSON) - 16 Ko pour éviter overflow lors du changement de WiFi
@@ -227,11 +227,11 @@ inline void printCoreArchitecture() {
   
   #if IS_SINGLE_CORE
   Serial.println("[CPU] Mode: Single-core");
-  Serial.println("[CPU] Core 0: WiFi, BLE, LED, PubNub (tout)");
+  Serial.println("[CPU] Core 0: WiFi, BLE, LED, MQTT (tout)");
   #else
   Serial.println("[CPU] Mode: Dual-core");
-  Serial.printf("[CPU] Core 0: WiFi, BLE, PubNub (P%d), WiFi-retry (P%d)\n", 
-                PRIORITY_PUBNUB, PRIORITY_WIFI_RETRY);
+  Serial.printf("[CPU] Core 0: WiFi, BLE, MQTT (P%d), WiFi-retry (P%d)\n", 
+                PRIORITY_MQTT, PRIORITY_WIFI_RETRY);
   Serial.printf("[CPU] Core 1: loop(), LED (P%d) [RMT driver]\n", PRIORITY_LED);
   #endif
   

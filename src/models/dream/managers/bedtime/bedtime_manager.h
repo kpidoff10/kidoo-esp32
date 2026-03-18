@@ -100,13 +100,13 @@ public:
   static bool isManuallyStarted();
 
   /**
-   * Démarrer le bedtime manuellement (via PubNub)
+   * Démarrer le bedtime manuellement (via MQTT)
    * Empêche le déclenchement automatique programmé
    */
   static void startBedtimeManually();
 
   /**
-   * Arrêter le bedtime manuellement (via PubNub)
+   * Arrêter le bedtime manuellement (via MQTT)
    */
   static void stopBedtimeManually();
 

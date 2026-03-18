@@ -1,18 +1,18 @@
-#ifndef MODEL_SOUND_PUBNUB_ROUTES_H
-#define MODEL_SOUND_PUBNUB_ROUTES_H
+#ifndef MODEL_SOUND_MQTT_ROUTES_H
+#define MODEL_SOUND_MQTT_ROUTES_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
 /**
- * Routes PubNub pour Sound (Boîte à musique)
- * Traite les messages PubNub spécifiques au modèle Sound
+ * Routes MQTT pour Sound (Boîte à musique)
+ * Traite les messages MQTT spécifiques au modèle Sound
  */
 
-class ModelSoundPubNubRoutes {
+class ModelSoundMqttRoutes {
 public:
   /**
-   * Traite un message d'action reçu via PubNub
+   * Traite un message d'action reçu via MQTT
    * @param actionObj Objet JSON de l'action
    * @return true si le message a été traité, false sinon
    */
@@ -24,4 +24,4 @@ public:
   static void printRoutes();
 };
 
-#endif // MODEL_SOUND_PUBNUB_ROUTES_H
+#endif // MODEL_SOUND_MQTT_ROUTES_H

@@ -4,7 +4,7 @@
 #include "../dream_rtc_macros.h"
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
-#include "../../pubnub/model_pubnub_routes.h"
+#include "../../mqtt/model_mqtt_routes.h"
 #include "../../utils/schedule_parser.h"
 #include "../schedule_utils.h"
 #include <ArduinoJson.h>
@@ -472,7 +472,7 @@ void WakeupManager::checkWakeupTrigger() {
 }
 
 void WakeupManager::startWakeup() {
-  ModelDreamPubNubRoutes::publishRoutineState("wakeup", "started");
+  ModelDreamMQTTRoutes::publishRoutineState("wakeup", "started");
 
   s_state.routineActive = true;
   s_state.startTime = millis();
@@ -596,7 +596,7 @@ void WakeupManager::updateFadeOut() {
     // Fade-out terminé, éteindre complètement et arrêter le wake-up
     s_state.fadeOutActive = false;
     LEDManager::clear();
-    ModelDreamPubNubRoutes::publishRoutineState("wakeup", "stopped");
+    ModelDreamMQTTRoutes::publishRoutineState("wakeup", "stopped");
     s_state.routineActive = false; // Arrêter le wake-up après le fade-out
   } else {
     // Interpolation linéaire de la brightness vers 0
@@ -614,7 +614,7 @@ void WakeupManager::stopWakeup() {
   Serial.println("[WAKEUP] Arrêt du wake-up");
 
   if (s_state.routineActive) {
-    ModelDreamPubNubRoutes::publishRoutineState("wakeup", "stopped");
+    ModelDreamMQTTRoutes::publishRoutineState("wakeup", "stopped");
   }
 
   s_state.routineActive = false;

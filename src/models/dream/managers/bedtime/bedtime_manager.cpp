@@ -4,7 +4,7 @@
 #include "../dream_rtc_macros.h"
 #include "../../../../common/utils/time_utils.h"
 #include "../touch/dream_touch_handler.h"
-#include "../../pubnub/model_pubnub_routes.h"
+#include "../../mqtt/model_mqtt_routes.h"
 #include "../../utils/schedule_parser.h"
 #include "../../utils/led_effect_parser.h"
 #include "../schedule_utils.h"
@@ -513,7 +513,7 @@ void BedtimeManager::checkBedtimeTrigger() {
 void BedtimeManager::startBedtime() {
   // "manual" = démarré manuellement (app ou tap) → affichage "Manuel" dans l'app
   const char* state = isManuallyStarted() ? "manual" : "started";
-  ModelDreamPubNubRoutes::publishRoutineState("bedtime", state);
+  ModelDreamMQTTRoutes::publishRoutineState("bedtime", state);
 
   s_state.routineActive = true;
   s_state.startTime = millis();
@@ -569,7 +569,7 @@ void BedtimeManager::updateFadeOut() {
     if (!LEDManager::clear()) {
       Serial.println("[BEDTIME] WARN: clear() failed");
     }
-    ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
+    ModelDreamMQTTRoutes::publishRoutineState("bedtime", "stopped");
     s_state.routineActive = false;
     manuallyStarted = false;
   } else {
@@ -586,7 +586,7 @@ void BedtimeManager::updateFadeOut() {
 
 void BedtimeManager::stopBedtime(bool clearDisplay) {
   if (s_state.routineActive) {
-    ModelDreamPubNubRoutes::publishRoutineState("bedtime", "stopped");
+    ModelDreamMQTTRoutes::publishRoutineState("bedtime", "stopped");
   }
 
   s_state.routineActive = false;

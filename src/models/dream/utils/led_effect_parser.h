@@ -10,7 +10,7 @@
  * - BedtimeManager::startBedtime()
  * - BedtimeManager::updateFadeOut()
  * - DreamTouchHandler::triggerAlertFeedback()
- * - LEDEffectParser::parse() pour effet par défaut (config, touch, PubNub)
+ * - LEDEffectParser::parse() pour effet par défaut (config, touch, MQTT)
  */
 class LEDEffectParser {
 public:

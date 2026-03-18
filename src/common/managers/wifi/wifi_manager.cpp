@@ -12,8 +12,8 @@
 #include <esp_wifi.h>
 #endif
 
-#ifdef HAS_PUBNUB
-#include "common/managers/pubnub/pubnub_manager.h"
+#ifdef HAS_MQTT
+#include "common/managers/mqtt/mqtt_manager.h"
 #include "common/managers/ota/ota_manager.h"
 #endif
 
@@ -186,19 +186,19 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   LogManager::info("[WIFI] Force du signal: %d dBm", WiFi.RSSI());
   LogManager::info("[WIFI] ========================================");
   
-  // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
-  #ifdef HAS_PUBNUB
-  if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+  // Déclencher la connexion MQTT si disponible (sauf pendant OTA)
+  #ifdef HAS_MQTT
+  if (MqttManager::isInitialized() && !MqttManager::isConnected()
       && !OTAManager::isOtaInProgress()) {
-    LogManager::info("[WIFI] Connexion automatique PubNub...");
-    PubNubManager::connect();
+    LogManager::info("[WIFI] Connexion automatique MQTT...");
+    MqttManager::connect();
   }
   #endif
   
   // Synchroniser la configuration via les routes spécifiques au modèle
   ModelConfigSyncRoutes::onWiFiConnected();
 
-  #ifdef HAS_PUBNUB
+  #ifdef HAS_MQTT
   OTAManager::publishLastOtaErrorIfAny();
   #endif
   
@@ -484,12 +484,12 @@ void WiFiManager::retryThreadFunction(void* parameter) {
       RTCManager::autoSyncIfNeeded();
       #endif
       
-      // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
-      #ifdef HAS_PUBNUB
-      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+      // Déclencher la connexion MQTT si disponible (sauf pendant OTA)
+      #ifdef HAS_MQTT
+      if (MqttManager::isInitialized() && !MqttManager::isConnected()
           && !OTAManager::isOtaInProgress()) {
-        LogManager::info("[WIFI-RETRY] Connexion automatique PubNub...");
-        PubNubManager::connect();
+        LogManager::info("[WIFI-RETRY] Connexion automatique MQTT...");
+        MqttManager::connect();
       }
       #endif
       
@@ -518,12 +518,12 @@ void WiFiManager::retryThreadFunction(void* parameter) {
       RTCManager::autoSyncIfNeeded();
       #endif
       
-      // Déclencher la connexion PubNub si disponible (sauf pendant OTA)
-      #ifdef HAS_PUBNUB
-      if (PubNubManager::isInitialized() && !PubNubManager::isConnected()
+      // Déclencher la connexion MQTT si disponible (sauf pendant OTA)
+      #ifdef HAS_MQTT
+      if (MqttManager::isInitialized() && !MqttManager::isConnected()
           && !OTAManager::isOtaInProgress()) {
-        LogManager::info("[WIFI-RETRY] Connexion automatique PubNub...");
-        PubNubManager::connect();
+        LogManager::info("[WIFI-RETRY] Connexion automatique MQTT...");
+        MqttManager::connect();
       }
       #endif
       

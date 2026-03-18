@@ -78,8 +78,8 @@
 #define HAS_LED true
 #endif
 
-#ifndef HAS_PUBNUB
-#define HAS_PUBNUB true
+#ifndef HAS_MQTT
+#define HAS_MQTT true
 #endif
 
 #endif // CONFIG_SOUND_H

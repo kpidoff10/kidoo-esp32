@@ -17,12 +17,12 @@
 #define DEFAULT_LED_BRIGHTNESS 128
 
 // ============================================
-// Configuration PubNub - Gotchi
+// Configuration MQTT - Gotchi
 // ============================================
 
 #define FIRMWARE_VERSION "1.0.0"
 
-#define DEFAULT_PUBNUB_SUBSCRIBE_KEY ""
-#define DEFAULT_PUBNUB_PUBLISH_KEY ""
+// Configuration EMQX Cloud broker (centralisée dans include/mqtt_config.h)
+#include "../../../../include/mqtt_config.h"
 
 #endif // MODEL_GOTCHI_DEFAULT_CONFIG_H
