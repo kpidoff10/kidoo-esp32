@@ -7,7 +7,6 @@
 
 #include <esp_mac.h>
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "common/managers/wifi/wifi_manager.h"
 #include "common/managers/serial/serial_commands.h"
@@ -23,7 +22,7 @@ bool MqttManager::threadRunning = false;
 char MqttManager::cmdTopic[80] = "";
 char MqttManager::telemetryTopic[80] = "";
 char MqttManager::clientId[64] = "";
-WiFiClientSecure MqttManager::espClient;
+WiFiClient MqttManager::espClient;
 PubSubClient MqttManager::mqttClient(espClient);
 TaskHandle_t MqttManager::taskHandle = nullptr;
 QueueHandle_t MqttManager::publishQueue = nullptr;
@@ -42,20 +41,12 @@ struct PublishMessage {
 
 /**
  * Parser une URL MQTT pour extraire le host et le port
- * Format attendu: mqtt://host:port ou mqtts://host:port
+ * Format attendu: mqtt://host:port ou ws://host:port
  */
 static bool parseMqttUrl(const char* url, char* host, int hostSize, uint16_t* port) {
   if (!url || strlen(url) == 0) return false;
 
-  // Déterminer le scheme (mqtt:// ou mqtts://)
-  bool isTls = false;
-  if (strncmp(url, "mqtts://", 8) == 0) {
-    isTls = true;
-  } else if (strncmp(url, "mqtt://", 7) != 0) {
-    return false;
-  }
-
-  // Trouver le début du host
+  // Trouver le début du host (après mqtt:// ou ws://)
   const char* hostStart = strstr(url, "://");
   if (!hostStart) return false;
   hostStart += 3;
@@ -63,10 +54,10 @@ static bool parseMqttUrl(const char* url, char* host, int hostSize, uint16_t* po
   // Trouver le port (après :)
   const char* portStart = strchr(hostStart, ':');
   if (!portStart) {
-    // Pas de port, utiliser défaut selon scheme
+    // Pas de port, utiliser 1883 par défaut
     strncpy(host, hostStart, hostSize - 1);
     host[hostSize - 1] = '\0';
-    *port = isTls ? 8883 : 1883;
+    *port = 1883;
     return true;
   }
 
@@ -360,8 +351,6 @@ void MqttManager::threadFunction(void* parameter) {
 
     // Reconnecter si nécessaire
     if (!mqttClient.connected()) {
-      // Skip TLS validation pour EMQX Cloud (cert valide)
-      espClient.setInsecure();
       if (mqttClient.connect(clientId, mqttUsername, mqttPassword)) {
         mqttClient.subscribe(cmdTopic);
         connected = true;

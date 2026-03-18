@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
@@ -124,7 +123,7 @@ private:
   static char cmdTopic[80];
   static char telemetryTopic[80];
   static char clientId[64];
-  static WiFiClientSecure espClient;
+  static WiFiClient espClient;
   static PubSubClient mqttClient;
   static TaskHandle_t taskHandle;
 
