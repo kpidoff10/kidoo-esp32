@@ -31,7 +31,7 @@
 // Version du firmware Kidoo (spécifique au modèle)
 #define FIRMWARE_VERSION "1.0.43"
 
-// Configuration EMQX Cloud broker (centralisée dans include/mqtt_config.h)
-#include "../../../../include/mqtt_config.h"
+// MQTT broker URL is fetched from server via /api/devices/{MAC}/mqtt-token
+// No fallback - server is the source of truth
 
 #endif // MODEL_DREAM_DEFAULT_CONFIG_H

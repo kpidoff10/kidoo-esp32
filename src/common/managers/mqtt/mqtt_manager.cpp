@@ -166,12 +166,6 @@ bool MqttManager::init() {
     return true;
   }
 
-  // Vérifier que le broker est configuré
-  if (strlen(DEFAULT_MQTT_BROKER_HOST) == 0) {
-    LogManager::error("[MQTT] Broker host non configure dans default_config.h");
-    return false;
-  }
-
   // Construire les topics basés sur l'adresse MAC WiFi (unique par appareil)
   uint8_t mac[6];
   esp_err_t err = esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -196,14 +190,16 @@ bool MqttManager::init() {
 
   LogManager::info("[MQTT] Topics construits avec MAC: cmd=%s, telemetry=%s", cmdTopic, telemetryTopic);
 
-  // Configurer le client MQTT
-  // Utiliser l'URL du serveur si disponible (avec host/port parsés), sinon fallback à l'URL hardcodée
-  const char* brokerHost = (strlen(mqttBrokerHost) > 0) ? mqttBrokerHost : DEFAULT_MQTT_BROKER_HOST;
-  uint16_t brokerPort = (strlen(mqttBrokerHost) > 0) ? mqttBrokerPort : DEFAULT_MQTT_BROKER_PORT;
+  // Configurer le client MQTT avec l'URL du serveur
+  // Server is the only source of truth for broker config
+  if (strlen(mqttBrokerHost) == 0) {
+    LogManager::error("[MQTT] Broker host not fetched from server");
+    return false;
+  }
 
-  LogManager::info("[MQTT] Configuration broker: %s:%d", brokerHost, brokerPort);
+  LogManager::info("[MQTT] Configuration broker: %s:%d", mqttBrokerHost, mqttBrokerPort);
 
-  mqttClient.setServer(brokerHost, brokerPort);
+  mqttClient.setServer(mqttBrokerHost, mqttBrokerPort);
   mqttClient.setCallback(onMessage);
   mqttClient.setBufferSize(1024);  // Pour les gros messages JSON (get-info)
   mqttClient.setKeepAlive(60);  // Keep-alive TCP toutes les 60 secondes (détection perte WiFi)
@@ -330,9 +326,7 @@ bool MqttManager::isInitialized() {
 }
 
 bool MqttManager::isAvailable() {
-  return initialized &&
-         WiFiManager::isConnected() &&
-         strlen(DEFAULT_MQTT_BROKER_HOST) > 0;
+  return initialized && WiFiManager::isConnected();
 }
 
 void MqttManager::loop() {
@@ -372,9 +366,7 @@ void MqttManager::threadFunction(void* parameter) {
         mqttClient.subscribe(cmdTopic);
         connected = true;
         publishStatus();
-        const char* displayHost = (strlen(mqttBrokerHost) > 0) ? mqttBrokerHost : DEFAULT_MQTT_BROKER_HOST;
-        uint16_t displayPort = (strlen(mqttBrokerHost) > 0) ? mqttBrokerPort : DEFAULT_MQTT_BROKER_PORT;
-        LogManager::info("[MQTT] Connecté au broker %s:%d", displayHost, displayPort);
+        LogManager::info("[MQTT] Connecté au broker %s:%d", mqttBrokerHost, mqttBrokerPort);
       } else {
         connected = false;
         LogManager::warning("[MQTT] Echec connexion au broker");
@@ -497,7 +489,7 @@ void MqttManager::printInfo() {
   Serial.printf("Cmd Topic   : %s\n", cmdTopic);
   Serial.printf("Telemetry Topic : %s\n", telemetryTopic);
   Serial.printf("Client ID   : %s\n", clientId);
-  Serial.printf("Broker      : %s:%d\n", DEFAULT_MQTT_BROKER_HOST, DEFAULT_MQTT_BROKER_PORT);
+  Serial.printf("Broker      : %s:%d\n", mqttBrokerHost, mqttBrokerPort);
   Serial.printf("MQTT Connected : %d\n", mqttClient.connected());
   Serial.println("========================\n");
 }
