@@ -25,17 +25,17 @@
 #define DEFAULT_LED_BRIGHTNESS 128
 
 // ============================================
-// Configuration PubNub - Dream
+// Configuration MQTT - Dream
 // ============================================
 
 // Version du firmware Kidoo (spécifique au modèle)
 #define FIRMWARE_VERSION "1.0.43"
 
-// Clés PubNub (créer un compte gratuit sur https://www.pubnub.com/)
-// Subscribe Key (obligatoire pour recevoir des messages)
-#define DEFAULT_PUBNUB_SUBSCRIBE_KEY "sub-c-d0d7ee43-448a-4a84-a732-c935c7026e10"
+// Configuration EMQX Cloud broker
+// Broker host (ex: "45.10.161.70" pour le VPS ou "mqtt.example.com")
+#define DEFAULT_MQTT_BROKER_HOST "yd6fff17.ala.eu-central-1.emqxsl.com"
 
-// Publish Key (obligatoire pour envoyer des messages)
-#define DEFAULT_PUBNUB_PUBLISH_KEY "pub-c-ca8e9630-69f5-48da-a032-eb03eb3941aa"
+// Broker port (par défaut 1883 pour MQTT, 8883 pour MQTT over TLS)
+#define DEFAULT_MQTT_BROKER_PORT 8883
 
 #endif // MODEL_DREAM_DEFAULT_CONFIG_H
