@@ -6,6 +6,7 @@
 #ifdef HAS_MQTT
 
 #include <esp_mac.h>
+#include <esp_task_wdt.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -132,9 +133,10 @@ static bool fetchMqttCredentials(const char* mac) {
 
     if (error) {
       LogManager::error("[MQTT] JSON parse error: %s", error.c_str());
-    } else if (doc["data"]["mqttPassword"].is<const char*>() && doc["data"]["mqttUrl"].is<const char*>()) {
+    } else if (doc["data"]["mqttPassword"].is<const char*>() && doc["data"]["mqttUrl"].is<const char*>() && doc["data"]["mqttUsername"].is<const char*>()) {
       strncpy(mqttPassword, doc["data"]["mqttPassword"], sizeof(mqttPassword) - 1);
       strncpy(mqttBrokerUrl, doc["data"]["mqttUrl"], sizeof(mqttBrokerUrl) - 1);
+      strncpy(mqttUsername, doc["data"]["mqttUsername"], sizeof(mqttUsername) - 1);
       LogManager::info("[MQTT] Credentials recuperes avec succes");
       LogManager::info("[MQTT] Broker URL: %s", mqttBrokerUrl);
 
@@ -273,9 +275,6 @@ bool MqttManager::connect() {
   // Attendre un peu pour que le thread démarre
   vTaskDelay(pdMS_TO_TICKS(100));
 
-  // Publier le statut "online"
-  publishStatus();
-
   return true;
 }
 
@@ -360,6 +359,10 @@ void MqttManager::threadFunction(void* parameter) {
     if (!mqttClient.connected()) {
       // Configurer TLS (accepter les certificats auto-signés / Let's Encrypt)
       espClient.setInsecure();
+      espClient.setHandshakeTimeout(10000);  // 10 secondes max pour TLS handshake
+
+      // Reset watchdog avant la tentative de connexion TLS (peut prendre du temps)
+      esp_task_wdt_reset();
 
       if (mqttClient.connect(clientId, mqttUsername, mqttPassword)) {
         mqttClient.subscribe(cmdTopic);
@@ -368,7 +371,10 @@ void MqttManager::threadFunction(void* parameter) {
         LogManager::info("[MQTT] Connecté au broker %s:%d (TLS)", mqttBrokerHost, mqttBrokerPort);
       } else {
         connected = false;
-        LogManager::warning("[MQTT] Echec connexion au broker");
+        int state = mqttClient.state();
+        LogManager::warning("[MQTT] Echec connexion au broker - state: %d", state);
+        LogManager::warning("[MQTT] Code erreur: -4=timeout, -3=lost, -2=connect_failed, -1=disconnected, 0=connected");
+        LogManager::warning("[MQTT] Broker: %s:%d, Username: %s", mqttBrokerHost, mqttBrokerPort, mqttUsername);
         vTaskDelay(pdMS_TO_TICKS(5000));
         continue;
       }
@@ -420,6 +426,16 @@ void MqttManager::onMessage(char* topic, byte* payload, unsigned int length) {
   if (obj["status"].is<const char*>() || obj["response"].is<const char*>()) {
     LogManager::debug("[MQTT] Message ignoré (status/response)");
     return;
+  }
+
+  // Traiter les pings (app demande si on est alive)
+  if (obj["action"].is<const char*>()) {
+    const char* action = obj["action"];
+    if (strcmp(action, "ping") == 0) {
+      LogManager::info("[MQTT] Ping reçu, republication du statut online");
+      publishStatus();
+      return;
+    }
   }
 
   // Traiter le message via les routes spécifiques au modèle
