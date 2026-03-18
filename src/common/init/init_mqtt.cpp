@@ -23,13 +23,6 @@ bool InitManager::initMqtt() {
   Serial.println("[INIT] Initialisation MQTT...");
   #endif
 
-  // Vérifier que le broker est configuré
-  if (strlen(DEFAULT_MQTT_BROKER_HOST) == 0) {
-    Serial.println("[INIT] MQTT: Broker non configure dans default_config.h");
-    systemStatus.mqtt = INIT_FAILED;
-    return false;
-  }
-
   // Initialiser le client MQTT (même si WiFi n'est pas connecté)
   // Le thread se connectera automatiquement quand le WiFi sera disponible
   if (!MqttManager::init()) {
