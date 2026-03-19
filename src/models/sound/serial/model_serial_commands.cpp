@@ -85,14 +85,6 @@ bool ModelSoundSerialCommands::processCommand(const String& command) {
 }
 
 void ModelSoundSerialCommands::printHelp() {
-  Serial.println("");
-  Serial.println("========== Commandes Audio Sound ==========");
-  Serial.println("  audio play [path]      - Jouer un fichier (default: /test.mp3)");
-  Serial.println("  audio stop             - Arreter la lecture");
-  Serial.println("  audio pause            - Mettre en pause");
-  Serial.println("  audio resume           - Reprendre");
-  Serial.println("  audio volume <0-100>   - Definir le volume (%)");
-  Serial.println("  audio status           - Afficher le statut audio");
-  Serial.println("  audio test             - Test rapide avec /test.mp3");
-  Serial.println("=========================================");
+  // Aide consolidée dans SerialCommands::cmdHelp()
+  // Pas d'affichage ici pour éviter la duplication
 }
