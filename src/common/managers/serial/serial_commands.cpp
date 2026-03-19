@@ -300,8 +300,6 @@ void SerialCommands::processCommand(const String& command) {
     cmdLCDPlayMjpeg(args);
   #endif
   #ifdef HAS_AUDIO
-  } else if (cmd == "audio" || cmd == "audio-status") {
-    cmdAudio();
   } else if (cmd == "play" || cmd == "audio-play") {
     cmdAudioPlay(args);
   } else if (cmd == "stop" || cmd == "audio-stop") {
@@ -314,6 +312,12 @@ void SerialCommands::processCommand(const String& command) {
     cmdAudioVolume(args);
   } else if (cmd == "ls" || cmd == "audio-list" || cmd == "list") {
     cmdAudioList(args);
+  } else if (cmd == "audio" || cmd == "audio-status") {
+    // Passer les commandes "audio play", "audio stop", etc. au modèle d'abord
+    if (!ModelSerialCommands::processCommand(command)) {
+      // Si le modèle ne reconnaît pas, afficher le statut par défaut
+      cmdAudio();
+    }
   #endif
   } else {
     // Essayer les commandes spécifiques au modèle
