@@ -313,11 +313,7 @@ void SerialCommands::processCommand(const String& command) {
   } else if (cmd == "ls" || cmd == "audio-list" || cmd == "list") {
     cmdAudioList(args);
   } else if (cmd == "audio" || cmd == "audio-status") {
-    // Passer les commandes "audio play", "audio stop", etc. au modèle d'abord
-    if (!ModelSerialCommands::processCommand(command)) {
-      // Si le modèle ne reconnaît pas, afficher le statut par défaut
-      cmdAudio();
-    }
+    cmdAudio();
   #endif
   } else {
     // Essayer les commandes spécifiques au modèle
