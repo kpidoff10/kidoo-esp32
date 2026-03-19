@@ -59,10 +59,13 @@ void AudioManager::audioTask(void* parameter) {
         xSemaphoreGive(audioMutex);
       }
       // si mutex occupé, une commande (play/stop/etc) est en cours -> on saute ce tour
+    } else {
+      // En pause ou pas disponible: courte attente pour ne pas surcharger le CPU
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    // Yield régulier pour stabilité avec WiFi/BLE/SD
-    vTaskDelay(1); // ~1ms
+    // Pas de delay pendant la lecture pour éviter les underruns audio
+    // Les autres tâches utilisent taskYIELD() implicitement
   }
 }
 #endif
