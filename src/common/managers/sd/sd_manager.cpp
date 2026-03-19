@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <ArduinoJson.h>
+#include <cstring>
 #include "models/model_config.h"
 #include "common/config/core_config.h"
 
@@ -13,7 +14,7 @@ const char* SDManager::CONFIG_FILE_PATH = "/config.json";
 // Initialiser une configuration avec les valeurs par défaut
 void SDManager::initDefaultConfig(SDConfig* config) {
   if (config == nullptr) return;
-  
+
   config->valid = false; // Par défaut, pas de config depuis SD
   strcpy(config->device_name, DEFAULT_DEVICE_NAME);
   strcpy(config->wifi_ssid, DEFAULT_WIFI_SSID);
@@ -36,6 +37,8 @@ void SDManager::initDefaultConfig(SDConfig* config) {
   config->wakeup_autoShutdown = true;
   config->wakeup_autoShutdownMinutes = 30;
   strcpy(config->wakeup_weekdaySchedule, "{}"); // JSON vide par défaut
+  // Initialiser le secret de token de commande MQTT (vide par défaut)
+  memset(config->cmdTokenSecret, 0, sizeof(config->cmdTokenSecret));
 }
 
 bool SDManager::init() {
@@ -357,6 +360,13 @@ SDConfig SDManager::getConfig() {
     config.wakeup_weekdaySchedule[sizeof(config.wakeup_weekdaySchedule) - 1] = '\0';
   }
 
+  // Lire le secret de token de commande MQTT
+  if (doc["cmdTokenSecret"].is<String>()) {
+    String secretStr = doc["cmdTokenSecret"] | "";
+    strncpy(config.cmdTokenSecret, secretStr.c_str(), sizeof(config.cmdTokenSecret) - 1);
+    config.cmdTokenSecret[sizeof(config.cmdTokenSecret) - 1] = '\0';
+  }
+
   config.valid = true;
   return config;
 }
@@ -451,6 +461,11 @@ bool SDManager::saveConfig(const SDConfig& config) {
     }
   } else {
     doc["wakeup_weekdaySchedule"] = "{}";
+  }
+
+  // Sauvegarder le secret de token de commande MQTT
+  if (strlen(config.cmdTokenSecret) > 0) {
+    doc["cmdTokenSecret"] = config.cmdTokenSecret;
   }
 
   // Ouvrir le fichier en mode écriture (écrase le contenu mais doc contient déjà tout : merge)

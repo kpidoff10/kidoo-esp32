@@ -15,6 +15,8 @@
 #include "common/managers/init/init_manager.h"
 #include "common/managers/rtc/rtc_manager.h"
 #include "common/managers/device_key/device_key_manager.h"
+#include "common/managers/sd/sd_manager.h"
+#include "common/managers/jwt/jwt_verifier.h"
 #include "models/model_mqtt_routes.h"
 
 // Variables statiques
@@ -24,6 +26,7 @@ bool MqttManager::threadRunning = false;
 char MqttManager::cmdTopic[80] = "";
 char MqttManager::telemetryTopic[80] = "";
 char MqttManager::clientId[64] = "";
+static char macStr[13] = "";  // MAC adresse au format "80B54ED96148" (réutilisée pour JWT verification)
 WiFiClientSecure MqttManager::espClient;
 PubSubClient MqttManager::mqttClient(espClient);
 TaskHandle_t MqttManager::taskHandle = nullptr;
@@ -175,7 +178,7 @@ bool MqttManager::init() {
   }
 
   // Recuperer les credentials MQTT du serveur
-  char macStr[13];
+  // Stocker la MAC dans la variable statique pour une utilisation ultérieure (JWT verification)
   snprintf(macStr, sizeof(macStr), "%02X%02X%02X%02X%02X%02X",
     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   fetchMqttCredentials(macStr);
@@ -436,6 +439,30 @@ void MqttManager::onMessage(char* topic, byte* payload, unsigned int length) {
       publishStatus();
       return;
     }
+
+    // Vérifier le JWT token pour les vraies commandes (pas ping)
+    if (!obj["cmdToken"].is<const char*>()) {
+      LogManager::warning("[MQTT] Commande rejetée: pas de cmdToken pour action '%s'", action);
+      return;
+    }
+
+    const char* cmdToken = obj["cmdToken"];
+    SDConfig config = SDManager::getConfig();
+
+    CmdTokenClaims claims;
+    if (!JwtVerifier::verify(cmdToken, config.cmdTokenSecret, claims)) {
+      LogManager::warning("[MQTT] Commande rejetée: cmdToken invalide ou expiré");
+      return;
+    }
+
+    // Vérifier que le token est pour ce device
+    if (strcmp(claims.kidooMac, macStr) != 0) {
+      LogManager::warning("[MQTT] Commande rejetée: mac mismatch (token pour %s, device est %s)",
+                          claims.kidooMac, macStr);
+      return;
+    }
+
+    LogManager::info("[MQTT] Token valide pour action '%s' par user '%s'", claims.action, claims.userId);
   }
 
   // Traiter le message via les routes spécifiques au modèle

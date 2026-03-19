@@ -9,6 +9,7 @@
 
 class ModelSoundConfigSyncRoutes {
 public:
+  // Config sync commune pour tous les modèles (voir model_config_sync_common.cpp)
   static void onWiFiConnected();
 };
 

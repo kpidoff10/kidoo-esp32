@@ -33,8 +33,9 @@ struct SDConfig {
   bool wakeup_autoShutdown;  // Activation de l'extinction automatique
   uint16_t wakeup_autoShutdownMinutes; // Durée avant extinction auto (minutes)
   char wakeup_weekdaySchedule[512]; // Schedule par jour (JSON sérialisé: {"monday":{"hour":7,"minute":30,"activated":true},...})
+  // Configuration MQTT
+  char cmdTokenSecret[128];  // Secret pour vérifier les tokens MQTT commands (HMAC-SHA256)
   // Note: Config Dream spécifique (nighttime_alert, etc.) → DreamConfigManager (clé "dream" dans config.json)
-  // Note: MQTT est configuré dans default_config.h (pas sur SD)
 };
 
 class SDManager {

@@ -320,6 +320,17 @@ bool ModelDreamConfigSyncRoutes::fetchConfigFromAPI() {
       }
     }
 
+    // Traiter le cmdTokenSecret s'il est présent dans la réponse
+    if (doc["data"]["cmdTokenSecret"].is<const char*>()) {
+      const char* cmdTokenSecret = doc["data"]["cmdTokenSecret"].as<const char*>();
+      if (cmdTokenSecret && strlen(cmdTokenSecret) > 0) {
+        Serial.printf("[CONFIG-SYNC] Secret de token reçu (%u bytes)\n", (unsigned int)strlen(cmdTokenSecret));
+        strncpy(config.cmdTokenSecret, cmdTokenSecret, sizeof(config.cmdTokenSecret) - 1);
+        config.cmdTokenSecret[sizeof(config.cmdTokenSecret) - 1] = '\0';
+        // La config sera sauvegardée plus bas
+      }
+    }
+
     // Recharger les configurations dans les managers après timezone sync
     // (les managers utilisent getLocalDateTime() qui dépend de la timezone)
     BedtimeManager::reloadConfig();

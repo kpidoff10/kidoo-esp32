@@ -21,8 +21,9 @@
 #include "common/managers/rtc/rtc_manager.h"
 #endif
 
-// Routes de synchronisation de configuration (spécifiques au modèle)
+// Routes de synchronisation de configuration
 #include "models/model_config_sync_routes.h"
+#include "common/config_sync/config_sync_common.h"
 
 // Variables statiques
 bool WiFiManager::initialized = false;
@@ -195,6 +196,9 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   }
   #endif
   
+  // Synchroniser le secret MQTT (commun à tous les modèles)
+  ModelConfigSyncCommon::fetchAndSaveCmdTokenSecret();
+
   // Synchroniser la configuration via les routes spécifiques au modèle
   ModelConfigSyncRoutes::onWiFiConnected();
 

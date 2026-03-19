@@ -13,6 +13,7 @@
 
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 
 #if defined(HAS_SD) && defined(HAS_RTC)
@@ -73,20 +74,39 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
 
     char url[256];
     snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
-    WiFiClientSecure client;
-    initSecureClient(client);  // Vérifier le certificat CA (protection MITM)
-    HTTPClient http;
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-kidoo-timestamp", timestampStr);
-    http.addHeader("x-kidoo-signature", signatureB64);
-    http.setTimeout(timeoutMs);
-    int code = http.GET();
-    if (code > 0 && responseBody) {
-      *responseBody = http.getString();
+
+    if (strncmp(API_BASE_URL, "http://", 7) == 0) {
+      // HTTP local (pas de SSL/TLS)
+      WiFiClient client;
+      HTTPClient http;
+      http.begin(client, url);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("x-kidoo-timestamp", timestampStr);
+      http.addHeader("x-kidoo-signature", signatureB64);
+      http.setTimeout(timeoutMs);
+      int code = http.GET();
+      if (code > 0 && responseBody) {
+        *responseBody = http.getString();
+      }
+      http.end();
+      return code;
+    } else {
+      // HTTPS distant (vérifier certificat CA)
+      WiFiClientSecure client;
+      initSecureClient(client);
+      HTTPClient http;
+      http.begin(client, url);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("x-kidoo-timestamp", timestampStr);
+      http.addHeader("x-kidoo-signature", signatureB64);
+      http.setTimeout(timeoutMs);
+      int code = http.GET();
+      if (code > 0 && responseBody) {
+        *responseBody = http.getString();
+      }
+      http.end();
+      return code;
     }
-    http.end();
-    return code;
   } else {
     // RTC non disponible: faire requête SANS signature
     Serial.println("[API] RTC non disponible - requete sans signature");
@@ -96,18 +116,35 @@ int ApiManager::getJsonWithDeviceAuth(const char* path, String* responseBody, in
   // Fallback : GET simple sans signature (RTC non dispo ou HAS_SD/HAS_RTC non définis)
   char url[256];
   snprintf(url, sizeof(url), "%s%s", API_BASE_URL, path);
-  WiFiClientSecure client;
-  initSecureClient(client);  // Vérifier le certificat CA (protection MITM)
-  HTTPClient http;
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(timeoutMs);
-  int code = http.GET();
-  if (code > 0 && responseBody) {
-    *responseBody = http.getString();
+
+  if (strncmp(API_BASE_URL, "http://", 7) == 0) {
+    // HTTP local (pas de SSL/TLS)
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(timeoutMs);
+    int code = http.GET();
+    if (code > 0 && responseBody) {
+      *responseBody = http.getString();
+    }
+    http.end();
+    return code;
+  } else {
+    // HTTPS distant (vérifier certificat CA)
+    WiFiClientSecure client;
+    initSecureClient(client);
+    HTTPClient http;
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(timeoutMs);
+    int code = http.GET();
+    if (code > 0 && responseBody) {
+      *responseBody = http.getString();
+    }
+    http.end();
+    return code;
   }
-  http.end();
-  return code;
 }
 
 int ApiManager::getJsonWithDeviceAuth(const char* path, int timeoutMs) {
