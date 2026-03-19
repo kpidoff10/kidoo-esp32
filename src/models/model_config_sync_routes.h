@@ -13,10 +13,7 @@
   #include "dream/config_sync/model_config_sync_routes.h"
   typedef ModelDreamConfigSyncRoutes ModelConfigSyncRoutes;
 #elif defined(KIDOO_MODEL_GOTCHI)
-  class ModelGotchiConfigSyncRoutes {
-  public:
-    static void onWiFiConnected() {}
-  };
+  #include "gotchi/config_sync/model_config_sync_routes.h"
   typedef ModelGotchiConfigSyncRoutes ModelConfigSyncRoutes;
 #elif defined(KIDOO_MODEL_SOUND)
   #include "sound/config_sync/model_config_sync_routes.h"

@@ -13,7 +13,7 @@ public:
   /**
    * Récupère et sauvegarde le secret de token MQTT depuis le serveur
    * Appelé automatiquement lors de la connexion WiFi
-   * Compatible avec tous les modèles (Dream, Sound, Gotchi)
+   * Compatible avec tous les modèles (Dream, Sound)
    */
   static void fetchAndSaveCmdTokenSecret();
 

@@ -13,6 +13,30 @@
 #include <SD.h>
 #endif
 
+#ifndef RTC_I2C_ADDRESS
+#error "RTC_I2C_ADDRESS doit etre defini dans models/<modele>/config/config.h"
+#endif
+
+#ifndef KIDOO_RTC_PCF85063
+// Registres DS3231
+static const uint8_t DS3231_REG_SECONDS = 0x00;
+static const uint8_t DS3231_REG_MINUTES = 0x01;
+static const uint8_t DS3231_REG_HOURS = 0x02;
+static const uint8_t DS3231_REG_DAY = 0x03;
+static const uint8_t DS3231_REG_DATE = 0x04;
+static const uint8_t DS3231_REG_MONTH = 0x05;
+static const uint8_t DS3231_REG_YEAR = 0x06;
+static const uint8_t DS3231_REG_STATUS = 0x0F;
+static const uint8_t DS3231_REG_TEMP_MSB = 0x11;
+static const uint8_t DS3231_REG_TEMP_LSB = 0x12;
+#endif
+
+#ifdef KIDOO_RTC_PCF85063
+// PCF85063 (NXP) — temps à partir de 0x04
+static const uint8_t PCF_REG_CONTROL1 = 0x00;
+static const uint8_t PCF_REG_SECONDS = 0x04;
+#endif
+
 // Serveurs NTP
 static const char* NTP_SERVER_1 = "pool.ntp.org";
 static const char* NTP_SERVER_2 = "time.google.com";
@@ -31,41 +55,58 @@ bool RTCManager::init() {
   if (initialized) {
     return available;
   }
-  
+
   initialized = true;
   available = false;
-  
-  // Initialiser le bus I2C si pas déjà fait
-  // Wire.begin() peut être appelé plusieurs fois sans problème
+
   Wire.begin(RTC_SDA_PIN, RTC_SCL_PIN);
-  delay(10); // Petit délai pour stabiliser le bus
-  
-  // Vérifier si le DS3231 répond
-  Wire.beginTransmission(DS3231_ADDRESS);
+  delay(10);
+
+#ifdef KIDOO_RTC_PCF85063
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
   uint8_t error = Wire.endTransmission();
-  
+
   if (error == 0) {
     available = true;
-    
-    // Vérifier si l'oscillateur s'est arrêté (bit OSF dans le registre status)
+    uint8_t c1 = readRegister(PCF_REG_CONTROL1);
+    if (c1 & 0x20) {
+      writeRegister(PCF_REG_CONTROL1, c1 & (uint8_t)~0x20);
+      delay(10);
+    }
+    if (hasLostPower()) {
+      Serial.println("[RTC] WARNING: PCF85063 VL (tension / horloge douteuse)");
+    }
+    #if ENABLE_VERBOSE_LOGS
+    LogManager::info("[RTC] PCF85063 detecte et initialise");
+    #endif
+  } else {
+    LogManager::error("[RTC] PCF85063 non detecte (erreur I2C: %d)", error);
+  }
+#else
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  uint8_t error = Wire.endTransmission();
+
+  if (error == 0) {
+    available = true;
+
     if (hasLostPower()) {
       Serial.println("[RTC] WARNING: Oscillateur arrete, heure non valide");
-      // Effacer le flag OSF
-      uint8_t status = readRegister(REG_STATUS);
-      writeRegister(REG_STATUS, status & ~0x80);
+      uint8_t status = readRegister(DS3231_REG_STATUS);
+      writeRegister(DS3231_REG_STATUS, status & ~0x80);
     }
-    
+
     #if ENABLE_VERBOSE_LOGS
     LogManager::info("[RTC] DS3231 detecte et initialise");
     #endif
   } else {
     LogManager::error("[RTC] DS3231 non detecte (erreur I2C: %d)", error);
   }
-  
+#endif
+
 #if defined(HAS_SD)
   loadTimezoneFromConfig();
 #endif
-  
+
   return available;
 }
 
@@ -147,11 +188,11 @@ uint8_t RTCManager::decToBcd(uint8_t dec) {
 }
 
 uint8_t RTCManager::readRegister(uint8_t reg) {
-  Wire.beginTransmission(DS3231_ADDRESS);
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
   Wire.write(reg);
   Wire.endTransmission();
-  
-  Wire.requestFrom(DS3231_ADDRESS, (uint8_t)1);
+
+  Wire.requestFrom(RTC_I2C_ADDRESS, (uint8_t)1);
   if (Wire.available()) {
     return Wire.read();
   }
@@ -159,7 +200,7 @@ uint8_t RTCManager::readRegister(uint8_t reg) {
 }
 
 void RTCManager::writeRegister(uint8_t reg, uint8_t value) {
-  Wire.beginTransmission(DS3231_ADDRESS);
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
   Wire.write(reg);
   Wire.write(value);
   Wire.endTransmission();
@@ -167,28 +208,47 @@ void RTCManager::writeRegister(uint8_t reg, uint8_t value) {
 
 DateTime RTCManager::getDateTime() {
   DateTime dt = {0, 0, 0, 0, 0, 0, 0};
-  
+
   if (!isAvailable()) {
     return dt;
   }
-  
-  // Lire tous les registres de temps d'un coup
-  Wire.beginTransmission(DS3231_ADDRESS);
-  Wire.write(REG_SECONDS);
+
+#ifdef KIDOO_RTC_PCF85063
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  Wire.write(PCF_REG_SECONDS);
   Wire.endTransmission();
-  
-  Wire.requestFrom(DS3231_ADDRESS, (uint8_t)7);
-  
+
+  Wire.requestFrom(RTC_I2C_ADDRESS, (uint8_t)7);
+
+  if (Wire.available() >= 7) {
+    dt.second = bcdToDec(Wire.read() & 0x7F);
+    dt.minute = bcdToDec(Wire.read() & 0x7F);
+    dt.hour = bcdToDec(Wire.read() & 0x3F);
+    dt.day = bcdToDec(Wire.read() & 0x3F);
+    uint8_t w = Wire.read() & 0x07;
+    dt.dayOfWeek = (w == 0) ? 7 : w;
+    uint8_t mon = Wire.read();
+    dt.month = bcdToDec(mon & 0x1F);
+    dt.year = 2000 + bcdToDec(Wire.read());
+  }
+#else
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  Wire.write(DS3231_REG_SECONDS);
+  Wire.endTransmission();
+
+  Wire.requestFrom(RTC_I2C_ADDRESS, (uint8_t)7);
+
   if (Wire.available() >= 7) {
     dt.second = bcdToDec(Wire.read() & 0x7F);
     dt.minute = bcdToDec(Wire.read());
-    dt.hour = bcdToDec(Wire.read() & 0x3F); // Format 24h
+    dt.hour = bcdToDec(Wire.read() & 0x3F);
     dt.dayOfWeek = bcdToDec(Wire.read());
     dt.day = bcdToDec(Wire.read());
     dt.month = bcdToDec(Wire.read() & 0x1F);
     dt.year = 2000 + bcdToDec(Wire.read());
   }
-  
+#endif
+
   return dt;
 }
 
@@ -249,34 +309,48 @@ bool RTCManager::setDateTime(const DateTime& dt) {
   if (!isAvailable()) {
     return false;
   }
-  
-  // Valider les valeurs
+
   if (dt.year < 2000 || dt.year > 2099) return false;
   if (dt.month < 1 || dt.month > 12) return false;
   if (dt.day < 1 || dt.day > 31) return false;
   if (dt.hour > 23) return false;
   if (dt.minute > 59) return false;
   if (dt.second > 59) return false;
-  
-  // Calculer le jour de la semaine si non fourni
+
   uint8_t dow = dt.dayOfWeek;
   if (dow == 0 || dow > 7) {
     dow = calculateDayOfWeek(dt.year, dt.month, dt.day);
   }
-  
-  // Écrire tous les registres de temps
-  Wire.beginTransmission(DS3231_ADDRESS);
-  Wire.write(REG_SECONDS);
+
+#ifdef KIDOO_RTC_PCF85063
+  uint8_t wdayPcf = (dow == 7) ? 0 : dow;
+
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  Wire.write(PCF_REG_SECONDS);
   Wire.write(decToBcd(dt.second));
   Wire.write(decToBcd(dt.minute));
-  Wire.write(decToBcd(dt.hour)); // Format 24h
+  Wire.write(decToBcd(dt.hour));
+  Wire.write(decToBcd(dt.day));
+  Wire.write(wdayPcf);
+  Wire.write(decToBcd(dt.month));
+  Wire.write(decToBcd(dt.year - 2000));
+  uint8_t error = Wire.endTransmission();
+
+  return (error == 0);
+#else
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  Wire.write(DS3231_REG_SECONDS);
+  Wire.write(decToBcd(dt.second));
+  Wire.write(decToBcd(dt.minute));
+  Wire.write(decToBcd(dt.hour));
   Wire.write(decToBcd(dow));
   Wire.write(decToBcd(dt.day));
   Wire.write(decToBcd(dt.month));
   Wire.write(decToBcd(dt.year - 2000));
   uint8_t error = Wire.endTransmission();
-  
+
   return (error == 0);
+#endif
 }
 
 String RTCManager::getTimeString() {
@@ -343,26 +417,31 @@ float RTCManager::getTemperature() {
   if (!isAvailable()) {
     return 0.0f;
   }
-  
-  // Lire les registres de température
-  int8_t msb = (int8_t)readRegister(REG_TEMP_MSB);
-  uint8_t lsb = readRegister(REG_TEMP_LSB);
-  
-  // La température est sur 10 bits (8 bits MSB + 2 bits LSB)
-  // MSB est signé, LSB contient les 2 bits de fraction (0.25°C par bit)
+
+#ifdef KIDOO_RTC_PCF85063
+  return 0.0f;
+#else
+  int8_t msb = (int8_t)readRegister(DS3231_REG_TEMP_MSB);
+  uint8_t lsb = readRegister(DS3231_REG_TEMP_LSB);
+
   float temp = (float)msb + ((lsb >> 6) * 0.25f);
-  
+
   return temp;
+#endif
 }
 
 bool RTCManager::hasLostPower() {
   if (!initialized) {
     return true;
   }
-  
-  // Bit OSF (Oscillator Stop Flag) dans le registre status
-  uint8_t status = readRegister(REG_STATUS);
+
+#ifdef KIDOO_RTC_PCF85063
+  uint8_t sec = readRegister(PCF_REG_SECONDS);
+  return (sec & 0x80) != 0;
+#else
+  uint8_t status = readRegister(DS3231_REG_STATUS);
   return (status & 0x80) != 0;
+#endif
 }
 
 uint8_t RTCManager::calculateDayOfWeek(uint16_t year, uint8_t month, uint8_t day) {
@@ -387,17 +466,25 @@ uint8_t RTCManager::calculateDayOfWeek(uint16_t year, uint8_t month, uint8_t day
 
 void RTCManager::printInfo() {
   LogManager::info("");
+#ifdef KIDOO_RTC_PCF85063
+  LogManager::info("========== Etat RTC PCF85063 ==========");
+#else
   LogManager::info("========== Etat RTC DS3231 ==========");
+#endif
   LogManager::info("[RTC] Initialise: %s", initialized ? "Oui" : "Non");
   LogManager::info("[RTC] Disponible: %s", available ? "Oui" : "Non");
-  
+
   if (available) {
     LogManager::info("[RTC] Date/Heure: %s", getDateTimeString().c_str());
     LogManager::info("[RTC] Timestamp Unix: %lu", (unsigned long)getUnixTime());
+#ifdef KIDOO_RTC_PCF85063
+    LogManager::info("[RTC] Temperature: N/A (PCF85063)");
+#else
     LogManager::info("[RTC] Temperature: %.2f C", getTemperature());
+#endif
     LogManager::info("[RTC] Perte alimentation: %s", hasLostPower() ? "Oui (heure non fiable)" : "Non");
   }
-  
+
   LogManager::info("=====================================");
 }
 

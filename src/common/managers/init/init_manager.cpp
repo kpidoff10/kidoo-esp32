@@ -138,7 +138,7 @@ bool InitManager::init() {
   }
   #endif
 
-  // ÉTAPE 2b : Initialiser le LCD (modèle Gotchi avec HAS_LCD)
+  // ÉTAPE 2b : Initialiser le LCD (si le modèle définit HAS_LCD)
   #ifdef HAS_LCD
   if (HAS_LCD) {
     if (!initLCD()) {
@@ -605,16 +605,22 @@ void InitManager::setGlobalConfig(SDConfig* config) {
 
 bool InitManager::updateConfig(const SDConfig& config) {
   if (globalConfig == nullptr) {
+    Serial.println("[INIT] updateConfig ECHEC: globalConfig est nullptr");
     return false;
   }
-  
+
   // Copier la nouvelle configuration
   *globalConfig = config;
-  
+
   // Sauvegarder sur la SD
   if (SDManager::isAvailable()) {
-    return SDManager::saveConfig(config);
+    bool saved = SDManager::saveConfig(config);
+    if (!saved) {
+      Serial.println("[INIT] updateConfig ECHEC: SDManager::saveConfig() a retourné false");
+    }
+    return saved;
   }
-  
+
+  Serial.println("[INIT] updateConfig ECHEC: SD non disponible");
   return false;
 }

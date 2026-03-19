@@ -37,7 +37,7 @@
 // ============================================
 // Configuration de la carte SD (SPI)
 // ============================================
-// HSPI standard (identique à Gotchi): GPIO 11 (MOSI), GPIO 13 (MISO), GPIO 12 (SCK), GPIO 10 (CS)
+// HSPI standard (ESP32-S3): GPIO 11 (MOSI), GPIO 13 (MISO), GPIO 12 (SCK), GPIO 10 (CS)
 
 #define SD_MOSI_PIN 11
 #define SD_MISO_PIN 13

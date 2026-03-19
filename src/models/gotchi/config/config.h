@@ -1,168 +1,120 @@
-#ifndef MODEL_GOTCHI_CONFIG_H
-#define MODEL_GOTCHI_CONFIG_H
+#ifndef CONFIG_GOTCHI_H
+#define CONFIG_GOTCHI_H
+
+#include <Arduino.h>
 
 /**
- * Configuration du modèle Kidoo Gotchi (ESP32-S3-N16R8)
+ * Kidoo Gotchi — Waveshare ESP32-S3-Touch-AMOLED-1.75
+ * 466×466 AMOLED (CO5300 QSPI), touch CST9217, PCF85063 RTC, ES8311 + ES7210,
+ * SD SPI, QMI8658, AXP2101 (voir doc Waveshare).
  *
- * ESP32-S3 : Dual-core, 16MB Flash, 8MB PSRAM OPI
- *
- * Ce fichier contient les configurations spécifiques au modèle Gotchi :
- * - Pins GPIO pour les bandes LED
- * - Configuration de la carte SD
- * - Composants disponibles
+ * Broches alignées sur Mylibrary/pin_config.h du dépôt officiel :
+ * https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75
  */
 
 // ============================================
-// Configuration LED - LED intégrée ESP32-S3
-// ============================================
-// DevKitC-1 : LED RGB WS2812 intégrée. La plupart des cartes : GPIO 48.
-// Certaines révisions (v1.1) utilisent GPIO 38 — si la LED ne s'allume pas, essayer 38.
-
-#define LED_DATA_PIN 48
-#define NUM_LEDS 1
-
-#define LED_TYPE NEOPIXEL
-#define COLOR_ORDER GRB
-
-// ============================================
-// Configuration de la carte SD (SPI)
+// Écran AMOLED CO5300 (QSPI) — pour intégration GFX / LVGL ultérieure
 // ============================================
 
-#define SD_MOSI_PIN 11
-#define SD_MISO_PIN 13
-#define SD_SCK_PIN 12
-#define SD_CS_PIN 10
+#define GOTCHI_LCD_SDIO0 4
+#define GOTCHI_LCD_SDIO1 5
+#define GOTCHI_LCD_SDIO2 6
+#define GOTCHI_LCD_SDIO3 7
+#define GOTCHI_LCD_SCLK 38
+#define GOTCHI_LCD_CS 12
+#define GOTCHI_LCD_RESET 39
+#define GOTCHI_LCD_WIDTH 466
+#define GOTCHI_LCD_HEIGHT 466
 
 // ============================================
-// Configuration RTC DS3231 (I2C)
+// Touch CST9217 (I2C)
 // ============================================
 
-#define RTC_SDA_PIN 8
-#define RTC_SCL_PIN 9
-#define RTC_I2C_ADDRESS 0x68
+#define GOTCHI_TP_I2C_SDA 15
+#define GOTCHI_TP_I2C_SCL 14
+#define GOTCHI_TP_INT 11
+#define GOTCHI_TP_RESET 40
 
 // ============================================
-// Configuration NFC (PN532 via I2C)
+// I2C principal (touch, capteurs, PMU — même bus que les exemples Waveshare)
 // ============================================
 
-// I2C pins for NFC PN532 module (ESP32-S3)
-// Module 4 pins: SDA, SCL, VCC (3.3V), GND
-// NFC shares the I2C bus with RTC (same pins)
-
-#define NFC_SDA_PIN 8       // GPIO 8 (I2C SDA - shared with RTC)
-#define NFC_SCL_PIN 9       // GPIO 9 (I2C SCL - shared with RTC)
-
-// I2C address of PN532 (usually 0x24 in I2C mode)
-#define NFC_I2C_ADDRESS 0x24
+#define IIC_SDA 15
+#define IIC_SCL 14
 
 // ============================================
-// Configuration Bouton BLE (Activation BLE)
+// RTC — PCF85063 (bus I2C partagé avec touch / capteurs Waveshare)
+// rtc_manager : KIDOO_RTC_PCF85063 (registres NXP, adresse 7 bits 0x51)
 // ============================================
 
-#define BLE_CONFIG_BUTTON_PIN 0
+#define RTC_SDA_PIN IIC_SDA
+#define RTC_SCL_PIN IIC_SCL
+#define KIDOO_RTC_PCF85063
+#define RTC_I2C_ADDRESS 0x51
 
 // ============================================
-// Configuration LCD SPI (ST7789)
+// Carte SD — mode SPI (SDManager) — tableau wiki Waveshare « 07_LVGL_SD_Test »
 // ============================================
-// Brochage module : GND, VCC 3.3V, SCL, SDA, RES, DC, CS, BLK
-// SDA = données SPI (MOSI), SCL = horloge SPI (SCK)
-// BLK = rétroéclairage (optionnel, LOW = éteint)
-//
-// Résolution / rotation : si tu vois des barres ou un écran "cassé", essaie :
-// - TFT 240x320 (très courant) au lieu de 240x280
-// - TFT_ROTATION 0 ou 1 au lieu de 2
 
-#define TFT_CS_PIN   14   // Pin 7 - Chip Select
-#define TFT_DC_PIN   15   // Pin 6 - Data/Command
-#define TFT_RST_PIN  16   // Pin 5 - Reset (RES)
-#define TFT_MOSI_PIN 11   // Pin 4 - SDA (SPI data)
-#define TFT_SCK_PIN  12   // Pin 3 - SCL (SPI clock)
-#define TFT_BLK_PIN  7    // Pin 8 - Rétroéclairage (optionnel)
-// #define TFT_BLK_ACTIVE_LOW 1  // Décommenter si ton module : LOW = rétroéclairage ON (au lieu de HIGH)
-
-// Panel physique ST7789 : 240x280. Rotation 1 = landscape (280x240 logique)
-// Les vidéos sont pivotées côté serveur (transpose=1) pour s'afficher en landscape
-#define TFT_WIDTH    240
-#define TFT_HEIGHT   280
-#define TFT_ROTATION 1  // Landscape 90° (280x240)
-// Offset écran : en landscape, l'offset Y=20 du portrait devient X=20
-#define TFT_OFFSET_X 0
-#define TFT_OFFSET_Y 20
+#define SD_MOSI_PIN 1
+#define SD_MISO_PIN 3
+#define SD_SCK_PIN 2
+#define SD_CS_PIN 41
 
 // ============================================
-// Composants disponibles sur ce modèle
+// Audio ES8311 / micros (référence Waveshare — intégration future)
 // ============================================
-// HAS_WIFI et HAS_SD sont définis dans platformio.ini (build_flags) pour gotchi — ne pas les redéfinir ici.
 
+#define GOTCHI_I2S_MCK_IO 16
+#define GOTCHI_I2S_BCK_IO 9
+#define GOTCHI_I2S_WS_IO 45
+#define GOTCHI_I2S_DI_IO 10
+#define GOTCHI_I2S_DO_IO 8
+
+// ============================================
+// BLE — bouton config (éviter GPIO 14/15 réservés au bus I2C de la carte)
+// ============================================
+
+#define BLE_CONFIG_BUTTON_PIN 17
+
+// ============================================
+// Bande WS2812 (optionnelle — requis pour compiler led_manager)
+// GPIO 18 libre sur cette carte ; ajuster si bande externe branchée ailleurs.
+// ============================================
+
+#define LED_DATA_PIN 18
+#define NUM_LEDS 16
+
+#ifndef HAS_LED
+#define HAS_LED false
+#endif
+
+// ============================================
+// Composants logiques
+// ============================================
+
+#ifndef HAS_SD_CARD
 #define HAS_SD_CARD true
-#define HAS_LED true
-#define HAS_LCD true
-#define HAS_BLE true
-#define HAS_NFC true
-#define HAS_MQTT true
+#endif
+
+#ifndef HAS_RTC
 #define HAS_RTC true
-#define HAS_VIBRATOR true
-#define HAS_TOUCH true
+#endif
 
-// Pin vibreur PWM (module vibration motor) — ESP32-S3 : pas de GPIO 25, utiliser 4, 17, 18, etc.
-#define VIBRATOR_PIN 4
+#ifndef HAS_BLE
+#define HAS_BLE true
+#endif
 
-// Pin capteur tactile TTP223 (sortie digitale : HIGH = touché)
-#define TOUCH_PIN 5
+#ifndef HAS_WIFI
+#define HAS_WIFI true
+#endif
 
-// ============================================
-// Configuration du système de vie (Tamagotchi)
-// ============================================
+#ifndef HAS_MQTT
+#define HAS_MQTT true
+#endif
 
-// --- Limites des stats ---
-#define STATS_MIN 0
-#define STATS_MAX 100
+#ifndef HAS_LVGL
+#define HAS_LVGL 1
+#endif
 
-// --- Initial stats ---
-#define STATS_HUNGER_INITIAL 100      // Hunger initial value (100 = not hungry)
-#define STATS_HAPPINESS_INITIAL 100   // Happiness initial value
-#define STATS_HEALTH_INITIAL 100      // Health initial value
-#define STATS_FATIGUE_INITIAL 0       // Fatigue initial value (0 = not tired)
-#define STATS_HYGIENE_INITIAL 100     // Hygiene initial value
-#define STATS_SICKNESS_INITIAL 0      // Maladie initiale (0 = pas malade, augmente avec certains aliments)
-
-// --- Stats decline rates (points lost every 30 minutes) ---
-#define STATS_HUNGER_DECLINE_RATE 2     // -2 every 30min
-#define STATS_HAPPINESS_DECLINE_RATE 1  // -1 every 30min (base)
-#define STATS_HEALTH_DECLINE_RATE 0     // Health doesn't decline automatically (affected by other stats)
-#define STATS_FATIGUE_INCREASE_RATE 2   // +2 every 30min (fatigue increases)
-#define STATS_HYGIENE_DECLINE_RATE 1    // -1 every 30min (base)
-
-// --- Bonus de déclin quand il reste longtemps sans manger (faim basse) ---
-// Plus la faim est basse, plus l'humeur et la propreté baissent en plus du déclin de base
-#define STATS_HUNGER_THRESHOLD_LOW 60       // Faim < 60 : bonus -1 humeur, -1 propreté
-#define STATS_HUNGER_THRESHOLD_CRITICAL 30  // Faim < 30 : bonus -2 humeur, -2 propreté
-#define STATS_HAPPINESS_DECLINE_BONUS_LOW 1       // En plus quand faim < 60
-#define STATS_HAPPINESS_DECLINE_BONUS_CRITICAL 2  // En plus quand faim < 30 (total = base + 2)
-#define STATS_HYGIENE_DECLINE_BONUS_LOW 1
-#define STATS_HYGIENE_DECLINE_BONUS_CRITICAL 2
-
-// --- Perte de vie quand très faim (toutes les 30 min) ---
-#define STATS_HEALTH_DECLINE_WHEN_VERY_HUNGRY 1  // -1 santé si faim < STATS_HUNGER_THRESHOLD_CRITICAL
-
-// --- Intervalle de mise à jour des stats ---
-#define STATS_UPDATE_INTERVAL_MS 1800000  // 30 minutes en millisecondes
-
-// ============================================
-// Configuration des actions NFC (objets)
-// ============================================
-
-// --- IDs des objets NFC ---
-#define NFC_ITEM_BOTTLE "bottle"
-#define NFC_ITEM_CAKE "cake"            // Gâteau
-#define NFC_ITEM_CANDY "candy"         // Bonbon
-#define NFC_ITEM_APPLE "apple"            // Pomme (fruit), variant 3
-
-// --- Cooldowns (ms) ---
-// Pas de cooldown sur la nourriture : quand il demande (faim), on peut lui donner tout de suite
-#define NFC_BOTTLE_COOLDOWN_MS 0
-#define NFC_CAKE_COOLDOWN_MS 0
-#define NFC_CANDY_COOLDOWN_MS 0
-#define NFC_APPLE_COOLDOWN_MS 0
-
-#endif // MODEL_GOTCHI_CONFIG_H
+#endif // CONFIG_GOTCHI_H

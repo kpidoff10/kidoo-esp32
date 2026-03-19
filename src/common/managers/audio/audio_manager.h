@@ -128,10 +128,19 @@ private:
   // État
   static bool initialized;
   static volatile bool available;      // Partagé entre tasks -> volatile
-  static uint8_t currentVolume;
+  static volatile uint8_t currentVolume;  // Partagé entre tasks -> volatile
   static String currentFile;
   static volatile bool paused;         // Partagé entre tasks -> volatile
-  
+
+  // Commandes sans mutex (lock-free approach)
+  // Volume
+  static volatile uint8_t pendingVolume;  // Nouveau volume à appliquer
+  static volatile bool volumeChanged;     // Flag pour signaler changement
+  // Contrôle de lecture
+  static volatile bool stopRequested;     // Flag stop demandé
+  static volatile bool pauseRequested;    // Flag pause demandé
+  static volatile bool resumeRequested;   // Flag resume demandé
+
   // Mutex pour la synchronisation thread-safe
   static SemaphoreHandle_t audioMutex;
 };

@@ -11,6 +11,11 @@ bool SDManager::initialized = false;
 bool SDManager::cardAvailable = false;
 const char* SDManager::CONFIG_FILE_PATH = "/config.json";
 
+// Bus SPI dédié pour la SD (évite conflit avec QSPI écran sur SPI2_HOST)
+#if HAS_LVGL
+static SPIClass sdSPI(HSPI);
+#endif
+
 // Initialiser une configuration avec les valeurs par défaut
 void SDManager::initDefaultConfig(SDConfig* config) {
   if (config == nullptr) return;
@@ -112,8 +117,14 @@ bool SDManager::initSDCard() {
   digitalWrite(SD_CS_PIN, HIGH);
   delay(10);  // Petit délai pour stabiliser
 
+  // Utiliser un bus SPI dédié (HSPI/SPI3) si LVGL est actif (écran QSPI prend SPI2)
+#if HAS_LVGL
+  sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
+  Serial.println("[SD] Bus SPI dédié (HSPI) pour éviter conflit avec écran QSPI");
+#else
   SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
-  delay(100);  // Délai plus long après SPI.begin() - important pour ESP32-C3
+#endif
+  delay(100);
 
   // SD.begin() peut bloquer longtemps si pas de carte, on a un timeout global au niveau appelant
   #if defined(ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -123,15 +134,15 @@ bool SDManager::initSDCard() {
     delay(100);
     if (SD.begin(SD_CS_PIN)) return true;
   #else
-    // Pour S3+, essayer directement - timeout court (~500ms par tentative)
     Serial.println("[SD] Tentative de connexion à la carte SD...");
 
-    // Timeout 2 secondes maximum pour SD.begin
     unsigned long startTime = millis();
-    const unsigned long TIMEOUT = 2000;  // 2 secondes max
 
-    // Note: SD.begin() peut bloquer, on ajoute juste un warning si trop long
+  #if HAS_LVGL
+    if (SD.begin(SD_CS_PIN, sdSPI)) {
+  #else
     if (SD.begin(SD_CS_PIN)) {
+  #endif
       unsigned long elapsed = millis() - startTime;
       Serial.printf("[SD] Carte SD initialisee en %lu ms\n", elapsed);
       return true;
@@ -388,6 +399,7 @@ bool SDManager::saveConfig(const SDConfig& config) {
     File configFile = SD.open(CONFIG_FILE_PATH, FILE_READ);
     if (configFile) {
       size_t fileSize = configFile.size();
+      Serial.printf("[SD] saveConfig: lecture existant (%u bytes)\n", (unsigned)fileSize);
       if (fileSize > 0 && fileSize <= CONFIG_JSON_MAX) {
         char* jsonBuffer = new char[fileSize + 1];
         if (jsonBuffer) {
@@ -398,7 +410,11 @@ bool SDManager::saveConfig(const SDConfig& config) {
         }
       }
       configFile.close();
+    } else {
+      Serial.println("[SD] saveConfig: impossible de lire config existant");
     }
+  } else {
+    Serial.println("[SD] saveConfig: pas de config existant, création nouvelle");
   }
   
   // Mettre à jour uniquement les champs gérés par SDConfig (merge, pas écrasement total)
@@ -471,11 +487,15 @@ bool SDManager::saveConfig(const SDConfig& config) {
   // Ouvrir le fichier en mode écriture (écrase le contenu mais doc contient déjà tout : merge)
   File configFile = SD.open(CONFIG_FILE_PATH, FILE_WRITE);
   if (!configFile) {
+    Serial.println("[SD] saveConfig ECHEC: impossible d'ouvrir le fichier en écriture");
     return false;
   }
-  
+
   size_t bytesWritten = serializeJson(doc, configFile);
   configFile.close();
-  
+
+  if (bytesWritten == 0) {
+    Serial.println("[SD] saveConfig ECHEC: 0 bytes écrits");
+  }
   return (bytesWritten > 0);
 }

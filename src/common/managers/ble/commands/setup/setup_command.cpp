@@ -14,33 +14,20 @@ bool BLESetupCommand::isAsyncPending() {
 }
 
 bool BLESetupCommand::isValid(const String& jsonData) {
-  if (jsonData.length() == 0) {
-    return false;
-  }
-  
-  // Parser le JSON pour vérifier la structure
+  if (jsonData.length() == 0) return false;
+
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   StaticJsonDocument<512> doc;
   #pragma GCC diagnostic pop
   DeserializationError error = deserializeJson(doc, jsonData);
-  
   if (error) {
-    Serial.print("[BLE-COMMAND] Erreur parsing JSON: ");
-    Serial.println(error.c_str());
+    Serial.printf("[SETUP] Erreur parsing JSON: %s\n", error.c_str());
     return false;
   }
-  
-  // Vérifier que c'est bien la commande "setup"
-  if (!doc["command"].is<String>() || doc["command"] != "setup") {
-    return false;
-  }
-  
-  // Vérifier que le SSID est présent
-  if (!doc["ssid"].is<String>()) {
-    return false;
-  }
-  
+
+  if (!doc["command"].is<String>() || doc["command"] != "setup") return false;
+  if (!doc["ssid"].is<String>()) return false;
   return true;
 }
 
@@ -50,130 +37,112 @@ struct SetupAsyncContext {
 };
 
 static void onSetupConnectComplete(bool success, void* userData) {
-  Serial.println("[BLE-COMMAND] ========== CALLBACK onSetupConnectComplete() APPELE ==========");
-  Serial.print("[BLE-COMMAND] WiFi success: ");
-  Serial.println(success ? "true" : "false");
   SetupAsyncContext* ctx = static_cast<SetupAsyncContext*>(userData);
   bool wifiConnected = success;
-  
+
   if (success) {
-    Serial.println("[BLE-COMMAND] Connexion WiFi reussie! Sauvegarde de la configuration...");
     SDConfig config = InitManager::getConfig();
     strncpy(config.wifi_ssid, ctx->ssid, sizeof(config.wifi_ssid) - 1);
     config.wifi_ssid[sizeof(config.wifi_ssid) - 1] = '\0';
     strncpy(config.wifi_password, ctx->password, sizeof(config.wifi_password) - 1);
     config.wifi_password[sizeof(config.wifi_password) - 1] = '\0';
-    
+
     if (!SDManager::isAvailable()) {
-      Serial.println("[BLE-COMMAND] ERREUR: Carte SD non disponible");
-      WiFiManager::disconnect();
+      Serial.println("[SETUP] ERREUR: Carte SD non disponible");
       wifiConnected = false;
     } else if (!InitManager::updateConfig(config)) {
-      Serial.println("[BLE-COMMAND] ERREUR: Impossible de sauvegarder la configuration");
-      WiFiManager::disconnect();
+      Serial.println("[SETUP] ERREUR: Impossible de sauvegarder la configuration");
       wifiConnected = false;
-    } else {
-      Serial.println("[BLE-COMMAND] Configuration WiFi sauvegardee avec succes!");
+    }
 
-      // Créer la clé device lors du premier setup
+    if (wifiConnected) {
       char pubKeyB64[48];
-      if (DeviceKeyManager::getOrCreatePublicKeyBase64(pubKeyB64, sizeof(pubKeyB64))) {
-        Serial.println("[BLE-COMMAND] Clé device créée avec succès");
-      } else {
-        Serial.println("[BLE-COMMAND] ERREUR: Impossible de créer la clé device");
+      if (!DeviceKeyManager::getOrCreatePublicKeyBase64(pubKeyB64, sizeof(pubKeyB64))) {
+        Serial.println("[SETUP] ERREUR: Impossible de créer la clé device");
         wifiConnected = false;
       }
     }
-  } else {
-    Serial.println("[BLE-COMMAND] Echec de connexion WiFi - Configuration NON sauvegardee");
   }
 
   delete ctx;
   s_setupAsyncPending = false;
   BLECommandHandler::sendSetupCompletionResponse(success && wifiConnected, wifiConnected);
+
+  WiFiManager::setSkipPostConnectActions(false);
+  if (!wifiConnected) {
+    WiFiManager::disconnect();
+  }
 }
 
 bool BLESetupCommand::execute(const String& jsonData) {
-  Serial.println("[BLE-COMMAND] Execution de la commande 'setup' (non bloquant)");
-  
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   StaticJsonDocument<512> doc;
   #pragma GCC diagnostic pop
   DeserializationError error = deserializeJson(doc, jsonData);
-  
   if (error) {
-    Serial.print("[BLE-COMMAND] Erreur parsing JSON: ");
-    Serial.println(error.c_str());
+    Serial.printf("[SETUP] Erreur parsing JSON: %s\n", error.c_str());
     return false;
   }
-  
+
   String ssid = doc["ssid"] | "";
   String password = doc["password"] | "";
   ssid.trim();
   password.trim();
-  
+
   if (ssid.length() == 0) {
-    Serial.println("[BLE-COMMAND] Erreur: SSID vide");
+    Serial.println("[SETUP] Erreur: SSID vide");
     return false;
   }
   if (ssid.length() >= 64) {
-    Serial.println("[BLE-COMMAND] Erreur: SSID trop long (max 63 caracteres)");
+    Serial.println("[SETUP] Erreur: SSID trop long");
     return false;
   }
   if (password.length() >= 64) {
-    Serial.println("[BLE-COMMAND] Erreur: Mot de passe trop long (max 63 caracteres)");
+    Serial.println("[SETUP] Erreur: Mot de passe trop long");
     return false;
   }
-  
+
   #ifdef HAS_LED
   if (LEDManager::isInitialized()) {
     LEDManager::setEffect(LED_EFFECT_RAINBOW);
-    Serial.println("[BLE-COMMAND] Effet RAINBOW active (sera arrete apres envoi de la reponse)");
   }
   #endif
-  
+
   #ifdef HAS_WIFI
   if (!WiFiManager::isAvailable()) {
-    Serial.println("[BLE-COMMAND] ERREUR: WiFi non disponible");
+    Serial.println("[SETUP] ERREUR: WiFi non disponible");
     return false;
   }
-  
+
   if (WiFiManager::isRetryThreadActive()) {
-    Serial.println("[BLE-COMMAND] Arret du thread de retry WiFi actif...");
     WiFiManager::stopRetryThread();
     delay(200);
   }
-  
+
   if (WiFiManager::isConnected()) {
-    Serial.println("[BLE-COMMAND] Deconnexion WiFi actuelle...");
     WiFiManager::disconnect();
     delay(500);
   }
-  
-  Serial.println("[BLE-COMMAND] Test de connexion avec les nouvelles credentials (tache dediee)...");
-  Serial.print("[BLE-COMMAND]   SSID: ");
-  Serial.println(ssid);
-  Serial.print("[BLE-COMMAND]   Password: ");
-  Serial.println(password.length() > 0 ? "********" : "(aucun)");
-  
+
   SetupAsyncContext* ctx = new SetupAsyncContext();
   strncpy(ctx->ssid, ssid.c_str(), sizeof(ctx->ssid) - 1);
   ctx->ssid[sizeof(ctx->ssid) - 1] = '\0';
   strncpy(ctx->password, password.c_str(), sizeof(ctx->password) - 1);
   ctx->password[sizeof(ctx->password) - 1] = '\0';
-  
+
   s_setupAsyncPending = true;
+  WiFiManager::setSkipPostConnectActions(true);
   WiFiManager::connectAsync(
     ctx->ssid,
     ctx->password[0] ? ctx->password : nullptr,
-    20000,  // Timeout 20s (aligné avec WiFiManager)
+    20000,
     onSetupConnectComplete,
     ctx
   );
-  return false;  // Handler verifiera isAsyncPending() et n'enverra pas de reponse
+  return false;
   #else
-  Serial.println("[BLE-COMMAND] ERREUR: WiFi non disponible sur ce modele");
+  Serial.println("[SETUP] ERREUR: WiFi non disponible sur ce modele");
   return false;
   #endif
 }

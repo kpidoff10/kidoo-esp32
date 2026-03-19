@@ -29,7 +29,12 @@ volatile bool AudioManager::available = false;
 volatile bool AudioManager::paused = false;
 volatile bool AudioManager::threadRunning = false;
 
-uint8_t AudioManager::currentVolume = 50;  // Volume en % (0-100)
+volatile uint8_t AudioManager::currentVolume = 50;  // Volume en % (0-100)
+volatile uint8_t AudioManager::pendingVolume = 50;  // Volume en attente (lock-free)
+volatile bool AudioManager::volumeChanged = false;  // Flag changement volume
+volatile bool AudioManager::stopRequested = false;  // Flag stop demandé
+volatile bool AudioManager::pauseRequested = false; // Flag pause demandé
+volatile bool AudioManager::resumeRequested = false;// Flag resume demandé
 String AudioManager::currentFile = "";
 
 TaskHandle_t AudioManager::audioTaskHandle = nullptr;
@@ -52,13 +57,51 @@ void AudioManager::audioTask(void* parameter) {
   threadRunning = true;
 
   while (true) {
+    // Traiter les commandes lock-free (pas d'attente mutex)
+    if (audioMutex && xSemaphoreTake(audioMutex, 0) == pdTRUE) {
+      // Stop a la priorité la plus haute
+      if (stopRequested) {
+        audio.stopSong();
+        currentFile = "";
+        paused = false;
+        stopRequested = false;
+        LogManager::info("[AUDIO] Lecture arretee");
+      }
+      // Puis Pause
+      else if (pauseRequested) {
+        audio.pauseResume();
+        paused = true;
+        pauseRequested = false;
+        LogManager::info("[AUDIO] Lecture en pause");
+      }
+      // Puis Resume
+      else if (resumeRequested) {
+        audio.pauseResume();
+        paused = false;
+        resumeRequested = false;
+        LogManager::info("[AUDIO] Lecture reprise");
+      }
+
+      // Volume peut être appliqué en même temps
+      if (volumeChanged) {
+        uint8_t newVolume = pendingVolume;
+        uint8_t internalVolume = (newVolume * 21) / 100;
+        audio.setVolume(internalVolume);
+        currentVolume = newVolume;
+        volumeChanged = false;
+        LogManager::info("[AUDIO] Volume appliqué: %d%% (interne: %d/21)", newVolume, internalVolume);
+      }
+
+      xSemaphoreGive(audioMutex);
+    }
+
     if (available && !paused) {
-      // IMPORTANT : éviter course entre audio.loop() et connecttoFS/stopSong/pauseResume/setVolume
-      if (audioMutex && xSemaphoreTake(audioMutex, 0) == pdTRUE) { // non-bloquant
+      // Lire l'audio (non-bloquant)
+      if (audioMutex && xSemaphoreTake(audioMutex, 0) == pdTRUE) {
         audio.loop();
         xSemaphoreGive(audioMutex);
       }
-      // si mutex occupé, une commande (play/stop/etc) est en cours -> on saute ce tour
+      // Si mutex occupé, on saute ce tour
     }
 
     // Courte pause pour équilibrer CPU entre audio et autres tâches (WiFi/BLE/MQTT)
@@ -101,12 +144,14 @@ bool AudioManager::init() {
   // Config audio (protégée)
   if (xSemaphoreTake(audioMutex, MUTEX_TIMEOUT_SHORT) == pdTRUE) {
     audio.setPinout(I2S_BCLK_PIN, I2S_LRC_PIN, I2S_DOUT_PIN);
-    
-    // Augmenter le buffer I2S pour éviter les claquements
-    // Plus de buffer = plus de tolérance aux micro-pauses SD/SPI
+
+    // Optimiser pour MP3 192 kbps stéréo 44.1 kHz
+    // Augmenter buffers : RAM=32KB, PSRAM=300KB pour meilleure tolérance underruns
+    audio.setBufsize(32 * 1024, 300 * 1024);
+
     audio.setI2SCommFMT_LSB(false);  // Format standard
     audio.setConnectionTimeout(500, 2000);  // Timeout connexion
-    
+
     // Convertir le volume % en valeur interne (0-21)
     uint8_t internalVolume = (currentVolume * 21) / 100;
     audio.setVolume(internalVolume);
@@ -199,32 +244,20 @@ bool AudioManager::play(const char* path) {
 void AudioManager::pause() {
 #ifdef HAS_AUDIO
   if (!available) return;
-  if (!isPlaying()) return;
 
-  if (xSemaphoreTake(audioMutex, MUTEX_TIMEOUT_SHORT) == pdTRUE) {
-    audio.pauseResume();
-    paused = true;
-    xSemaphoreGive(audioMutex);
-    LogManager::info("[AUDIO] Lecture en pause");
-  } else {
-    LogManager::warning("[AUDIO] Mutex occupe (pause)");
-  }
+  // Approche lock-free : signaler la demande et laisser la task audio l'exécuter
+  pauseRequested = true;
+  LogManager::info("[AUDIO] Pause demandée");
 #endif
 }
 
 void AudioManager::resume() {
 #ifdef HAS_AUDIO
   if (!available) return;
-  if (!paused) return;
 
-  if (xSemaphoreTake(audioMutex, MUTEX_TIMEOUT_SHORT) == pdTRUE) {
-    audio.pauseResume();
-    paused = false;
-    xSemaphoreGive(audioMutex);
-    Serial.println("[AUDIO] Lecture reprise");
-  } else {
-    Serial.println("[AUDIO] ERREUR: Mutex occupe (resume)");
-  }
+  // Approche lock-free : signaler la demande et laisser la task audio l'exécuter
+  resumeRequested = true;
+  LogManager::info("[AUDIO] Resume demandé");
 #endif
 }
 
@@ -232,15 +265,9 @@ void AudioManager::stop() {
 #ifdef HAS_AUDIO
   if (!available) return;
 
-  if (xSemaphoreTake(audioMutex, MUTEX_TIMEOUT_SHORT) == pdTRUE) {
-    audio.stopSong();
-    currentFile = "";
-    paused = false;
-    xSemaphoreGive(audioMutex);
-    LogManager::info("[AUDIO] Lecture arretee");
-  } else {
-    LogManager::warning("[AUDIO] Mutex occupe (stop)");
-  }
+  // Approche lock-free : signaler la demande et laisser la task audio l'exécuter
+  stopRequested = true;
+  LogManager::info("[AUDIO] Stop demandé");
 #endif
 }
 
@@ -274,20 +301,15 @@ void AudioManager::setVolume(uint8_t percent) {
 #ifdef HAS_AUDIO
   // Limiter à 0-100%
   if (percent > 100) percent = 100;
-  currentVolume = percent;
 
   if (!available) return;
 
-  // Convertir le pourcentage en valeur interne (0-21)
-  uint8_t internalVolume = (percent * 21) / 100;
+  // Approche lock-free : signaler le changement et laisser la task audio l'appliquer
+  // Plus rapide que d'attendre le mutex, idéal pour les changements de volume fréquents
+  pendingVolume = percent;
+  volumeChanged = true;  // Flag volatile pour la task audio
 
-  if (xSemaphoreTake(audioMutex, MUTEX_TIMEOUT_SHORT) == pdTRUE) {
-    audio.setVolume(internalVolume);
-    xSemaphoreGive(audioMutex);
-    LogManager::info("[AUDIO] Volume: %d%% (interne: %d/21)", percent, internalVolume);
-  } else {
-    LogManager::error("[AUDIO] Mutex occupe (setVolume)");
-  }
+  LogManager::info("[AUDIO] Volume en attente: %d%%", percent);
 #endif
 }
 

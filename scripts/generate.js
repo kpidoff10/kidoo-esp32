@@ -126,7 +126,7 @@ function generateModelmqttRoutes(config) {
     const cond = i === 0 ? `#ifdef ${m.macro}` : `#elif defined(${m.macro})`;
     return `${cond}
   #include "${id}/mqtt/model_mqtt_routes.h"
-  typedef Model${m.display_name}mqttRoutes ModelmqttRoutes;`;
+  typedef Model${m.display_name}MqttRoutes ModelMqttRoutes;`;
   }).join('\n') + `
 #else
   #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
@@ -393,7 +393,7 @@ void InitModel${displayNameFormatted}::update() {
  * Routes mqtt pour ${displayNameFormatted}
  */
 
-class Model${displayNameFormatted}mqttRoutes {
+class Model${displayNameFormatted}MqttRoutes {
 public:
   // TODO: Ajouter les handlers mqtt spécifiques
 };
@@ -543,10 +543,10 @@ function addModelToYaml(modelId, board, displayName) {
 
   lines.splice(insertIndex + 1, 0, modelEntry, '');
 
-  // Ajouter aussi dans dispatcher_config.config_sync
+  // Ajouter aussi dans dispatcher_config.config_sync (après l'entrée gotchi)
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(`gotchi: { type: inline }`)) {
-      lines[i] += `\n    ${modelId}: { type: include, path: "${modelId}/config_sync/model_config_sync_routes.h", typedef: "Model${displayNameFormatted}ConfigSyncRoutes" }`;
+    if (lines[i].trim().startsWith('gotchi: { type: include')) {
+      lines.splice(i + 1, 0, `    ${modelId}: { type: include, path: "${modelId}/config_sync/model_config_sync_routes.h", typedef: "Model${displayNameFormatted}ConfigSyncRoutes" }`);
       break;
     }
   }
@@ -577,7 +577,22 @@ function generatePlatformioIni(config) {
     const buildFlags = (m.build_flags || []).map(f => 
       f.startsWith('-') ? `	${f}` : `	-D${f}`
     ).join('\n');
-    const libDeps = (m.lib_deps || []).map(l => `	${l}`).join('\n');
+    const formatLibDep = (l) => {
+      const s = String(l);
+      // Lib nommée : ZIP du tag
+      // Arduino_GFX=https://github.com/.../archive/refs/tags/v1.4.9.zip
+      if (/^[\w-]+=https?:\/\//.test(s)) {
+        // URLs nommées : pas de guillemets (PlatformIO gère les URLs)
+        return `	${s}`;
+      }
+      // Dépendances avec espaces → mettre entre guillemets
+      if (/\s|#/.test(s)) {
+        return `	"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      }
+      // Autres (y compris @version simples) → pas de guillemets
+      return `	${s}`;
+    };
+    const libDeps = (m.lib_deps || []).map(formatLibDep).join('\n');
     const libIgnore = (m.lib_ignore || []).map(l => `	${l}`).join('\n');
 
     let boardLines = [];
@@ -636,7 +651,7 @@ ${libIgnore}
 ; Architecture multi-plateforme ESP32
 ; ============================================
 ; Ce projet supporte plusieurs plateformes ESP32 avec un seul code source :
-; - ESP32-S3 (Gotchi) : Dual-core + PSRAM
+; - ESP32-S3 (Sound) : Dual-core + PSRAM
 ; - ESP32-C3 (Dream)  : Single-core RISC-V
 ;
 ; La détection du chip est automatique via core_config.h
@@ -675,9 +690,10 @@ build_flags =
 	-Wl,--gc-sections
 	-DFASTLED_ESP32_FLASH_LOCK=1
 
-lib_deps = 
+lib_deps =
 	adafruit/Adafruit NeoPixel@^1.12.4
 	bblanchon/ArduinoJson@^7.0.0
+	knolleary/PubSubClient@^2.8
 
 monitor_speed = 115200
 monitor_dtr = 0
@@ -943,7 +959,7 @@ void InitModel${displayNameFormatted}::update() {
  * Routes mqtt pour ${displayNameFormatted}
  */
 
-class Model${displayNameFormatted}mqttRoutes {
+class Model${displayNameFormatted}MqttRoutes {
 public:
   // TODO: Ajouter les handlers mqtt spécifiques
 };

@@ -161,21 +161,13 @@ void loop() {
 
     // Synchroniser l'heure RTC via NTP
     #ifdef HAS_RTC
-    if (Serial) {
-      Serial.println("[MAIN] WiFi connecte - Synchronisation RTC via NTP");
-    }
     RTCManager::autoSyncIfNeeded();
     #endif
 
-    // Note: La synchronisation de configuration est gérée automatiquement
-    // par WiFiManager via ModelConfigSyncRoutes::onWiFiConnected()
-
-    // Initialiser MQTT (lazy init) - seulement s'il n'est pas déjà initialisé
+    // Initialiser MQTT (lazy init) — sauf pendant le setup BLE
+    // Le MQTT sera initialisé après la commande BLE "registered"
     #ifdef HAS_MQTT
-    if (HAS_MQTT && !MqttManager::isInitialized()) {
-      if (Serial) {
-        Serial.println("[MAIN] WiFi connecte - Initialisation MQTT");
-      }
+    if (HAS_MQTT && !MqttManager::isInitialized() && !WiFiManager::isSkipPostConnectActions()) {
       MqttManager::init();
     }
     #endif
@@ -198,7 +190,7 @@ void loop() {
   }
   #endif
   
-  // Mise à jour du modèle (Dream : bedtime, wakeup, touch | Gotchi : NFC, life, touch, emotions)
+  // Mise à jour du modèle (Dream : bedtime, wakeup, touch | Gotchi : UI AMOLED, etc. | Sound : audio)
   InitModel::update();
   
   // ====================================================================

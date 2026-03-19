@@ -16,6 +16,12 @@
 #include "common/managers/device_key/device_key_manager.h"
 #endif
 #include <ESP.h>
+#include "common/config_sync/config_sync_common.h"
+#include "scan/wifi_scan_command.h"
+#include "models/model_config_sync_routes.h"
+#ifdef HAS_MQTT
+#include "common/managers/mqtt/mqtt_manager.h"
+#endif
 
 #ifdef HAS_BLE
 #include <BLEDevice.h>
@@ -417,6 +423,35 @@ bool BLECommandHandler::handleCommand(const String& data) {
       sendResponse(false, "Commande 'setup' invalide");
       return false;
     }
+  } else if (command == "wifi-scan") {
+    if (BLEWiFiScanCommand::isValid(jsonData)) {
+      return BLEWiFiScanCommand::execute(jsonData);
+    }
+    sendResponse(false, "Commande 'wifi-scan' invalide");
+    return false;
+  } else if (command == "registered") {
+    // L'app a créé le Kidoo sur le serveur → lancer config-sync + MQTT
+    sendResponse(true, "Config-sync lancé");
+
+    #ifdef HAS_WIFI
+    if (WiFiManager::isConnected()) {
+      ModelConfigSyncCommon::fetchAndSaveCmdTokenSecret();
+      ModelConfigSyncRoutes::onWiFiConnected();
+
+      #ifdef HAS_MQTT
+      if (!MqttManager::isInitialized()) {
+        MqttManager::init();
+      }
+      if (MqttManager::isInitialized() && !MqttManager::isConnected()) {
+        MqttManager::connect();
+      }
+      #endif
+    } else {
+      Serial.println("[BLE-COMMAND] ERREUR: WiFi non connecté pour config-sync");
+    }
+    #endif
+
+    return true;
   } else {
     Serial.print("[BLE-COMMAND] ERREUR: Commande inconnue '");
     Serial.print(command);
@@ -430,6 +465,12 @@ bool BLECommandHandler::handleCommand(const String& data) {
 // Fonction pour initialiser le handler (appelée depuis BLEManager)
 void BLECommandHandler::init(void* txCharacteristic) {
   pTxCharacteristic = static_cast<BLECharacteristic*>(txCharacteristic);
+}
+
+void BLECommandHandler::sendRawJson(const String& json) {
+  if (pTxCharacteristic == nullptr) return;
+  pTxCharacteristic->setValue(json.c_str());
+  pTxCharacteristic->notify();
 }
 
 #else
@@ -447,6 +488,10 @@ bool BLECommandHandler::handleCommand(const String& data) {
 }
 
 void BLECommandHandler::init(void* txCharacteristic) {
+  // Rien à faire
+}
+
+void BLECommandHandler::sendRawJson(const String& json) {
   // Rien à faire
 }
 #endif

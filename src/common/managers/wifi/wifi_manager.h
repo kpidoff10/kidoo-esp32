@@ -153,6 +153,15 @@ private:
   static bool retryThreadRunning;
   static unsigned long retryStartTime;
   
+  // Flag pour skip config-sync/MQTT pendant le setup BLE initial
+  static bool skipPostConnectActions;
+
+public:
+  /** Désactiver les actions post-connexion (config-sync, MQTT) pendant le setup BLE */
+  static void setSkipPostConnectActions(bool skip);
+  static bool isSkipPostConnectActions();
+
+private:
   // Timeout de connexion par défaut (20 s pour hotspots/box lentes)
   static const uint32_t DEFAULT_CONNECT_TIMEOUT_MS = 20000;
   

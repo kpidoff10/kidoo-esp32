@@ -31,4 +31,19 @@ String getMacAddressString(esp_mac_type_t macType) {
   }
   return String("");
 }
+
+#else
+// Stubs pour les modèles sans WiFi
+bool getMacAddressString(char* macStr, size_t macStrSize, esp_mac_type_t macType) {
+  (void)macType;
+  if (macStr && macStrSize > 0) {
+    macStr[0] = '\0';
+  }
+  return false;
+}
+
+String getMacAddressString(esp_mac_type_t macType) {
+  (void)macType;
+  return String("");
+}
 #endif

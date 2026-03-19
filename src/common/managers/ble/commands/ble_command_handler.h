@@ -29,7 +29,10 @@ public:
    * Gère aussi les LEDs et la désactivation du BLE en cas de succès
    */
   static void sendSetupCompletionResponse(bool success, bool wifiConnected);
-  
+
+  /** Envoyer un JSON brut via BLE TX (pour commandes avec réponse custom) */
+  static void sendRawJson(const String& json);
+
   /**
    * Initialiser le handler avec la caractéristique TX
    * @param txCharacteristic Caractéristique TX pour envoyer les réponses

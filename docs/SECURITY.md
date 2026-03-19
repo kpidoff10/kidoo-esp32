@@ -3,7 +3,7 @@
 Document récapitulatif de toutes les mesures de sécurité implémentées sur le firmware ESP32.
 
 **Date**: 10/03/2026
-**Modèles**: ESP32-C3 (Dream), ESP32-S3 (Gotchi)
+**Modèles**: ESP32-C3 (Dream), ESP32-S3 (Gotchi, Sound)
 
 ---
 

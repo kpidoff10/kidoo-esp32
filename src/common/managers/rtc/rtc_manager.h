@@ -4,15 +4,13 @@
 #include <Arduino.h>
 
 /**
- * Gestionnaire RTC DS3231
- * 
- * Ce module gère l'horloge temps réel DS3231 via I2C.
- * Le DS3231 est très précis grâce à sa compensation de température.
- * 
- * Fonctionnalités:
- * - Lecture/écriture de l'heure
- * - Lecture de la température interne
- * - Gestion des alarmes (optionnel)
+ * Gestionnaire RTC (multi-puces)
+ *
+ * - Par défaut : DS3231 (I2C 0x68) — Dream, Sound, etc.
+ * - Si KIDOO_RTC_PCF85063 (config modèle) : PCF85063 (ex. Waveshare AMOLED, I2C 0x51)
+ *
+ * Fonctionnalités communes : lecture/écriture date/heure, sync NTP, timezone.
+ * Température : uniquement DS3231 ; PCF85063 retourne 0.
  */
 
 // Structure pour représenter une date/heure
@@ -124,15 +122,12 @@ public:
   static bool setUnixTime(uint32_t timestamp);
   
   /**
-   * Obtenir la température interne du DS3231 (précision ±3°C)
-   * @return Température en degrés Celsius
+   * Température interne (DS3231 uniquement ; 0 si PCF85063 ou indisponible)
    */
   static float getTemperature();
-  
+
   /**
-   * Vérifier si l'oscillateur s'est arrêté (perte de courant)
-   * Indique que l'heure n'est peut-être plus valide
-   * @return true si l'oscillateur s'est arrêté, false sinon
+   * Perte d'alimentation / horloge arrêtée (OSF DS3231 ou VL PCF85063)
    */
   static bool hasLostPower();
   
@@ -170,27 +165,10 @@ public:
   static bool autoSyncIfNeeded();
 
 private:
-  // Variables statiques
   static bool initialized;
   static bool available;
-  static bool ntpSynced;  // Flag pour éviter les syncs multiples
-  
-  // Adresse I2C du DS3231
-  static const uint8_t DS3231_ADDRESS = 0x68;
-  
-  // Registres du DS3231
-  static const uint8_t REG_SECONDS = 0x00;
-  static const uint8_t REG_MINUTES = 0x01;
-  static const uint8_t REG_HOURS = 0x02;
-  static const uint8_t REG_DAY = 0x03;
-  static const uint8_t REG_DATE = 0x04;
-  static const uint8_t REG_MONTH = 0x05;
-  static const uint8_t REG_YEAR = 0x06;
-  static const uint8_t REG_CONTROL = 0x0E;
-  static const uint8_t REG_STATUS = 0x0F;
-  static const uint8_t REG_TEMP_MSB = 0x11;
-  static const uint8_t REG_TEMP_LSB = 0x12;
-  
+  static bool ntpSynced;
+
   // Fonctions utilitaires
   static uint8_t bcdToDec(uint8_t bcd);
   static uint8_t decToBcd(uint8_t dec);

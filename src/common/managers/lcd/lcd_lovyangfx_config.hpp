@@ -6,8 +6,8 @@
 #include "models/model_config.h"
 
 /**
- * Configuration LovyanGFX pour ST7789 240x280 (Gotchi).
- * Pins définis dans gotchi/config/config.h
+ * Configuration LovyanGFX pour ST7789 240x280 (HAS_LCD).
+ * Pins définis dans le config.h du modèle qui active HAS_LCD.
  */
 class LGFX_Kidoo : public lgfx::LGFX_Device {
   lgfx::Panel_ST7789 _panel_instance;

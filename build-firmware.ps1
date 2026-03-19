@@ -15,7 +15,7 @@ param(
 
 # Liste des modèles : répertoires src/models/* sauf common (aligné avec models.yaml)
 $ValidModels = (Get-ChildItem -Path (Join-Path $PSScriptRoot "src\models") -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "common" } | Select-Object -ExpandProperty Name)
-if (-not $ValidModels) { $ValidModels = @("dream", "gotchi") }
+if (-not $ValidModels) { $ValidModels = @("dream", "gotchi", "sound") }
 
 $PART_MAX_SIZE_BYTES = 2 * 1024 * 1024   # 2 Mo par part
 

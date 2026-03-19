@@ -12,7 +12,7 @@ class LGFX_Kidoo;
 /**
  * Gestionnaire LCD IPS - ST7789 - 240x280 - SPI
  *
- * Utilisé pour afficher l'état du Gotchi (Tamagotchi) et autres informations.
+ * Utilisé pour afficher des infos sur l'écran LCD lorsque le modèle définit HAS_LCD.
  * Activé via HAS_LCD dans la config du modèle.
  */
 
@@ -69,7 +69,7 @@ public:
   /** À appeler en loop() : ré-init LCD une fois ~2,5 s après boot (corrige "après reboot pas d'affichage"). */
   static void tryDelayedReinit();
 
-  /** Callback appelé après la re-init différée (ex. afficher "Kidoo Gotchi"). */
+  /** Callback appelé après la re-init différée (ex. titre du modèle). */
   static void setPostReinitCallback(void (*fn)());
 
   /** true pendant ~1,5 s après la re-init différée (ne pas dessiner l'animation par-dessus l'écran de démarrage). */

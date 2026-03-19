@@ -1,8 +1,8 @@
-#ifndef MODEL_MQTT_ROUTES_H
-#define MODEL_MQTT_ROUTES_H
+#ifndef MODEL_mqtt_ROUTES_H
+#define MODEL_mqtt_ROUTES_H
 
 /**
- * Inclusion des routes MQTT spécifiques au modèle
+ * Inclusion des routes mqtt spécifiques au modèle
  * Généré par: node scripts/generate.js
  * Source: models.yaml
  */
@@ -20,4 +20,4 @@
   #error "Aucun modele Kidoo defini! Definissez KIDOO_MODEL_*"
 #endif
 
-#endif // MODEL_MQTT_ROUTES_H
+#endif // MODEL_mqtt_ROUTES_H

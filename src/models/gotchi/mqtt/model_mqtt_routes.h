@@ -5,22 +5,13 @@
 #include <ArduinoJson.h>
 
 /**
- * Routes MQTT spécifiques au modèle Kidoo Gotchi
- *
- * Actions: brightness, sleep, led, status, firmware-update
+ * Routes MQTT — Gotchi (Waveshare ESP32-S3 AMOLED)
  */
 
 class ModelGotchiMqttRoutes {
 public:
-  static bool processMessage(const JsonObject& json);
+  static bool processMessage(const JsonObject& actionObj);
   static void printRoutes();
-
-private:
-  static bool handleBrightness(const JsonObject& json);
-  static bool handleSleep(const JsonObject& json);
-  static bool handleLed(const JsonObject& json);
-  static bool handleStatus(const JsonObject& json);
-  static bool handleFirmwareUpdate(const JsonObject& json);
 };
 
 #endif // MODEL_GOTCHI_MQTT_ROUTES_H

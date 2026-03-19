@@ -7,14 +7,14 @@
 #define MAC_UTILS_H
 
 #include <Arduino.h>
+#include <esp_mac.h>  // Toujours inclure pour avoir esp_mac_type_t disponible
 
 #ifdef HAS_WIFI
 #include <WiFi.h>
-#include <esp_mac.h>
 
 /**
  * Obtenir l'adresse MAC WiFi et la formater en string
- * 
+ *
  * @param macStr Buffer de sortie pour l'adresse MAC formatée (doit être au moins de 18 caractères)
  * @param macStrSize Taille du buffer (doit être >= 18)
  * @param macType Type de MAC à récupérer (ESP_MAC_WIFI_STA par défaut)
@@ -24,25 +24,17 @@ bool getMacAddressString(char* macStr, size_t macStrSize, esp_mac_type_t macType
 
 /**
  * Obtenir l'adresse MAC WiFi et la retourner comme String
- * 
+ *
  * @param macType Type de MAC à récupérer (ESP_MAC_WIFI_STA par défaut)
  * @return String contenant l'adresse MAC formatée (format: AA:BB:CC:DD:EE:FF)
  */
 String getMacAddressString(esp_mac_type_t macType = ESP_MAC_WIFI_STA);
 
 #else
-// Stubs pour les modèles sans WiFi
-inline bool getMacAddressString(char* macStr, size_t macStrSize, int macType = 0) {
-  (void)macStr;
-  (void)macStrSize;
-  (void)macType;
-  return false;
-}
+// Stubs pour les modèles sans WiFi (implémentées dans mac_utils.cpp)
+bool getMacAddressString(char* macStr, size_t macStrSize, esp_mac_type_t macType = ESP_MAC_WIFI_STA);
+String getMacAddressString(esp_mac_type_t macType = ESP_MAC_WIFI_STA);
 
-inline String getMacAddressString(int macType = 0) {
-  (void)macType;
-  return String("");
-}
 #endif
 
 /**

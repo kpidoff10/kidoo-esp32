@@ -35,6 +35,15 @@ char WiFiManager::currentSSID[64] = "";
 TaskHandle_t WiFiManager::retryTaskHandle = nullptr;
 bool WiFiManager::retryThreadRunning = false;
 unsigned long WiFiManager::retryStartTime = 0;
+bool WiFiManager::skipPostConnectActions = false;
+
+void WiFiManager::setSkipPostConnectActions(bool skip) {
+  skipPostConnectActions = skip;
+}
+
+bool WiFiManager::isSkipPostConnectActions() {
+  return skipPostConnectActions;
+}
 
 bool WiFiManager::init() {
   if (initialized) {
@@ -187,24 +196,25 @@ bool WiFiManager::connect(const char* ssid, const char* password, uint32_t timeo
   LogManager::info("[WIFI] Force du signal: %d dBm", WiFi.RSSI());
   LogManager::info("[WIFI] ========================================");
   
-  // Déclencher la connexion MQTT si disponible (sauf pendant OTA)
-  #ifdef HAS_MQTT
-  if (MqttManager::isInitialized() && !MqttManager::isConnected()
-      && !OTAManager::isOtaInProgress()) {
-    LogManager::info("[WIFI] Connexion automatique MQTT...");
-    MqttManager::connect();
+  // Skip config-sync/MQTT pendant le setup BLE (le callback s'en charge après)
+  if (!skipPostConnectActions) {
+    #ifdef HAS_MQTT
+    if (MqttManager::isInitialized() && !MqttManager::isConnected()
+        && !OTAManager::isOtaInProgress()) {
+      LogManager::info("[WIFI] Connexion automatique MQTT...");
+      MqttManager::connect();
+    }
+    #endif
+
+    ModelConfigSyncCommon::fetchAndSaveCmdTokenSecret();
+    ModelConfigSyncRoutes::onWiFiConnected();
+
+    #ifdef HAS_MQTT
+    OTAManager::publishLastOtaErrorIfAny();
+    #endif
+  } else {
+    LogManager::info("[WIFI] Post-connect actions skippées (setup BLE en cours)");
   }
-  #endif
-  
-  // Synchroniser le secret MQTT (commun à tous les modèles)
-  ModelConfigSyncCommon::fetchAndSaveCmdTokenSecret();
-
-  // Synchroniser la configuration via les routes spécifiques au modèle
-  ModelConfigSyncRoutes::onWiFiConnected();
-
-  #ifdef HAS_MQTT
-  OTAManager::publishLastOtaErrorIfAny();
-  #endif
   
   return true;
 #endif

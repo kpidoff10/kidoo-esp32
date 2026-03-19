@@ -1,7 +1,7 @@
 /**
  * Gestionnaire des requêtes HTTP vers l'API Kidoo
  * Méthodes génériques uniquement. La logique spécifique (ex: nighttime-alert)
- * reste dans les modèles (dream, gotchi, etc.).
+ * reste dans les modèles (dream, sound, etc.).
  */
 
 #include "api_manager.h"

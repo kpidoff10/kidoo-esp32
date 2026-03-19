@@ -7,7 +7,7 @@
  * Gestionnaire de téléchargement (HTTP/HTTPS -> fichier)
  *
  * Permet de télécharger un fichier depuis une URL et de l'écrire sur la carte SD
- * (stream par blocs, comme pour l'OTA firmware). Utilisé par sync-emotions (Gotchi)
+ * (stream par blocs, comme pour l'OTA firmware). Utilisé pour gros téléchargements SD.
  * ou tout autre besoin de download (firmware, assets, etc.).
  *
  * Nécessite HAS_SD et HAS_WIFI. Sans l'un des deux, downloadUrlToFile() retourne false.

@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 /**
- * Commandes Serial spécifiques au modèle Kidoo Gotchi
+ * Commandes Serial spécifiques au modèle Gotchi
  */
 
 class ModelGotchiSerialCommands {

@@ -55,7 +55,7 @@ Dans le dossier **kidoo-esp32** :
 
 Le script :
 
-1. **Demande le modèle** (dream / gotchi) si non fourni.
+1. **Demande le modèle** (dream / gotchi / sound) si non fourni.
 2. **Demande la version** (ex: `1.0.2`) ou utilise la version actuelle du modèle si tu appuies sur Entrée.
 3. **Met à jour** `src/models/{model}/config/default_config.h` → `#define FIRMWARE_VERSION "1.0.2"` (chaque modèle a sa propre version).
 4. **Lance le build** PlatformIO pour l'environnement choisi.
@@ -65,7 +65,8 @@ Avec paramètres :
 
 ```powershell
 .\build-firmware.ps1 -Model dream -Version 1.0.2
-.\build-firmware.ps1 -Model gotchi -Version 1.0.1   # build Gotchi au lieu de Dream
+.\build-firmware.ps1 -Model gotchi -Version 1.0.1  # Gotchi (Waveshare AMOLED)
+.\build-firmware.ps1 -Model sound -Version 1.0.1   # Sound
 ```
 
 ---
@@ -76,14 +77,18 @@ Avec paramètres :
 # Dream (ESP32-C3, OTA)
 pio run -e dream
 
-# Gotchi (ESP32-S3)
+# Gotchi — Waveshare ESP32-S3 AMOLED 1.75
 pio run -e gotchi
+
+# Sound (ESP32-S3)
+pio run -e sound
 ```
 
 Le binaire est dans :
 
 - **Dream** : `.pio/build/dream/firmware.bin`
 - **Gotchi** : `.pio/build/gotchi/firmware.bin`
+- **Sound** : `.pio/build/sound/firmware.bin`
 
 ---
 
