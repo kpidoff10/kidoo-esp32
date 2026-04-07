@@ -1,0 +1,94 @@
+#include "../behavior_engine.h"
+#include "../behavior_objects.h"
+#include "../../face_engine.h"
+#include <cstdlib>
+#include <cmath>
+
+namespace {
+int s_ballId = -1;
+int s_bounceCount = 0;
+int s_cycleCount = 0;
+uint32_t s_phaseTimer = 0;
+bool s_throwing = true;
+
+void throwBall() {
+  bool fromLeft = (rand() % 2) == 0;
+  float startX = fromLeft ? 60.0f : 406.0f;
+  float vx = fromLeft ? 0.1f + (rand() % 50) / 1000.0f : -(0.1f + (rand() % 50) / 1000.0f);
+
+  if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
+
+  s_ballId = BehaviorObjects::spawn(
+    ObjectShape::Circle, 0xFF3030, 24,
+    startX, 150.0f, vx, -0.22f,
+    0.0014f, 0.72f, true, 0
+  );
+  s_bounceCount = 0;
+  s_phaseTimer = 0;
+  s_throwing = true;
+
+  FaceEngine::setExpression(FaceExpression::Excited);
+}
+}
+
+static void onEnter() {
+  s_cycleCount = 0;
+  FaceEngine::setAutoMode(true);
+  throwBall();
+}
+
+static void onUpdate(uint32_t dtMs) {
+  auto& stats = BehaviorEngine::getStats();
+  s_phaseTimer += dtMs;
+
+  // Stats pendant le jeu
+  stats.addBoredom(-5.0f, dtMs);
+  stats.addHappiness(2.0f, dtMs);
+  stats.addEnergy(-1.0f, dtMs);
+  stats.addExcitement(1.0f, dtMs);
+
+  // Détecter les rebonds via la position Y de la balle
+  float lx, ly;
+  if (BehaviorObjects::getLookTarget(lx, ly)) {
+    // Balle haute → amazed
+    if (ly < -0.3f && s_throwing) {
+      FaceEngine::setExpression(FaceExpression::Amazed);
+      s_throwing = false;
+    }
+    // Balle basse (rebond) → excited + blink
+    if (ly > 0.6f && !s_throwing) {
+      FaceEngine::setExpression(FaceExpression::Excited);
+      FaceEngine::blink();
+      s_throwing = true;
+      s_bounceCount++;
+    }
+  }
+
+  // Après 4 rebonds → nouveau lancer ou fin
+  if (s_bounceCount >= 4 || s_phaseTimer > 5000) {
+    s_cycleCount++;
+    if (s_cycleCount >= 3) {
+      // Fatigué → happy puis fin
+      FaceEngine::setExpression(FaceExpression::Happy);
+      BehaviorObjects::destroy(s_ballId);
+      s_ballId = -1;
+    } else {
+      // Relancer
+      FaceEngine::setExpression(FaceExpression::Happy);
+      throwBall();
+    }
+  }
+}
+
+static void onExit() {
+  if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
+  s_ballId = -1;
+  FaceEngine::setAutoMode(false);
+}
+
+const Behavior BEHAVIOR_PLAY_BALL = {
+  "play", onEnter, onUpdate, onExit,
+  FaceExpression::Excited,
+  8.0f,   // min 8s
+  20.0f   // max 20s
+};
