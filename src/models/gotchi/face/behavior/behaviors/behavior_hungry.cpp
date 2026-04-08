@@ -50,8 +50,40 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool hungryOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 1) {
+    FaceEngine::setExpression(FaceExpression::Pleading);
+    FaceEngine::lookAt(0, -0.3f);
+    stats.happiness += 3;
+    stats.clamp();
+  } else if (stats.touchCount == 2) {
+    FaceEngine::setExpression(FaceExpression::Disappointed);
+    stats.happiness -= 5;
+    stats.clamp();
+  } else {
+    FaceEngine::setExpression(FaceExpression::Annoyed);
+    stats.happiness -= 8;
+    stats.irritability += 15;
+    stats.clamp();
+  }
+  return true;
+}
+
+static bool hungryOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Annoyed);
+  stats.happiness -= 10;
+  stats.irritability += 20;
+  stats.clamp();
+  if (stats.hunger < 15) {
+    BehaviorEngine::requestBehavior(&BEHAVIOR_TANTRUM);
+  }
+  return true;
+}
+
 const Behavior BEHAVIOR_HUNGRY = {
-  "hungry", onEnter, onUpdate, onExit,
+  "hungry", onEnter, onUpdate, onExit, hungryOnTouch, hungryOnShake,
   FaceExpression::Pleading,
   5.0f, 20.0f
 };

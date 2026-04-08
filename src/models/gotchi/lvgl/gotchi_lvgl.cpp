@@ -2,6 +2,7 @@
 
 #include "../config/config.h"
 #include "../face/face_engine.h"
+#include "../face/overlay/face_overlay_layer.h"
 #include "../face/behavior/behavior_engine.h"
 
 #include <cstdint>
@@ -12,10 +13,13 @@
 
 #include "touch/TouchDrvCST92xx.h"
 
+// GFX exposé pour face_renderer (dessin direct)
+static Arduino_GFX *s_gfx = nullptr;
+Arduino_GFX* getGotchiGfx() { return s_gfx; }
+
 namespace {
 
 Arduino_ESP32QSPI *s_bus = nullptr;
-Arduino_GFX *s_gfx = nullptr;
 TouchDrvCST92xx s_touch;
 bool s_touch_ok = false;
 bool s_lvgl_ok = false;
@@ -147,6 +151,13 @@ bool init() {
   return true;
 }
 
+// --- Tap detection ---
+bool     s_wasTouched = false;
+uint32_t s_touchDownAt = 0;
+uint32_t s_lastTapAt = 0;
+constexpr uint32_t TAP_MAX_DURATION = 400;
+constexpr uint32_t TAP_DEBOUNCE     = 300;
+
 void update() {
   if (s_lvgl_ok) {
     static uint32_t lastMs = 0;
@@ -154,9 +165,27 @@ void update() {
     uint32_t dt = lastMs ? (now - lastMs) : 10;
     lastMs = now;
 
+    // Tap detection hardware
+    if (s_touch_ok) {
+      bool pressed = s_touch.isPressed();
+      if (pressed && !s_wasTouched) {
+        s_touchDownAt = now;
+      } else if (!pressed && s_wasTouched) {
+        uint32_t duration = now - s_touchDownAt;
+        if (duration < TAP_MAX_DURATION && (now - s_lastTapAt) > TAP_DEBOUNCE) {
+          s_lastTapAt = now;
+          BehaviorEngine::onTouch();
+        }
+      }
+      s_wasTouched = pressed;
+    }
+
     BehaviorEngine::update(dt);
     FaceEngine::update(dt);
-    lv_timer_handler();
+    FaceOverlayLayer::update(dt);
+    FaceOverlayLayer::draw(s_gfx);
+    // NE PAS appeler lv_timer_handler() — le rendu est géré par Arduino_GFX directement
+    // LVGL dessinait par-dessus nos yeux et causait le fond blanc
     vTaskDelay(1); // Yield pour le watchdog
   }
 }
@@ -190,6 +219,7 @@ void testDisplay() {
 
   // Revenir au Face Engine
   lv_obj_clean(lv_screen_active());
+  FaceOverlayLayer::init();
   FaceEngine::init();
   lv_timer_handler();
   Serial.println("[GOTCHI_LVGL] Test terminé");

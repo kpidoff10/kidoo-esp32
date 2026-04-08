@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../overlay/face_overlay_layer.h"
 #include <cstdlib>
 
 namespace {
@@ -12,6 +13,7 @@ uint32_t s_shakeTimer = 0;
 static void onEnter() {
   FaceEngine::setAutoMode(true);
   FaceEngine::setExpression(FaceExpression::Angry);
+  FaceOverlayLayer::setMangaCross(true);
   BehaviorEngine::getStats().mouthState = -0.5f;
   s_angerTimer = 0;
   s_exprTimer = 0;
@@ -55,12 +57,43 @@ static void onUpdate(uint32_t dtMs) {
 }
 
 static void onExit() {
+  FaceOverlayLayer::setMangaCross(false);
   BehaviorObjects::destroyAll();
   FaceEngine::setAutoMode(false);
 }
 
+static bool tantrumOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 2) {
+    // Rejected
+    FaceEngine::setExpression(FaceExpression::Furious);
+    stats.irritability += 10;
+    stats.clamp();
+  } else {
+    // Persistent calming
+    stats.irritability -= 5;
+    stats.happiness += 5;
+    stats.clamp();
+    if (stats.touchCount >= 5 && stats.irritability < 30) {
+      // Tantrum breaks
+      BehaviorEngine::requestBehavior(&BEHAVIOR_SAD);
+    }
+  }
+  return true;
+}
+
+static bool tantrumOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Furious);
+  stats.irritability += 25;
+  stats.happiness -= 10;
+  stats.excitement += 15;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_TANTRUM = {
-  "tantrum", onEnter, onUpdate, onExit,
+  "tantrum", onEnter, onUpdate, onExit, tantrumOnTouch, tantrumOnShake,
   FaceExpression::Angry,
   3.0f, 8.0f
 };

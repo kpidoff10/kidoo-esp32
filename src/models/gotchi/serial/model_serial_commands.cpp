@@ -85,6 +85,22 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
     // --- Face engine direct ---
     if (arg == "blink") { FaceEngine::blink(); return true; }
 
+    // Gestes : nod (oui) et shake (non) avec vitesse optionnelle
+    if (arg.startsWith("nod")) {
+      String spd = arg.substring(3); spd.trim();
+      if (spd == "slow")      FaceEngine::nod(FaceEngine::GestureSpeed::Slow);
+      else if (spd == "fast") FaceEngine::nod(FaceEngine::GestureSpeed::Fast);
+      else                    FaceEngine::nod(FaceEngine::GestureSpeed::Normal);
+      return true;
+    }
+    if (arg.startsWith("no")) {
+      String spd = arg.substring(2); spd.trim();
+      if (spd == "slow")      FaceEngine::shake(FaceEngine::GestureSpeed::Slow);
+      else if (spd == "fast") FaceEngine::shake(FaceEngine::GestureSpeed::Fast);
+      else                    FaceEngine::shake(FaceEngine::GestureSpeed::Normal);
+      return true;
+    }
+
     if (arg.startsWith("look ")) {
       String coords = arg.substring(5);
       int sp = coords.indexOf(' ');
@@ -94,9 +110,11 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
       return true;
     }
 
-    // --- Expression directe ---
+    // --- Expression directe (désactive le behavior auto) ---
+    BehaviorEngine::setAutoMode(false);
     FaceExpression expr = FacePresets::parseExpression(arg.c_str());
     FaceEngine::setExpression(expr);
+    Serial.printf("[FACE] Expression forcée: %s (auto OFF)\n", arg.c_str());
     return true;
   }
 

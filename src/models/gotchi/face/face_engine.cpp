@@ -57,6 +57,17 @@ bool s_autoMode = true;
 uint32_t s_nextBlinkIn = 0;
 uint32_t s_nextLookIn = 0;
 
+// ============================================
+// Gestes (nod/shake)
+// ============================================
+enum class GestureType { None, Nod, Shake };
+GestureType s_gestureType = GestureType::None;
+float s_gestureAngle = 0;      // Angle courant du sinus
+float s_gestureSpeed = 0;      // Vitesse angulaire (rad/s)
+float s_gestureAmplitude = 0;  // Amplitude du mouvement
+int s_gestureCycles = 0;       // Nombre de cycles restants
+int s_gestureTotalCycles = 0;  // Nombre de cycles total
+
 uint32_t randomRange(uint32_t minMs, uint32_t maxMs) {
   return minMs + (rand() % (maxMs - minMs + 1));
 }
@@ -158,10 +169,48 @@ void updateBlink(uint32_t dtMs) {
 void updateLook(uint32_t dtMs) {
   // Ease-out : rapide au début, ralentit vers la cible
   float dist = fabsf(s_targetLookX - s_currentLookX) + fabsf(s_targetLookY - s_currentLookY);
-  float speed = 0.06f + dist * 0.12f; // Plus rapide quand loin, plus doux en approche
+  float speed = 0.06f + dist * 0.12f;
   if (speed > 0.25f) speed = 0.25f;
   s_currentLookX = flerp(s_currentLookX, s_targetLookX, speed);
   s_currentLookY = flerp(s_currentLookY, s_targetLookY, speed);
+}
+
+// ============================================
+// Mise à jour geste (nod/shake)
+// ============================================
+void updateGesture(uint32_t dtMs) {
+  if (s_gestureType == GestureType::None) return;
+
+  float sec = dtMs / 1000.0f;
+  s_gestureAngle += s_gestureSpeed * sec;
+
+  // Mouvement sinusoïdal
+  float val = sinf(s_gestureAngle) * s_gestureAmplitude;
+
+  // Décroissance de l'amplitude au fil des cycles (plus naturel)
+  float progress = (float)(s_gestureTotalCycles - s_gestureCycles) / s_gestureTotalCycles;
+  float decay = 1.0f - progress * 0.4f; // Réduit de 40% vers la fin
+  val *= decay;
+
+  if (s_gestureType == GestureType::Nod) {
+    s_currentLookY = val;
+    s_currentLookX = flerp(s_currentLookX, 0, 0.1f); // Recentre X
+  } else {
+    s_currentLookX = val;
+    s_currentLookY = flerp(s_currentLookY, 0, 0.1f); // Recentre Y
+  }
+
+  // Compter les demi-cycles (passage par zéro)
+  static float s_prevVal = 0;
+  if ((s_prevVal >= 0 && val < 0) || (s_prevVal <= 0 && val > 0)) {
+    s_gestureCycles--;
+    if (s_gestureCycles <= 0) {
+      s_gestureType = GestureType::None;
+      s_currentLookX = 0;
+      s_currentLookY = 0;
+    }
+  }
+  s_prevVal = val;
 }
 
 // ============================================
@@ -212,7 +261,11 @@ void init() {
 void update(uint32_t dtMs) {
   updateTransition(dtMs);
   updateBlink(dtMs);
-  updateLook(dtMs);
+  if (s_gestureType != GestureType::None) {
+    updateGesture(dtMs); // Le geste override le look
+  } else {
+    updateLook(dtMs);
+  }
   updateAuto(dtMs);
 
   FaceRenderer::render(s_currentLeft, s_currentRight, s_currentLookX, s_currentLookY, s_mouthState);
@@ -258,6 +311,32 @@ void setAutoMode(bool enabled) {
 
 void setMouthState(float state) {
   s_mouthState = state;
+}
+
+void nod(GestureSpeed speed) {
+  s_gestureType = GestureType::Nod;
+  s_gestureAngle = 0;
+  switch (speed) {
+    case GestureSpeed::Slow:   s_gestureSpeed = 8.0f;  s_gestureAmplitude = 0.5f; s_gestureCycles = 4; break;
+    case GestureSpeed::Normal: s_gestureSpeed = 12.0f;  s_gestureAmplitude = 0.6f; s_gestureCycles = 5; break;
+    case GestureSpeed::Fast:   s_gestureSpeed = 18.0f;  s_gestureAmplitude = 0.4f; s_gestureCycles = 7; break;
+  }
+  s_gestureTotalCycles = s_gestureCycles;
+}
+
+void shake(GestureSpeed speed) {
+  s_gestureType = GestureType::Shake;
+  s_gestureAngle = 0;
+  switch (speed) {
+    case GestureSpeed::Slow:   s_gestureSpeed = 8.0f;  s_gestureAmplitude = 0.6f; s_gestureCycles = 4; break;
+    case GestureSpeed::Normal: s_gestureSpeed = 14.0f;  s_gestureAmplitude = 0.7f; s_gestureCycles = 6; break;
+    case GestureSpeed::Fast:   s_gestureSpeed = 20.0f;  s_gestureAmplitude = 0.5f; s_gestureCycles = 8; break;
+  }
+  s_gestureTotalCycles = s_gestureCycles;
+}
+
+bool isGesturePlaying() {
+  return s_gestureType != GestureType::None;
 }
 
 FaceExpression getCurrentExpression() {

@@ -85,8 +85,43 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool idleOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.happiness < 40) {
+    FaceEngine::setExpression(FaceExpression::Pleading);
+    FaceEngine::nod(FaceEngine::GestureSpeed::Slow);
+    stats.happiness += 5;
+    stats.clamp();
+  } else {
+    FaceEngine::nod(FaceEngine::GestureSpeed::Normal);
+    stats.happiness += 8;
+    stats.excitement += 15;
+    stats.clamp();
+    BehaviorEngine::requestBehavior(&BEHAVIOR_HAPPY);
+  }
+  return true;
+}
+
+static bool idleOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.energy > 50) {
+    FaceEngine::setExpression(FaceExpression::Surprised);
+    stats.excitement += 20;
+    stats.boredom -= 10;
+    stats.clamp();
+    BehaviorEngine::requestBehavior(&BEHAVIOR_PLAY_BALL);
+  } else {
+    FaceEngine::setExpression(FaceExpression::Annoyed);
+    FaceEngine::shake(FaceEngine::GestureSpeed::Slow);
+    stats.irritability += 10;
+    stats.happiness -= 5;
+    stats.clamp();
+  }
+  return true;
+}
+
 const Behavior BEHAVIOR_IDLE = {
-  "idle", onEnter, onUpdate, onExit,
+  "idle", onEnter, onUpdate, onExit, idleOnTouch, idleOnShake,
   FaceExpression::Normal,
   5.0f,   // min 5s
   30.0f   // max 30s

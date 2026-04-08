@@ -63,8 +63,36 @@ static void onExit() {
   BehaviorObjects::destroyAll();
 }
 
+static bool sickOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 3) {
+    FaceEngine::setExpression(FaceExpression::Vulnerable);
+    FaceEngine::nod(FaceEngine::GestureSpeed::Slow);
+    stats.happiness += 5;
+    stats.health += 2;
+    stats.clamp();
+  } else {
+    // Too weak for more
+    FaceEngine::setExpression(FaceExpression::Tired);
+    stats.happiness += 1;
+    stats.clamp();
+  }
+  return true;
+}
+
+static bool sickOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Horrified);
+  stats.health -= 10;
+  stats.happiness -= 15;
+  stats.irritability += 25;
+  stats.mouthState = -0.6f;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_SICK = {
-  "sick", onEnter, onUpdate, onExit,
+  "sick", onEnter, onUpdate, onExit, sickOnTouch, sickOnShake,
   FaceExpression::Vulnerable,
   10.0f, 40.0f
 };

@@ -56,8 +56,44 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool sadOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 1) {
+    // 1st touch: looks up hopeful
+    FaceEngine::setExpression(FaceExpression::Pleading);
+    FaceEngine::lookAt(0, -0.2f);
+    stats.happiness += 10;
+    stats.clamp();
+  } else if (stats.touchCount == 2) {
+    // 2nd: small smile
+    FaceEngine::setExpression(FaceExpression::Normal);
+    FaceEngine::nod(FaceEngine::GestureSpeed::Slow);
+    stats.happiness += 15;
+    stats.mouthState = 0.3f;
+    stats.clamp();
+  } else {
+    // 3rd+: consoled → happy
+    stats.happiness += 20;
+    stats.clamp();
+    BehaviorEngine::requestBehavior(&BEHAVIOR_HAPPY);
+  }
+  return true;
+}
+
+static bool sadOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Despair);
+  stats.happiness -= 10;
+  stats.irritability += 15;
+  stats.clamp();
+  if (stats.irritability > 50) {
+    BehaviorEngine::requestBehavior(&BEHAVIOR_TANTRUM);
+  }
+  return true;
+}
+
 const Behavior BEHAVIOR_SAD = {
-  "sad", onEnter, onUpdate, onExit,
+  "sad", onEnter, onUpdate, onExit, sadOnTouch, sadOnShake,
   FaceExpression::Sad,
   5.0f,   // min 5s
   15.0f   // max 15s

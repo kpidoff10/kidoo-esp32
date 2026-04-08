@@ -56,8 +56,34 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool eatingOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 2) {
+    FaceEngine::setExpression(FaceExpression::Suspicious);
+    stats.happiness -= 3;
+    stats.clamp();
+  } else {
+    FaceEngine::setExpression(FaceExpression::Angry);
+    stats.happiness -= 8;
+    stats.irritability += 10;
+    stats.clamp();
+  }
+  return true;
+}
+
+static bool eatingOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Angry);
+  stats.happiness -= 15;
+  stats.irritability += 30;
+  stats.hunger -= 5;
+  stats.clamp();
+  BehaviorEngine::requestBehavior(&BEHAVIOR_TANTRUM);
+  return true;
+}
+
 const Behavior BEHAVIOR_EATING = {
-  "eating", onEnter, onUpdate, onExit,
+  "eating", onEnter, onUpdate, onExit, eatingOnTouch, eatingOnShake,
   FaceExpression::Happy,
   3.0f, 5.0f
 };

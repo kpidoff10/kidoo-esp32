@@ -86,8 +86,30 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool playOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::blink();
+  stats.happiness += 5;
+  stats.excitement += 10;
+  stats.clamp();
+  return true;
+}
+
+static bool playOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Amazed);
+  stats.excitement += 20;
+  stats.happiness += 5;
+  stats.energy -= 3;
+  stats.clamp();
+  if (stats.excitement > 85) {
+    BehaviorEngine::requestBehavior(&BEHAVIOR_TANTRUM);
+  }
+  return true;
+}
+
 const Behavior BEHAVIOR_PLAY_BALL = {
-  "play", onEnter, onUpdate, onExit,
+  "play", onEnter, onUpdate, onExit, playOnTouch, playOnShake,
   FaceExpression::Excited,
   8.0f,   // min 8s
   20.0f   // max 20s

@@ -67,8 +67,26 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool curiousOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Amazed);
+  stats.happiness += 8;
+  stats.excitement += 15;
+  stats.clamp();
+  return true;
+}
+
+static bool curiousOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Excited);
+  stats.excitement += 20;
+  stats.boredom -= 15;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_CURIOUS = {
-  "curious", onEnter, onUpdate, onExit,
+  "curious", onEnter, onUpdate, onExit, curiousOnTouch, curiousOnShake,
   FaceExpression::Confused,
   4.0f, 10.0f
 };

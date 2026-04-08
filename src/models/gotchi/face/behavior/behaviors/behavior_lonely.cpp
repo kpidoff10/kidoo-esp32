@@ -47,8 +47,40 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool lonelyOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.touchCount <= 1) {
+    FaceEngine::setExpression(FaceExpression::Amazed);
+    FaceEngine::lookAt(0, -0.1f);
+    stats.happiness += 15;
+    stats.boredom -= 20;
+    stats.clamp();
+  } else if (stats.touchCount == 2) {
+    FaceEngine::setExpression(FaceExpression::Happy);
+    FaceEngine::nod(FaceEngine::GestureSpeed::Normal);
+    stats.happiness += 10;
+    stats.clamp();
+  } else {
+    stats.happiness += 20;
+    stats.excitement += 15;
+    stats.clamp();
+    BehaviorEngine::requestBehavior(&BEHAVIOR_HAPPY);
+  }
+  return true;
+}
+
+static bool lonelyOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Surprised);
+  stats.happiness += 10;
+  stats.boredom -= 15;
+  stats.excitement += 20;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_LONELY = {
-  "lonely", onEnter, onUpdate, onExit,
+  "lonely", onEnter, onUpdate, onExit, lonelyOnTouch, lonelyOnShake,
   FaceExpression::Pleading,
   8.0f, 20.0f
 };

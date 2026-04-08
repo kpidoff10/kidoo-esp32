@@ -45,8 +45,29 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool dirtyOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Embarrassed);
+  stats.hygiene += 5;
+  stats.happiness += 2;
+  stats.clamp();
+  if (stats.touchCount >= 4 && stats.hygiene > 50) {
+    BehaviorEngine::requestBehavior(&BEHAVIOR_HAPPY);
+  }
+  return true;
+}
+
+static bool dirtyOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Disgusted);
+  stats.hygiene += 10;
+  stats.happiness -= 5;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_DIRTY = {
-  "dirty", onEnter, onUpdate, onExit,
+  "dirty", onEnter, onUpdate, onExit, dirtyOnTouch, dirtyOnShake,
   FaceExpression::Disgusted,
   5.0f, 15.0f
 };

@@ -18,6 +18,12 @@ void blink();
 void setAutoMode(bool enabled);
 void setMouthState(float state); // -1=ouverte, 0=fermée, 1=sourire
 
+// Animations gestuelles
+enum class GestureSpeed { Slow, Normal, Fast };
+void nod(GestureSpeed speed = GestureSpeed::Normal);    // Oui
+void shake(GestureSpeed speed = GestureSpeed::Normal);   // Non
+bool isGesturePlaying();
+
 FaceExpression getCurrentExpression();
 
 } // namespace FaceEngine

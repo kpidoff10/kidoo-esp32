@@ -49,8 +49,37 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+static bool happyOnTouch() {
+  auto& stats = BehaviorEngine::getStats();
+  if (stats.excitement < 70) {
+    FaceEngine::setExpression(FaceExpression::Amazed);
+    FaceEngine::nod(FaceEngine::GestureSpeed::Fast);
+    stats.happiness += 10;
+    stats.excitement += 15;
+    stats.clamp();
+  } else {
+    // Overstimulated!
+    FaceEngine::setExpression(FaceExpression::Confused);
+    stats.excitement += 20;
+    stats.clamp();
+    if (stats.excitement > 90) {
+      BehaviorEngine::requestBehavior(&BEHAVIOR_TANTRUM);
+    }
+  }
+  return true;
+}
+
+static bool happyOnShake() {
+  auto& stats = BehaviorEngine::getStats();
+  FaceEngine::setExpression(FaceExpression::Excited);
+  stats.excitement += 15;
+  stats.happiness += 5;
+  stats.clamp();
+  return true;
+}
+
 const Behavior BEHAVIOR_HAPPY = {
-  "happy", onEnter, onUpdate, onExit,
+  "happy", onEnter, onUpdate, onExit, happyOnTouch, happyOnShake,
   FaceExpression::Happy,
   3.0f,  // min 3s
   8.0f   // max 8s

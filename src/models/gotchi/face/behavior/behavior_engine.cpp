@@ -38,6 +38,7 @@ void switchTo(const Behavior* next) {
   if (s_current && s_current->onExit) s_current->onExit();
   BehaviorObjects::destroyAll();
 
+  s_stats.touchCount = 0;
   s_current = next;
   s_elapsed = 0;
 
@@ -193,22 +194,30 @@ const char* getCurrentBehavior() {
 Need getCurrentNeed() { return s_currentNeed; }
 
 void onTouch() {
-  s_stats.happiness += 8;
-  s_stats.excitement += 20;
-  s_stats.boredom -= 15;
-  s_stats.mouthState = 0.8f; // Sourire
+  s_stats.touchCount++;
+  s_stats.lastTouchAt = millis();
+  // Le behavior actif gere en priorite
+  if (s_current && s_current->onTouch && s_current->onTouch()) return;
+  // Fallback generique
+  s_stats.happiness += 5;
+  s_stats.excitement += 10;
+  s_stats.boredom -= 8;
   s_stats.clamp();
-  if (s_autoMode) switchTo(&BEHAVIOR_HAPPY);
 }
 
 void onShake() {
-  s_stats.excitement += 30;
-  s_stats.mouthState = -0.6f; // Bouche ouverte surprise
+  s_stats.touchCount++;
+  s_stats.lastTouchAt = millis();
+  // Le behavior actif gere en priorite
+  if (s_current && s_current->onShake && s_current->onShake()) return;
+  // Fallback generique
+  s_stats.excitement += 20;
+  s_stats.mouthState = -0.5f;
   s_stats.clamp();
-  if (s_autoMode) {
-    if (s_stats.happiness < 40) switchTo(&BEHAVIOR_TANTRUM);
-    else switchTo(&BEHAVIOR_PLAY_BALL);
-  }
+}
+
+void requestBehavior(const Behavior* behavior) {
+  if (behavior) switchTo(behavior);
 }
 
 void onSound() {

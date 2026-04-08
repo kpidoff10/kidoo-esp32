@@ -11,6 +11,8 @@ struct Behavior {
   void (*onEnter)();
   void (*onUpdate)(uint32_t dtMs);
   void (*onExit)();
+  bool (*onTouch)();    // true = handled, nullptr = fallback
+  bool (*onShake)();    // true = handled, nullptr = fallback
   FaceExpression defaultExpression;
   float minDurationSec;
   float maxDurationSec;
@@ -33,6 +35,9 @@ Need getCurrentNeed();
 void onTouch();
 void onShake();
 void onSound();
+
+// Demande de transition (appelable depuis un behavior callback)
+void requestBehavior(const Behavior* behavior);
 
 // Actions utilisateur
 void feed(const char* food);

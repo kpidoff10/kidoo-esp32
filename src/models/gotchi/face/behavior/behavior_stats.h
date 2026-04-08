@@ -22,14 +22,24 @@ struct BehaviorStats {
   uint32_t lastFedAt  = 0;
   uint32_t lastPlayAt = 0;
 
+  // === Interaction tracking ===
+  uint8_t  touchCount   = 0;      // taps depuis le behavior courant
+  uint32_t lastTouchAt  = 0;      // millis() du dernier tap
+  float    irritability  = 0.0f;  // 0=calme, 100=explosif (decroit 3/min)
+
   // === Bouche ===
   // -1.0 = grande ouverte (faim/surprise), 0 = fermée, 1.0 = sourire
   float mouthState = 0.0f;
 
+  // === Bave (sleep) ===
+  // 0 = pas de bave, > 0 = longueur de la goutte qui descend (en pixels)
+  float droolLength = 0.0f;
+  float droolRetract = 0.0f;  // Rétraction du fil depuis le haut
+
   void clamp() {
     auto c = [](float& v) { if (v < 0) v = 0; if (v > 100) v = 100; };
     c(hunger); c(energy); c(happiness); c(health); c(hygiene);
-    c(excitement); c(boredom);
+    c(excitement); c(boredom); c(irritability);
     if (mouthState < -1.0f) mouthState = -1.0f;
     if (mouthState > 1.0f)  mouthState = 1.0f;
   }
@@ -54,6 +64,9 @@ struct BehaviorStats {
     if (health < 30)  happiness -= 1.0f * min;  // Être malade rend triste
     if (energy < 10)  happiness -= 0.5f * min;  // La fatigue rend triste
     if (boredom > 80) happiness -= 0.3f * min;  // L'ennui rend triste
+
+    // --- Irritabilité décroît naturellement ---
+    irritability -= 3.0f * min;
 
     // --- Âge ---
     ageTimer += dtMs;
@@ -103,9 +116,9 @@ struct BehaviorStats {
   // --- Log ---
   void printStats(const char* behavior) {
     Serial.printf("[STATS] hunger=%.0f energy=%.0f happy=%.0f health=%.0f hygiene=%.0f "
-                  "excite=%.0f bored=%.0f age=%lum | %s\n",
+                  "excite=%.0f bored=%.0f irrit=%.0f age=%lum | %s\n",
       hunger, energy, happiness, health, hygiene,
-      excitement, boredom, ageMinutes, behavior);
+      excitement, boredom, irritability, ageMinutes, behavior);
   }
 };
 
