@@ -4,8 +4,12 @@
 #include "../face/face_engine.h"
 #include "../face/overlay/face_overlay_layer.h"
 #include "../face/behavior/behavior_engine.h"
+#include "../imu/gotchi_imu.h"
+#include "../config/gotchi_theme.h"
 
 #include <cstdint>
+#include <cmath>
+#include <cstring>
 #include <Arduino_GFX_Library.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
@@ -143,20 +147,36 @@ bool init() {
   lv_indev_set_read_cb(indev, touchpad_read);
 
   // Initialiser le Face Engine + Behavior Engine
+  GotchiTheme::loadFromConfig();  // Charge theme depuis SD (defaut: boy)
   FaceEngine::init();
   BehaviorEngine::init();
+  GotchiImu::init();
 
   s_lvgl_ok = true;
   Serial.println("[GOTCHI_LVGL] Initialisation LVGL 9 complète");
   return true;
 }
 
-// --- Tap detection ---
+// --- Touch detection (tap + caress) ---
 bool     s_wasTouched = false;
 uint32_t s_touchDownAt = 0;
 uint32_t s_lastTapAt = 0;
+int16_t  s_touchStartX = 0;
+int16_t  s_touchStartY = 0;
+int16_t  s_touchLastX = 0;
+int16_t  s_touchLastY = 0;
+uint32_t s_lastPetAt = 0;
+bool     s_isPetting = false;
 constexpr uint32_t TAP_MAX_DURATION = 400;
 constexpr uint32_t TAP_DEBOUNCE     = 300;
+constexpr uint32_t PET_MIN_HOLD     = 500;   // ms avant detection caresse
+constexpr int16_t  PET_MOVE_THRESH  = 15;    // pixels de mouvement minimum
+constexpr uint32_t PET_INTERVAL     = 600;   // ms entre chaque event pet
+constexpr uint32_t SWIPE_MAX_DURATION = 500; // ms max pour un swipe
+constexpr int16_t  SWIPE_MIN_DIST    = 40;   // pixels minimum pour un swipe
+bool     s_stablePressed = false;
+uint32_t s_releaseStart = 0;        // quand le capteur a commence a dire "released"
+constexpr uint32_t RELEASE_CONFIRM = 250;  // ms de released continu pour confirmer
 
 void update() {
   if (s_lvgl_ok) {
@@ -165,19 +185,112 @@ void update() {
     uint32_t dt = lastMs ? (now - lastMs) : 10;
     lastMs = now;
 
-    // Tap detection hardware
+    // Touch detection: tap (court) + caresse (long + mouvement)
     if (s_touch_ok) {
-      bool pressed = s_touch.isPressed();
-      if (pressed && !s_wasTouched) {
-        s_touchDownAt = now;
-      } else if (!pressed && s_wasTouched) {
-        uint32_t duration = now - s_touchDownAt;
-        if (duration < TAP_MAX_DURATION && (now - s_lastTapAt) > TAP_DEBOUNCE) {
-          s_lastTapAt = now;
-          BehaviorEngine::onTouch();
+      bool rawPressed = s_touch.isPressed();
+      const TouchPoints &tp = s_touch.getTouchPoints();
+
+      // Debounce : le pressed est instantane, mais le release doit etre confirme
+      // (le capteur CST92xx fait du bruit : alterne pressed/released)
+      if (rawPressed) {
+        s_stablePressed = true;
+        s_releaseStart = 0;
+      } else if (s_stablePressed) {
+        // Commence ou continue le compteur de release
+        if (s_releaseStart == 0) s_releaseStart = now;
+        if ((now - s_releaseStart) >= RELEASE_CONFIRM) {
+          s_stablePressed = false;  // Release confirme
         }
       }
+      bool pressed = s_stablePressed;
+
+      bool isUserAction = (strcmp(BehaviorEngine::getCurrentBehavior(), "play") == 0);
+
+      if (pressed && !s_wasTouched) {
+        // Doigt pose
+        s_touchDownAt = now;
+        s_isPetting = false;
+        if (tp.hasPoints()) {
+          const TouchPoint &pt = tp.getPoint(0);
+          s_touchStartX = pt.x;
+          s_touchStartY = pt.y;
+          s_touchLastX = pt.x;
+          s_touchLastY = pt.y;
+        }
+        if (isUserAction) {
+          BehaviorEngine::onFingerDown((float)s_touchStartX, (float)s_touchStartY);
+        }
+      } else if (pressed && s_wasTouched) {
+        if (tp.hasPoints()) {
+          const TouchPoint &pt = tp.getPoint(0);
+
+          if (isUserAction) {
+            // === MODE ACTION USER : uniquement finger tracking ===
+            BehaviorEngine::onFingerMove((float)pt.x, (float)pt.y);
+            s_touchLastX = pt.x;
+            s_touchLastY = pt.y;
+          } else {
+            // === MODE NORMAL : caresse detection ===
+            int16_t dx = pt.x - s_touchLastX;
+            int16_t dy = pt.y - s_touchLastY;
+            int16_t dist = (dx > 0 ? dx : -dx) + (dy > 0 ? dy : -dy);
+            s_touchLastX = pt.x;
+            s_touchLastY = pt.y;
+
+            uint32_t held = now - s_touchDownAt;
+            if (held > PET_MIN_HOLD && dist > PET_MOVE_THRESH) {
+              s_isPetting = true;
+              float normX = ((float)pt.x - (float)(GOTCHI_LCD_WIDTH / 2)) / (float)(GOTCHI_LCD_WIDTH / 2);
+              float normY = ((float)pt.y - (float)(GOTCHI_LCD_HEIGHT / 2)) / (float)(GOTCHI_LCD_HEIGHT / 2);
+              if (normX > 1.0f) normX = 1.0f;
+              if (normX < -1.0f) normX = -1.0f;
+              if (normY > 1.0f) normY = 1.0f;
+              if (normY < -1.0f) normY = -1.0f;
+              FaceEngine::lookAtForced(normX, normY * 0.6f);
+              if ((now - s_lastPetAt) > PET_INTERVAL) {
+                s_lastPetAt = now;
+                BehaviorEngine::onPet();
+              }
+            }
+          }
+        }
+      } else if (!pressed && s_wasTouched) {
+        // Doigt leve
+        uint32_t duration = now - s_touchDownAt;
+        int16_t totalDx = s_touchLastX - s_touchStartX;
+        int16_t totalDy = s_touchLastY - s_touchStartY;
+        int16_t totalDist = (totalDx > 0 ? totalDx : -totalDx) + (totalDy > 0 ? totalDy : -totalDy);
+
+        if (isUserAction) {
+          // === MODE ACTION USER : lacher la balle ===
+          float velScale = (duration > 0) ? 1000.0f / (float)duration : 0.0f;
+          float fvx = (float)totalDx * velScale * 0.0003f;
+          float fvy = (float)totalDy * velScale * 0.0003f;
+          BehaviorEngine::onFingerUp((float)s_touchLastX, (float)s_touchLastY, fvx, fvy);
+        } else {
+          // === MODE NORMAL : swipe ou tap ===
+          bool wasPetting = s_isPetting || (now - s_lastPetAt) < 1500;
+
+          if (!wasPetting && totalDist > SWIPE_MIN_DIST && duration < SWIPE_MAX_DURATION) {
+            float mag = sqrtf((float)(totalDx * totalDx + totalDy * totalDy));
+            float dirX = (float)totalDx / mag;
+            float dirY = (float)totalDy / mag;
+            BehaviorEngine::onSwipe((float)s_touchStartX, (float)s_touchStartY, dirX, dirY);
+          } else if (!wasPetting && totalDist <= 20 && duration < TAP_MAX_DURATION && (now - s_lastTapAt) > TAP_DEBOUNCE) {
+            s_lastTapAt = now;
+            BehaviorEngine::onTouch();
+          }
+        }
+        s_isPetting = false;
+      }
       s_wasTouched = pressed;
+    }
+
+    // IMU shake detection → trauma visuel violent
+    float shakeX = 0, shakeY = 0;
+    if (GotchiImu::update(dt, shakeX, shakeY)) {
+      FaceEngine::trauma(shakeX, shakeY);
+      BehaviorEngine::onShake();
     }
 
     BehaviorEngine::update(dt);

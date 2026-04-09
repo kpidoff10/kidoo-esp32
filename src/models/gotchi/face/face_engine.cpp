@@ -68,6 +68,60 @@ float s_gestureAmplitude = 0;  // Amplitude du mouvement
 int s_gestureCycles = 0;       // Nombre de cycles restants
 int s_gestureTotalCycles = 0;  // Nombre de cycles total
 
+// ============================================
+// Trauma (secousse physique)
+// ============================================
+bool s_traumaActive = false;
+uint32_t s_traumaTimer = 0;
+constexpr uint32_t TRAUMA_DURATION = 800;  // ms
+float s_traumaDirX = 0;
+float s_traumaDirY = 0;
+int16_t s_traumaSavedHeightL = 0;
+int16_t s_traumaSavedHeightR = 0;
+
+void updateTrauma(uint32_t dtMs) {
+  if (!s_traumaActive) return;
+
+  s_traumaTimer += dtMs;
+  if (s_traumaTimer >= TRAUMA_DURATION) {
+    // Fin du trauma — restaurer taille
+    s_traumaActive = false;
+    s_currentLeft.height = s_traumaSavedHeightL;
+    s_currentRight.height = s_traumaSavedHeightR;
+    s_currentLookX = 0;
+    s_currentLookY = 0;
+    return;
+  }
+
+  float t = (float)s_traumaTimer / TRAUMA_DURATION;
+  float intensity = 1.0f - t * t;  // Decroit rapidement
+
+  // Oscillation VIOLENTE (~20Hz), amplitude MAX (-1 a +1)
+  float osc = sinf(s_traumaTimer * 0.13f);  // ~20Hz
+
+  // Mouvement plein ecran dans la direction de la secousse
+  s_currentLookX = s_traumaDirX * osc * intensity;
+  s_currentLookY = s_traumaDirY * osc * intensity;
+
+  // Clamp a -1..1
+  if (s_currentLookX > 1.0f) s_currentLookX = 1.0f;
+  if (s_currentLookX < -1.0f) s_currentLookX = -1.0f;
+  if (s_currentLookY > 1.0f) s_currentLookY = 1.0f;
+  if (s_currentLookY < -1.0f) s_currentLookY = -1.0f;
+
+  // Yeux tres reduits (ecrabouilles)
+  float squish = 0.3f + 0.7f * t;  // 30% au debut → 100% a la fin
+  s_currentLeft.height = (int16_t)(s_traumaSavedHeightL * squish);
+  s_currentRight.height = (int16_t)(s_traumaSavedHeightR * squish);
+}
+
+// ============================================
+// Forced look (caresse — prioritaire sur tout)
+// ============================================
+bool s_forcedLook = false;
+uint32_t s_forcedLookTimer = 0;
+constexpr uint32_t FORCED_LOOK_MS = 250;
+
 uint32_t randomRange(uint32_t minMs, uint32_t maxMs) {
   return minMs + (rand() % (maxMs - minMs + 1));
 }
@@ -259,10 +313,22 @@ void init() {
 }
 
 void update(uint32_t dtMs) {
+  // Forced look timeout
+  if (s_forcedLook) {
+    s_forcedLookTimer += dtMs;
+    if (s_forcedLookTimer >= FORCED_LOOK_MS) {
+      s_forcedLook = false;
+    }
+  }
+
   updateTransition(dtMs);
   updateBlink(dtMs);
-  if (s_gestureType != GestureType::None) {
-    updateGesture(dtMs); // Le geste override le look
+  if (s_traumaActive) {
+    updateTrauma(dtMs);
+  } else if (s_forcedLook) {
+    // Caresse : position deja set dans lookAtForced, pas de smoothing
+  } else if (s_gestureType != GestureType::None) {
+    updateGesture(dtMs);
   } else {
     updateLook(dtMs);
   }
@@ -284,8 +350,19 @@ void setExpression(FaceExpression expr) {
 }
 
 void lookAt(float x, float y) {
+  if (s_forcedLook) return;  // Caresse en cours, ignorer
   s_targetLookX = clampf(x, -1.0f, 1.0f);
   s_targetLookY = clampf(y, -1.0f, 1.0f);
+}
+
+void lookAtForced(float x, float y) {
+  s_forcedLook = true;
+  s_forcedLookTimer = 0;
+  s_targetLookX = clampf(x, -1.0f, 1.0f);
+  s_targetLookY = clampf(y, -1.0f, 1.0f);
+  // Snap immediat (pas de ease-out)
+  s_currentLookX = s_targetLookX;
+  s_currentLookY = s_targetLookY;
 }
 
 void blink() {
@@ -337,6 +414,23 @@ void shake(GestureSpeed speed) {
 
 bool isGesturePlaying() {
   return s_gestureType != GestureType::None;
+}
+
+void trauma(float dirX, float dirY) {
+  s_traumaActive = true;
+  s_traumaTimer = 0;
+  s_traumaDirX = dirX;
+  s_traumaDirY = dirY;
+  // Si pas de direction claire, secouer horizontalement
+  if (fabsf(dirX) < 0.1f && fabsf(dirY) < 0.1f) {
+    s_traumaDirX = 1.0f;
+    s_traumaDirY = 0.0f;
+  }
+  // Sauvegarder la taille des yeux
+  s_traumaSavedHeightL = s_currentLeft.height > 0 ? s_currentLeft.height : s_targetLeft.height;
+  s_traumaSavedHeightR = s_currentRight.height > 0 ? s_currentRight.height : s_targetRight.height;
+  // Bouche ouverte de surprise
+  s_mouthState = -0.8f;
 }
 
 FaceExpression getCurrentExpression() {

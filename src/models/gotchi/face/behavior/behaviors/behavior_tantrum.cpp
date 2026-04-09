@@ -95,5 +95,6 @@ static bool tantrumOnShake() {
 const Behavior BEHAVIOR_TANTRUM = {
   "tantrum", onEnter, onUpdate, onExit, tantrumOnTouch, tantrumOnShake,
   FaceExpression::Angry,
-  3.0f, 8.0f
+  3.0f, 8.0f,
+  BF_NONE
 };

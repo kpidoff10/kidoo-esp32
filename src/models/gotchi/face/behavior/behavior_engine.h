@@ -6,6 +6,11 @@
 #include "behavior_needs.h"
 #include "../face_config.h"
 
+// Behavior flags (bitmask)
+constexpr uint8_t BF_NONE        = 0;
+constexpr uint8_t BF_USER_ACTION = 1 << 0;  // Protege des auto-transitions (play, eating)
+constexpr uint8_t BF_URGENT      = 1 << 1;  // Peut interrompre une action user (sick)
+
 struct Behavior {
   const char* name;
   void (*onEnter)();
@@ -16,6 +21,7 @@ struct Behavior {
   FaceExpression defaultExpression;
   float minDurationSec;
   float maxDurationSec;
+  uint8_t flags;        // BF_NONE, BF_USER_ACTION, BF_URGENT
 };
 
 namespace BehaviorEngine {
@@ -34,12 +40,18 @@ Need getCurrentNeed();
 // Événements externes
 void onTouch();
 void onShake();
+void onPet();
+void onSwipe(float startX, float startY, float dirX, float dirY);
+void onFingerDown(float x, float y);
+void onFingerMove(float x, float y);
+void onFingerUp(float x, float y, float vx, float vy);
 void onSound();
 
 // Demande de transition (appelable depuis un behavior callback)
 void requestBehavior(const Behavior* behavior);
 
 // Actions utilisateur
+bool tryPlay();  // Retourne false si le gotchi refuse de jouer
 void feed(const char* food);
 void heal();
 void clean();

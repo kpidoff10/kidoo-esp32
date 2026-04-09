@@ -69,5 +69,6 @@ static bool dirtyOnShake() {
 const Behavior BEHAVIOR_DIRTY = {
   "dirty", onEnter, onUpdate, onExit, dirtyOnTouch, dirtyOnShake,
   FaceExpression::Disgusted,
-  5.0f, 15.0f
+  5.0f, 15.0f,
+  BF_NONE
 };

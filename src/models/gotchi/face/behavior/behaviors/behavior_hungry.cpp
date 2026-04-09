@@ -85,5 +85,6 @@ static bool hungryOnShake() {
 const Behavior BEHAVIOR_HUNGRY = {
   "hungry", onEnter, onUpdate, onExit, hungryOnTouch, hungryOnShake,
   FaceExpression::Pleading,
-  5.0f, 20.0f
+  5.0f, 20.0f,
+  BF_NONE
 };

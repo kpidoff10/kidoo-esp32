@@ -21,6 +21,7 @@ enum SleepTouch { ST_ASLEEP, ST_PEEK, ST_REFUSE, ST_WAKING, ST_GRUMPY };
 SleepTouch s_touchState = ST_ASLEEP;
 uint32_t s_touchTimer = 0;
 uint8_t  s_tapCount = 0;
+uint8_t  s_wakeThreshold = 0;  // nb de taps pour se reveiller (1-5, random)
 
 void stopDrool(BehaviorStats& stats) {
   s_droolLength = 0;
@@ -37,36 +38,35 @@ static bool sleepOnTouch() {
   auto& stats = BehaviorEngine::getStats();
   s_tapCount++;
 
-  // Grumpy: 3+ taps while very tired
-  if (s_tapCount >= 3 && stats.energy <= 30) {
-    s_touchState = ST_GRUMPY;
-    s_touchTimer = 0;
-    stats.irritability += 30;
-    stats.happiness -= 15;
-    stats.clamp();
-    FaceOverlayLayer::setSleepZzz(false);
-    stopDrool(stats);
-    FaceEngine::setExpression(FaceExpression::Furious);
-    stats.mouthState = -0.6f;
-    // Transition vers tantrum apres un court delai (geree dans onUpdate)
+  // Si deja en PEEK/REFUSE → on ignore (il est en train de se rendormir)
+  if (s_touchState == ST_PEEK || s_touchState == ST_REFUSE) {
     return true;
   }
 
-  if (s_touchState == ST_ASLEEP || s_touchState == ST_REFUSE) {
-    s_touchState = ST_PEEK;
-    s_touchTimer = 0;
+  // Tap depuis ASLEEP → ouvre un oeil
+  if (s_touchState == ST_ASLEEP) {
     FaceOverlayLayer::setSleepZzz(false);
     stopDrool(stats);
-    // Ouvre un oeil (expression Tired = yeux mi-clos)
     FaceEngine::setExpression(FaceExpression::Tired);
     stats.mouthState = 0.0f;
-    return true;
-  }
 
-  if (s_touchState == ST_PEEK) {
-    // Double tap pendant peek = force wake si energie OK
-    if (stats.energy > 30) {
-      s_touchState = ST_WAKING;
+    if (s_tapCount >= s_wakeThreshold) {
+      // Assez de taps accumules → se reveille ou grognon
+      if (stats.energy > 30) {
+        s_touchState = ST_WAKING;
+        s_touchTimer = 0;
+      } else {
+        s_touchState = ST_GRUMPY;
+        s_touchTimer = 0;
+        stats.irritability += 30;
+        stats.happiness -= 15;
+        stats.clamp();
+        FaceEngine::setExpression(FaceExpression::Furious);
+        stats.mouthState = -0.6f;
+      }
+    } else {
+      // Pas assez de taps → peek puis re-dort
+      s_touchState = ST_PEEK;
       s_touchTimer = 0;
     }
     return true;
@@ -88,6 +88,8 @@ static void onEnter() {
   s_touchState = ST_ASLEEP;
   s_touchTimer = 0;
   s_tapCount = 0;
+  s_wakeThreshold = 2 + rand() % 4;  // 2 a 5 taps pour se reveiller
+  Serial.printf("[SLEEP] wakeThreshold=%d\n", s_wakeThreshold);
   BehaviorEngine::getStats().droolLength = 0;
 }
 
@@ -101,30 +103,20 @@ static void onUpdate(uint32_t dtMs) {
 
     switch (s_touchState) {
       case ST_PEEK:
-        // Un oeil ouvert pendant 1.5s
+        // Un oeil ouvert pendant 1.5s → se rendort TOUJOURS
         FaceEngine::lookAt(0, 0);
         if (s_touchTimer > 1500) {
-          if (stats.energy > 30) {
-            // Assez d'energie → se reveille
-            s_touchState = ST_WAKING;
-            s_touchTimer = 0;
-          } else {
-            // Trop fatigue → refuse
-            s_touchState = ST_REFUSE;
-            s_touchTimer = 0;
-            FaceEngine::shake(FaceEngine::GestureSpeed::Slow);
-            FaceEngine::setExpression(FaceExpression::Annoyed);
-            stats.mouthState = -0.2f;
-          }
+          s_touchState = ST_REFUSE;
+          s_touchTimer = 0;
+          FaceEngine::setExpression(FaceExpression::Asleep);
+          stats.mouthState = -0.35f;
         }
         break;
 
       case ST_REFUSE:
-        // Shake "non" pendant 2s puis re-dort
-        if (s_touchTimer > 2000) {
-          FaceEngine::setExpression(FaceExpression::Asleep);
+        // Re-dort apres 1s
+        if (s_touchTimer > 1000) {
           FaceOverlayLayer::setSleepZzz(true);
-          stats.mouthState = -0.35f;
           s_touchState = ST_ASLEEP;
           s_touchTimer = 0;
         }
@@ -235,5 +227,6 @@ const Behavior BEHAVIOR_SLEEP = {
   "sleep", onEnter, onUpdate, onExit, sleepOnTouch, nullptr,
   FaceExpression::Asleep,
   10.0f,
-  30.0f
+  30.0f,
+  BF_NONE
 };

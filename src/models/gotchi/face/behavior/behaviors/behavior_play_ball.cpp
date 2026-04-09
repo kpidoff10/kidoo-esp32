@@ -47,15 +47,20 @@ static void onUpdate(uint32_t dtMs) {
   stats.addEnergy(-1.0f, dtMs);
   stats.addExcitement(1.0f, dtMs);
 
+  // Si la balle est tenue par le doigt → juste suivre des yeux, pas de logique rebond
+  if (s_ballId >= 0 && BehaviorObjects::isHeld(s_ballId)) {
+    s_phaseTimer = 0;
+    s_bounceCount = 0;
+    return;
+  }
+
   // Détecter les rebonds via la position Y de la balle
   float lx, ly;
   if (BehaviorObjects::getLookTarget(lx, ly)) {
-    // Balle haute → amazed
     if (ly < -0.3f && s_throwing) {
       FaceEngine::setExpression(FaceExpression::Amazed);
       s_throwing = false;
     }
-    // Balle basse (rebond) → excited + blink
     if (ly > 0.6f && !s_throwing) {
       FaceEngine::setExpression(FaceExpression::Excited);
       FaceEngine::blink();
@@ -64,19 +69,24 @@ static void onUpdate(uint32_t dtMs) {
     }
   }
 
-  // Après 4 rebonds → nouveau lancer ou fin
+  // Trop fatigue → arrete de jouer
+  if (stats.energy < 20) {
+    FaceEngine::setExpression(FaceExpression::Tired);
+    BehaviorObjects::destroy(s_ballId);
+    s_ballId = -1;
+    BehaviorEngine::requestBehavior(&BEHAVIOR_IDLE);
+    return;
+  }
+
+  // Après 4 rebonds ou timeout → balle s'arrete, attendre action user
   if (s_bounceCount >= 4 || s_phaseTimer > 5000) {
-    s_cycleCount++;
-    if (s_cycleCount >= 3) {
-      // Fatigué → happy puis fin
-      FaceEngine::setExpression(FaceExpression::Happy);
+    if (s_ballId >= 0) {
       BehaviorObjects::destroy(s_ballId);
       s_ballId = -1;
-    } else {
-      // Relancer
-      FaceEngine::setExpression(FaceExpression::Happy);
-      throwBall();
     }
+    // Le gotchi attend que le user relance (regard idle)
+    FaceEngine::setExpression(FaceExpression::Normal);
+    FaceEngine::lookAt(0, 0.2f);  // Regarde en bas (ou etait la balle)
   }
 }
 
@@ -86,9 +96,30 @@ static void onExit() {
   FaceEngine::setAutoMode(false);
 }
 
+// Expose l'ID de la balle pour le drag
+int playBallGetId() { return s_ballId; }
+
+// Lancer la balle depuis une position (appelable depuis behavior_engine via onSwipe)
+void playBallLaunchFrom(float fromX, float dirX) {
+  if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
+
+  float vx = dirX * (0.08f + (rand() % 40) / 1000.0f);
+  s_ballId = BehaviorObjects::spawn(
+    ObjectShape::Circle, 0xFF3030, 24,
+    fromX, 160.0f, vx, -0.20f,
+    0.0014f, 0.72f, true, 0
+  );
+  s_bounceCount = 0;
+  s_phaseTimer = 0;
+  s_throwing = true;
+  FaceEngine::setExpression(FaceExpression::Excited);
+}
+
 static bool playOnTouch() {
   auto& stats = BehaviorEngine::getStats();
-  FaceEngine::blink();
+  // Relancer la balle quand on tape
+  bool fromLeft = (rand() % 2) == 0;
+  playBallLaunchFrom(fromLeft ? 60.0f : 406.0f, fromLeft ? 1.0f : -1.0f);
   stats.happiness += 5;
   stats.excitement += 10;
   stats.clamp();
@@ -112,5 +143,6 @@ const Behavior BEHAVIOR_PLAY_BALL = {
   "play", onEnter, onUpdate, onExit, playOnTouch, playOnShake,
   FaceExpression::Excited,
   8.0f,   // min 8s
-  20.0f   // max 20s
+  60.0f,  // max 60s (safety valve)
+  BF_USER_ACTION
 };

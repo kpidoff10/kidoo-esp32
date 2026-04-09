@@ -82,5 +82,6 @@ static bool lonelyOnShake() {
 const Behavior BEHAVIOR_LONELY = {
   "lonely", onEnter, onUpdate, onExit, lonelyOnTouch, lonelyOnShake,
   FaceExpression::Pleading,
-  8.0f, 20.0f
+  8.0f, 20.0f,
+  BF_NONE
 };

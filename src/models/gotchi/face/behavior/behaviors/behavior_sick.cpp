@@ -94,5 +94,6 @@ static bool sickOnShake() {
 const Behavior BEHAVIOR_SICK = {
   "sick", onEnter, onUpdate, onExit, sickOnTouch, sickOnShake,
   FaceExpression::Vulnerable,
-  10.0f, 40.0f
+  10.0f, 40.0f,
+  BF_URGENT
 };

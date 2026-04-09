@@ -85,5 +85,6 @@ static bool eatingOnShake() {
 const Behavior BEHAVIOR_EATING = {
   "eating", onEnter, onUpdate, onExit, eatingOnTouch, eatingOnShake,
   FaceExpression::Happy,
-  3.0f, 5.0f
+  3.0f, 5.0f,
+  BF_USER_ACTION
 };

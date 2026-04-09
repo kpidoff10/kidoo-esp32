@@ -42,6 +42,8 @@ void SDManager::initDefaultConfig(SDConfig* config) {
   config->wakeup_autoShutdown = true;
   config->wakeup_autoShutdownMinutes = 30;
   strcpy(config->wakeup_weekdaySchedule, "{}"); // JSON vide par défaut
+  // Gotchi theme par défaut
+  strcpy(config->gotchi_theme, "boy");
   // Initialiser le secret de token de commande MQTT (vide par défaut)
   memset(config->cmdTokenSecret, 0, sizeof(config->cmdTokenSecret));
 }
@@ -371,6 +373,13 @@ SDConfig SDManager::getConfig() {
     config.wakeup_weekdaySchedule[sizeof(config.wakeup_weekdaySchedule) - 1] = '\0';
   }
 
+  // Lire le theme Gotchi
+  if (doc["gotchi_theme"].is<String>()) {
+    String themeStr = doc["gotchi_theme"] | "boy";
+    strncpy(config.gotchi_theme, themeStr.c_str(), sizeof(config.gotchi_theme) - 1);
+    config.gotchi_theme[sizeof(config.gotchi_theme) - 1] = '\0';
+  }
+
   // Lire le secret de token de commande MQTT
   if (doc["cmdTokenSecret"].is<String>()) {
     String secretStr = doc["cmdTokenSecret"] | "";
@@ -477,6 +486,11 @@ bool SDManager::saveConfig(const SDConfig& config) {
     }
   } else {
     doc["wakeup_weekdaySchedule"] = "{}";
+  }
+
+  // Sauvegarder le theme Gotchi
+  if (strlen(config.gotchi_theme) > 0) {
+    doc["gotchi_theme"] = config.gotchi_theme;
   }
 
   // Sauvegarder le secret de token de commande MQTT

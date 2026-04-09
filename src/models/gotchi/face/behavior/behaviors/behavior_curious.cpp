@@ -88,5 +88,6 @@ static bool curiousOnShake() {
 const Behavior BEHAVIOR_CURIOUS = {
   "curious", onEnter, onUpdate, onExit, curiousOnTouch, curiousOnShake,
   FaceExpression::Confused,
-  4.0f, 10.0f
+  4.0f, 10.0f,
+  BF_NONE
 };

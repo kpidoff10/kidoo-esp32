@@ -6,11 +6,12 @@
 #include <cstdint>
 
 #include "../../config/config.h"
+#include "../../config/gotchi_theme.h"
 
 namespace OverlayCommon {
 
 constexpr uint16_t COL_BG    = 0x0000;
-constexpr uint16_t COL_CYAN  = 0x073F;
+#define COL_CYAN (GotchiTheme::getColors().overlay)
 
 struct BBox {
   int16_t x = 0, y = 0, w = 0, h = 0;

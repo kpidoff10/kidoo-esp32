@@ -11,6 +11,7 @@ namespace BehaviorObjects {
 
 void init();
 void update(uint32_t dtMs);
+void draw();  // Dessiner les objets dans le framebuffer (appeler apres FaceRenderer::render)
 
 // Spawn un objet, retourne son ID (0 à MAX-1) ou -1 si pool plein
 int spawn(ObjectShape shape, uint32_t color, int16_t size,
@@ -19,6 +20,13 @@ int spawn(ObjectShape shape, uint32_t color, int16_t size,
 
 void destroy(int id);
 void destroyAll();
+
+// Hold: attacher un objet au doigt (desactive physique)
+void hold(int id, float x, float y);
+// Release: lacher avec velocite
+void release(int id, float vx, float vy);
+// Check si un objet est tenu
+bool isHeld(int id);
 
 // Retourne true si un objet avec trackEyes existe, écrit sa position normalisée
 bool getLookTarget(float& outX, float& outY);

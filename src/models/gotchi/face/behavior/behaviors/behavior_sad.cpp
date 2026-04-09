@@ -96,5 +96,6 @@ const Behavior BEHAVIOR_SAD = {
   "sad", onEnter, onUpdate, onExit, sadOnTouch, sadOnShake,
   FaceExpression::Sad,
   5.0f,   // min 5s
-  15.0f   // max 15s
+  15.0f,  // max 15s
+  BF_NONE
 };

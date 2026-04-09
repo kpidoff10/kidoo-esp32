@@ -4,6 +4,7 @@
 #include "../face/face_engine.h"
 #include "../face/face_config.h"
 #include "../face/behavior/behavior_engine.h"
+#include "../config/gotchi_theme.h"
 
 bool ModelGotchiSerialCommands::processCommand(const String& command) {
   if (command == "gotchi-info") {
@@ -39,10 +40,50 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
       return true;
     }
 
+    // --- Jouer ---
+    if (arg == "play ball" || arg == "play") {
+      BehaviorEngine::tryPlay();
+      return true;
+    }
+
     // --- Événements ---
     if (arg == "touch") { BehaviorEngine::onTouch(); return true; }
     if (arg == "shake") { BehaviorEngine::onShake(); return true; }
+    if (arg == "pet")   { BehaviorEngine::onPet();   return true; }
     if (arg == "sound") { BehaviorEngine::onSound(); return true; }
+
+    // --- Set stats (face set <stat> <value>) ---
+    if (arg.startsWith("set ")) {
+      String rest = arg.substring(4); rest.trim();
+      int sp = rest.indexOf(' ');
+      if (sp > 0) {
+        String stat = rest.substring(0, sp); stat.trim();
+        float val = rest.substring(sp + 1).toFloat();
+        auto& s = BehaviorEngine::getStats();
+        if (stat == "hunger")         s.hunger = val;
+        else if (stat == "energy")    s.energy = val;
+        else if (stat == "happiness") s.happiness = val;
+        else if (stat == "health")    s.health = val;
+        else if (stat == "hygiene")   s.hygiene = val;
+        else if (stat == "boredom")   s.boredom = val;
+        else if (stat == "excitement") s.excitement = val;
+        else if (stat == "irritability") s.irritability = val;
+        else { Serial.printf("[STATS] Inconnu: %s\n", stat.c_str()); return true; }
+        s.clamp();
+        Serial.printf("[STATS] %s = %.0f\n", stat.c_str(), val);
+      } else {
+        Serial.println("[STATS] Usage: face set <stat> <value>");
+        Serial.println("  Stats: hunger, energy, happiness, health, hygiene, boredom, excitement, irritability");
+      }
+      return true;
+    }
+
+    // --- Reset all stats ---
+    if (arg == "reset") {
+      BehaviorEngine::getStats() = BehaviorStats();
+      Serial.println("[STATS] Reset to defaults");
+      return true;
+    }
 
     // --- Stats ---
     if (arg == "stats") {
@@ -79,6 +120,24 @@ bool ModelGotchiSerialCommands::processCommand(const String& command) {
       } else {
         BehaviorEngine::forceState(name.c_str());
       }
+      return true;
+    }
+
+    // --- Theme / sexe ---
+    if (arg == "boy") {
+      GotchiTheme::setPreset(GotchiTheme::Preset::Boy);
+      GotchiTheme::saveToConfig();
+      return true;
+    }
+    if (arg == "girl") {
+      GotchiTheme::setPreset(GotchiTheme::Preset::Girl);
+      GotchiTheme::saveToConfig();
+      return true;
+    }
+    if (arg.startsWith("theme ")) {
+      String t = arg.substring(6); t.trim();
+      GotchiTheme::setPresetByName(t.c_str());
+      GotchiTheme::saveToConfig();
       return true;
     }
 
@@ -129,9 +188,18 @@ void ModelGotchiSerialCommands::printHelp() {
   Serial.println("  face feed [bottle|cake|apple|candy]  Nourrir");
   Serial.println("  face medicine                Soigner");
   Serial.println("  face clean                   Nettoyer");
-  Serial.println("  face touch                   Caresser");
+  Serial.println("  face play ball               Jouer a la balle (swipe ecran = lancer)");
+  Serial.println("  face set <stat> <value>      Modifier une stat (hunger, energy, happiness, health,");
+  Serial.println("                               hygiene, boredom, excitement, irritability)");
+  Serial.println("  face reset                   Reset toutes les stats");
+  Serial.println("  face touch                   Taper");
+  Serial.println("  face pet                     Caresser");
   Serial.println("  face shake                   Secouer");
   Serial.println("  face sound                   Son");
+  Serial.println("  === Theme ===");
+  Serial.println("  face boy                     Theme garcon (cyan)");
+  Serial.println("  face girl                    Theme fille (magenta)");
+  Serial.println("  face theme <name>            green, gold, red, white");
   Serial.println("  === Infos ===");
   Serial.println("  face stats                   Stats complètes");
   Serial.println("  === Behaviors ===");

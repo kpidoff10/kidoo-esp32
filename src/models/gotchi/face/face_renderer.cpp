@@ -9,6 +9,8 @@
  */
 #include "face_renderer.h"
 #include "../config/config.h"
+#include "../config/gotchi_theme.h"
+#include "behavior/behavior_objects.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -40,10 +42,11 @@ constexpr int16_t FB_Y = 130;
 constexpr int16_t FB_W = 426;   // 20 à 446 — quasi tout l'écran en largeur
 constexpr int16_t FB_H = 270;   // 130 à 400 — yeux + bouche + goutte
 
-constexpr uint16_t COL_BG    = 0x0000;
-constexpr uint16_t COL_EYE   = 0x073F;  // Cyan ~00E5FF
-constexpr uint16_t COL_INNER = 0x1928;  // Bleu très foncé ~1A2030
-constexpr uint16_t COL_TONGUE = 0xF890; // Rose ~F07080
+constexpr uint16_t COL_BG = 0x0000;
+// Couleurs dynamiques via GotchiTheme
+#define COL_EYE    (GotchiTheme::getColors().eye)
+#define COL_INNER  (GotchiTheme::getColors().inner)
+#define COL_TONGUE (GotchiTheme::getColors().tongue)
 
 Arduino_GFX* s_gfx = nullptr;
 uint16_t* s_fbCurrent = nullptr;  // Frame affichée actuellement
@@ -361,8 +364,17 @@ void render(const EyeConfig& left, const EyeConfig& right, float lookX, float lo
     }
   }
 
+  // Dessiner les objets visuels (balle, coeurs, etc.) par-dessus le visage
+  BehaviorObjects::draw();
+
   // Envoyer le buffer
   flushBuffer();
 }
+
+uint16_t* getNextBuffer() { return s_fbNext; }
+int16_t getFbX() { return FB_X; }
+int16_t getFbY() { return FB_Y; }
+int16_t getFbW() { return FB_W; }
+int16_t getFbH() { return FB_H; }
 
 } // namespace FaceRenderer
