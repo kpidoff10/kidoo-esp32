@@ -25,9 +25,12 @@ bool BLEConfigManager::init(uint8_t buttonPin) {
   }
   
   BLEConfigManager::buttonPin = buttonPin;
-  
+
   // Configurer le pin en INPUT_PULLUP (bouton connecté à GND)
-  pinMode(buttonPin, INPUT_PULLUP);
+  // Si pin invalide (-1 = 255), on skip — pas de bouton physique
+  if (buttonPin < 48) {
+    pinMode(buttonPin, INPUT_PULLUP);
+  }
   
   initialized = true;
   bleEnabled = false;
@@ -408,6 +411,9 @@ bool BLEConfigManager::isButtonPressed() {
   static unsigned long lastDebounceTime = 0;
   static bool lastButtonState = HIGH;
   static bool debouncedState = HIGH;
+
+  // Pas de bouton physique → jamais presse
+  if (buttonPin >= 48) return false;
 
   unsigned long currentTime = millis();
   bool reading = digitalRead(buttonPin);

@@ -1,6 +1,7 @@
 #include "behavior_engine.h"
 #include "behavior_objects.h"
 #include "../face_engine.h"
+#include "../gotchi_haptic.h"
 #include <cstdlib>
 #include <cstring>
 #include <Arduino.h>
@@ -260,6 +261,7 @@ void onFingerDown(float x, float y) {
   s_dragLastTime = millis();
   FaceEngine::setAutoMode(false);  // Stop blink/look aleatoire
   FaceEngine::setExpression(FaceExpression::Excited);
+  GotchiHaptic::ballCatch();
 }
 
 void onFingerMove(float x, float y) {

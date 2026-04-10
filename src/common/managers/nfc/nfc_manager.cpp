@@ -8,6 +8,13 @@
 #include <Adafruit_PN532.h>
 #include <string.h>
 
+// Bus I2C : Wire1 si NFC_USE_WIRE1 defini (evite conflit avec Wire principal)
+#ifdef NFC_USE_WIRE1
+  #define NFC_WIRE Wire1
+#else
+  #define NFC_WIRE Wire
+#endif
+
 // Instance statique du PN532 (créée lors de l'initialisation)
 static Adafruit_PN532* nfcInstance = nullptr;
 #endif // HAS_NFC
@@ -262,8 +269,9 @@ bool NFCManager::testHardware() {
   Serial.println("[NFC] Mode: I2C");
 
   // Initialiser le bus I2C
-  Wire.begin(NFC_SDA_PIN, NFC_SCL_PIN);
-  Wire.setTimeout(500);
+  NFC_WIRE.begin(NFC_SDA_PIN, NFC_SCL_PIN);
+  NFC_WIRE.setTimeout(500);
+  delay(200);  // laisser le PN532 demarrer
   delay(100);
 
   Serial.printf("[NFC] Pins I2C: SDA=%d, SCL=%d\n", NFC_SDA_PIN, NFC_SCL_PIN);
@@ -272,7 +280,7 @@ bool NFCManager::testHardware() {
   // Créer une instance temporaire du PN532 pour le test (I2C mode)
   // Constructor I2C: Adafruit_PN532(irq, reset, &Wire)
   // -1 = pas de pin IRQ/RST
-  Adafruit_PN532 nfc(-1, -1, &Wire);
+  Adafruit_PN532 nfc(-1, -1, &NFC_WIRE);
 
   // Initialiser le module PN532
   nfc.begin();
@@ -308,7 +316,7 @@ bool NFCManager::testHardware() {
 
   // Créer l'instance statique pour les opérations futures
   if (nfcInstance == nullptr) {
-    nfcInstance = new Adafruit_PN532(-1, -1, &Wire);
+    nfcInstance = new Adafruit_PN532(-1, -1, &NFC_WIRE);
     nfcInstance->begin();
     delay(100);
     nfcInstance->SAMConfig();

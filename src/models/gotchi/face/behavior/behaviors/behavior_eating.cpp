@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../gotchi_haptic.h"
 #include <cstdlib>
 
 namespace {
@@ -38,6 +39,8 @@ static void onUpdate(uint32_t dtMs) {
     s_chewTimer = 0;
     s_chewing = !s_chewing;
     stats.mouthState = s_chewing ? -0.3f : 0.4f;
+    // Tac haptique uniquement quand la bouche se ferme (croque)
+    if (s_chewing) GotchiHaptic::chew();
   }
 
   // Expressions de plaisir

@@ -58,6 +58,24 @@ public:
   static void pulse(uint32_t durationMs, uint8_t intensity = 255);
 
   /**
+   * Impulsion non-bloquante : démarre la vibration et l'arrête
+   * automatiquement après durationMs via update().
+   * À utiliser depuis du code temps réel (animations, jeu, etc.)
+   * pour ne pas bloquer la boucle principale avec delay().
+   *
+   * Si une pulseAuto() est déjà en cours, elle est remplacée.
+   * @param durationMs durée en millisecondes (1-2000 conseillé)
+   * @param intensity intensité 0-255 (défaut 200)
+   */
+  static void pulseAuto(uint32_t durationMs, uint8_t intensity = 200);
+
+  /**
+   * Mettre à jour le gestionnaire (auto-stop des pulseAuto).
+   * À appeler dans la boucle principale.
+   */
+  static void update();
+
+  /**
    * Arrêter immédiatement la vibration
    */
   static void stop();
@@ -87,6 +105,8 @@ private:
   static bool initialized;
   static uint8_t currentIntensity;
   static bool currentOn;
+  static uint32_t pulseAutoEndAt;  // millis() de fin de pulseAuto, 0 = inactif
+  static bool manualOverride;      // true quand setOn manuel actif → bloque pulseAuto
 };
 
 #endif // HAS_VIBRATOR

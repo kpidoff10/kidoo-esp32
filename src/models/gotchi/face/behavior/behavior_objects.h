@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-enum class ObjectShape : uint8_t { Circle, Rect, Drop };
+enum class ObjectShape : uint8_t { Circle, Rect, Drop, Heart };
 
 constexpr int MAX_VISUAL_OBJECTS = 8;
 
@@ -30,6 +30,12 @@ bool isHeld(int id);
 
 // Retourne true si un objet avec trackEyes existe, écrit sa position normalisée
 bool getLookTarget(float& outX, float& outY);
+
+// Callback appelé à chaque rebond d'un objet sur le sol (collision physique).
+// Utilisé pour brancher du feedback (haptique, son, particules).
+// nullptr = pas de callback. Un seul callback global.
+using BounceCallback = void(*)(int objId);
+void setBounceCallback(BounceCallback cb);
 
 } // namespace BehaviorObjects
 

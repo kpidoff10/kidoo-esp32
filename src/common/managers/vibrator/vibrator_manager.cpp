@@ -14,6 +14,8 @@ static const int VIBRATOR_PWM_RESOLUTION = 8;  // 0-255
 bool VibratorManager::initialized = false;
 uint8_t VibratorManager::currentIntensity = 255;
 bool VibratorManager::currentOn = false;
+uint32_t VibratorManager::pulseAutoEndAt = 0;
+bool VibratorManager::manualOverride = false;
 
 bool VibratorManager::init() {
   if (initialized) {
@@ -54,6 +56,10 @@ uint8_t VibratorManager::getIntensity() {
 void VibratorManager::setOn(bool on) {
   if (!initialized) return;
   currentOn = on;
+  // setOn() est l'API "manuelle" (Serial, debug). On verrouille le manualOverride
+  // pour empecher les behaviors (pulseAuto) de venir clobber l'etat.
+  manualOverride = on;
+  pulseAutoEndAt = 0;  // annule toute pulse auto en cours
   ledcWrite(VIBRATOR_PWM_CHANNEL, on ? currentIntensity : 0);
 }
 
@@ -69,9 +75,32 @@ void VibratorManager::pulse(uint32_t durationMs, uint8_t intensity) {
   // Pour un usage simple depuis Serial, l'appelant fera delay(durationMs) puis stop().
 }
 
+void VibratorManager::pulseAuto(uint32_t durationMs, uint8_t intensity) {
+  if (!initialized || durationMs == 0) return;
+  // Respecter le contrôle manuel : si l'utilisateur a fait `vibrator on` (Serial/debug),
+  // on ne touche pas au PWM. Les pulses des behaviors sont silencieusement ignorées.
+  if (manualOverride) return;
+  // Ecriture directe pour ne pas passer par setOn() (qui activerait manualOverride).
+  currentIntensity = intensity;
+  currentOn = true;
+  ledcWrite(VIBRATOR_PWM_CHANNEL, intensity);
+  pulseAutoEndAt = millis() + durationMs;
+  if (pulseAutoEndAt == 0) pulseAutoEndAt = 1;  // Eviter sentinelle
+}
+
+void VibratorManager::update() {
+  if (!initialized || pulseAutoEndAt == 0) return;
+  if ((int32_t)(millis() - pulseAutoEndAt) >= 0) {
+    pulseAutoEndAt = 0;
+    stop();
+  }
+}
+
 void VibratorManager::stop() {
   if (!initialized) return;
   currentOn = false;
+  manualOverride = false;
+  pulseAutoEndAt = 0;
   ledcWrite(VIBRATOR_PWM_CHANNEL, 0);
 }
 

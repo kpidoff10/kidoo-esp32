@@ -1,14 +1,46 @@
 #include "model_serial_commands.h"
 #include <Arduino.h>
+#include <Wire.h>
 #include "../lvgl/gotchi_lvgl.h"
 #include "../face/face_engine.h"
 #include "../face/face_config.h"
 #include "../face/behavior/behavior_engine.h"
 #include "../config/gotchi_theme.h"
+#include "../config/config.h"
 
 bool ModelGotchiSerialCommands::processCommand(const String& command) {
   if (command == "gotchi-info") {
     Serial.println("[GOTCHI] Waveshare ESP32-S3-Touch-AMOLED-1.75 (466x466, QSPI)");
+    return true;
+  }
+
+  // Scan I2C sur Wire1 (NFC) et Wire (principal)
+  if (command == "i2c scan") {
+    // Wire1 — NFC bus
+    Serial.printf("[I2C] Scan Wire1 (SDA=%d, SCL=%d):\n", NFC_SDA_PIN, NFC_SCL_PIN);
+    Wire1.begin(NFC_SDA_PIN, NFC_SCL_PIN);
+    delay(100);
+    int found1 = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+      Wire1.beginTransmission(addr);
+      if (Wire1.endTransmission() == 0) {
+        Serial.printf("  0x%02X\n", addr);
+        found1++;
+      }
+    }
+    if (!found1) Serial.println("  (aucun device)");
+
+    // Wire — bus principal
+    Serial.printf("[I2C] Scan Wire (SDA=%d, SCL=%d):\n", IIC_SDA, IIC_SCL);
+    int found0 = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+      Wire.beginTransmission(addr);
+      if (Wire.endTransmission() == 0) {
+        Serial.printf("  0x%02X\n", addr);
+        found0++;
+      }
+    }
+    if (!found0) Serial.println("  (aucun device)");
     return true;
   }
   if (command == "gotchi-test") {

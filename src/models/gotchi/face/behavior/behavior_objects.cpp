@@ -1,8 +1,10 @@
 #include "behavior_objects.h"
 #include "../../config/config.h"
 #include "../face_renderer.h"
+#include "sprites/sprite_heart_24.h"
 #include <Arduino_GFX_Library.h>
 #include <esp_heap_caps.h>
+#include <pgmspace.h>
 #include <cmath>
 #include <cstring>
 
@@ -68,6 +70,52 @@ void drawRect(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
   }
 }
 
+// Mélange une couleur source 565 sur un fond 565 selon alpha (0..255)
+inline uint16_t blend565(uint16_t bg, uint16_t fg, uint8_t alpha) {
+  if (alpha == 0) return bg;
+  if (alpha >= 250) return fg;
+  uint16_t br = (bg >> 11) & 0x1F;
+  uint16_t bgn = (bg >> 5) & 0x3F;
+  uint16_t bb = bg & 0x1F;
+  uint16_t fr = (fg >> 11) & 0x1F;
+  uint16_t fgn = (fg >> 5) & 0x3F;
+  uint16_t fb_ = fg & 0x1F;
+  uint16_t inv = 255 - alpha;
+  uint16_t r = (fr * alpha + br * inv) / 255;
+  uint16_t g = (fgn * alpha + bgn * inv) / 255;
+  uint16_t b = (fb_ * alpha + bb * inv) / 255;
+  return (r << 11) | (g << 5) | b;
+}
+
+// Blit du sprite heart_24 (alpha map PROGMEM) avec scaling nearest et alpha-blend
+void drawHeart(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
+               int16_t cx, int16_t cy, int16_t size, uint16_t color) {
+  // size historique 12..19 → display ~24..38 (cœur visible ~14..22 px)
+  int16_t dst = size * 2;
+  if (dst < 8) dst = 8;
+  const int16_t srcW = SPRITE_HEART_24_WIDTH;
+  const int16_t srcH = SPRITE_HEART_24_HEIGHT;
+  int16_t x0 = cx - dst / 2;
+  int16_t y0 = cy - dst / 2;
+  for (int16_t dy = 0; dy < dst; dy++) {
+    int16_t sy = (dy * srcH) / dst;
+    int16_t py = y0 + dy;
+    int16_t ly = py - fbY;
+    if (ly < 0 || ly >= fbH) continue;
+    for (int16_t dx = 0; dx < dst; dx++) {
+      int16_t sx = (dx * srcW) / dst;
+      uint8_t a = pgm_read_byte(&SPRITE_HEART_24_DATA[sy * srcW + sx]);
+      if (a == 0) continue;
+      int16_t px = x0 + dx;
+      int16_t lx = px - fbX;
+      if (lx < 0 || lx >= fbW) continue;
+      uint16_t* p = &fb[ly * fbW + lx];
+      *p = blend565(*p, color, a);
+    }
+  }
+}
+
+
 // Dessiner une goutte (cercle + triangle en bas)
 void drawDrop(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
               int16_t cx, int16_t cy, int16_t size, uint16_t color) {
@@ -93,10 +141,17 @@ void init() {
   }
 }
 
+static BehaviorObjects::BounceCallback s_bounceCb = nullptr;
+
+void setBounceCallback(BounceCallback cb) {
+  s_bounceCb = cb;
+}
+
 void update(uint32_t dtMs) {
   float dt = (float)dtMs;
 
-  for (auto& o : s_pool) {
+  for (int i = 0; i < MAX_VISUAL_OBJECTS; i++) {
+    auto& o = s_pool[i];
     if (!o.alive) continue;
 
     o.age += dtMs;
@@ -119,6 +174,7 @@ void update(uint32_t dtMs) {
     if (o.bounce > 0 && o.y > 380.0f) {
       o.y = 380.0f;
       o.vy = -fabsf(o.vy) * o.bounce;
+      if (s_bounceCb) s_bounceCb((int)i);
     }
 
     // Murs
@@ -154,6 +210,29 @@ void topFillCircle(int16_t cx, int16_t cy, int16_t r, uint16_t color) {
     int16_t dx = (int16_t)sqrtf((float)(r * r - dy * dy));
     for (int16_t x = cx - dx; x <= cx + dx; x++) {
       topPx(x, cy + dy, color);
+    }
+  }
+}
+
+void topDrawHeart(int16_t cx, int16_t cy, int16_t size, uint16_t color) {
+  int16_t dst = size * 2;
+  if (dst < 8) dst = 8;
+  const int16_t srcW = SPRITE_HEART_24_WIDTH;
+  const int16_t srcH = SPRITE_HEART_24_HEIGHT;
+  int16_t x0 = cx - dst / 2;
+  int16_t y0 = cy - dst / 2;
+  for (int16_t dy = 0; dy < dst; dy++) {
+    int16_t sy = (dy * srcH) / dst;
+    int16_t ly = (y0 + dy) - TOP_Y;
+    if (ly < 0 || ly >= TOP_H) continue;
+    for (int16_t dx = 0; dx < dst; dx++) {
+      int16_t sx = (dx * srcW) / dst;
+      uint8_t a = pgm_read_byte(&SPRITE_HEART_24_DATA[sy * srcW + sx]);
+      if (a == 0) continue;
+      int16_t lx = (x0 + dx) - TOP_X;
+      if (lx < 0 || lx >= TOP_W) continue;
+      uint16_t* p = &s_topBuf[ly * TOP_W + lx];
+      *p = blend565(*p, color, a);
     }
   }
 }
@@ -197,10 +276,18 @@ void draw() {
       case ObjectShape::Drop:
         drawDrop(fb, fbW, fbH, fbX, fbY, sx, sy, o.size, o.color565);
         break;
+      case ObjectShape::Heart:
+        drawHeart(fb, fbW, fbH, fbX, fbY, sx, sy, o.size, o.color565);
+        break;
     }
 
     // Aussi dessiner dans le top buffer (zone haute y=30-130)
-    if (sy - r < fbY) {
+    if (o.shape == ObjectShape::Heart) {
+      if (sy - o.size < fbY) {
+        topDrawHeart(sx, sy, o.size, o.color565);
+        s_topDirty = true;
+      }
+    } else if (sy - r < fbY) {
       topFillCircle(sx, sy, r, o.color565);
       s_topDirty = true;
     }

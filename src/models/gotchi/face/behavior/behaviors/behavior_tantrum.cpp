@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../gotchi_haptic.h"
 #include "../../overlay/face_overlay_layer.h"
 #include <cstdlib>
 
@@ -18,6 +19,7 @@ static void onEnter() {
   s_angerTimer = 0;
   s_exprTimer = 0;
   s_shakeTimer = 0;
+  GotchiHaptic::angerBurst();
 }
 
 static void onUpdate(uint32_t dtMs) {
@@ -33,6 +35,8 @@ static void onUpdate(uint32_t dtMs) {
     float lx = ((float)(rand() % 100) - 50) / 100.0f;
     float ly = ((float)(rand() % 60) - 30) / 200.0f;
     FaceEngine::lookAt(lx, ly);
+    // Tremblement haptique synchrone (1 fois sur 3 pour ne pas saturer)
+    if ((rand() % 3) == 0) GotchiHaptic::angerShake();
   }
 
   // Expressions de colère

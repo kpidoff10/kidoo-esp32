@@ -72,18 +72,17 @@
 #define GOTCHI_I2S_DO_IO 8
 
 // ============================================
-// BLE — bouton config (éviter GPIO 14/15 réservés au bus I2C de la carte)
+// BLE — pas de bouton physique sur Gotchi
 // ============================================
 
-#define BLE_CONFIG_BUTTON_PIN 17
+#define BLE_CONFIG_BUTTON_PIN -1
 
 // ============================================
-// Bande WS2812 (optionnelle — requis pour compiler led_manager)
-// GPIO 18 libre sur cette carte ; ajuster si bande externe branchée ailleurs.
+// LED — pas de bande WS2812 sur Gotchi (requis pour compiler led_manager)
 // ============================================
 
-#define LED_DATA_PIN 18
-#define NUM_LEDS 16
+#define LED_DATA_PIN -1
+#define NUM_LEDS 0
 
 #ifndef HAS_LED
 #define HAS_LED false
@@ -116,5 +115,27 @@
 #ifndef HAS_LVGL
 #define HAS_LVGL 1
 #endif
+
+// ============================================
+// Moteur de vibration — module PWM sur GPIO 16 (header H2)
+// ============================================
+
+#ifndef HAS_VIBRATOR
+#define HAS_VIBRATOR true
+#endif
+
+#define VIBRATOR_PIN 16
+
+// ============================================
+// NFC — PN532 (sur le bus I2C principal partage, pads SDA/SCL en bas de la carte)
+// ============================================
+
+#ifndef HAS_NFC
+#define HAS_NFC true
+#endif
+
+#define NFC_SDA_PIN IIC_SDA  // GPIO 15 — pad SDA
+#define NFC_SCL_PIN IIC_SCL  // GPIO 14 — pad SCL
+#define NFC_I2C_ADDRESS 0x24
 
 #endif // CONFIG_GOTCHI_H

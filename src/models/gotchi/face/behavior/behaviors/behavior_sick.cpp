@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../gotchi_haptic.h"
 #include <cstdlib>
 
 namespace {
@@ -40,6 +41,8 @@ static void onUpdate(uint32_t dtMs) {
     FaceEngine::setExpression(exprs[rand() % 3]);
     // Regard faible, lent
     FaceEngine::lookAt(((float)(rand() % 60) - 30) / 200.0f, 0.15f);
+    // Toux haptique faible et lente, 1 fois sur 2
+    if ((rand() % 2) == 0) GotchiHaptic::cough();
   }
 
   // Germes verts qui flottent

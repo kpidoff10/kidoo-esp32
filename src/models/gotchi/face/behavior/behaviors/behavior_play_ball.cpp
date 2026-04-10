@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../gotchi_haptic.h"
 #include <cstdlib>
 #include <cmath>
 
@@ -10,6 +11,13 @@ int s_bounceCount = 0;
 int s_cycleCount = 0;
 uint32_t s_phaseTimer = 0;
 bool s_throwing = true;
+
+// Callback physique : appelé à chaque collision balle/sol par BehaviorObjects
+void onBallBounce(int /*objId*/) {
+  GotchiHaptic::ballBounce();
+  s_bounceCount++;
+  FaceEngine::blink();
+}
 
 void throwBall() {
   bool fromLeft = (rand() % 2) == 0;
@@ -28,12 +36,14 @@ void throwBall() {
   s_throwing = true;
 
   FaceEngine::setExpression(FaceExpression::Excited);
+  GotchiHaptic::ballThrow();
 }
 }
 
 static void onEnter() {
   s_cycleCount = 0;
   FaceEngine::setAutoMode(true);
+  BehaviorObjects::setBounceCallback(onBallBounce);
   throwBall();
 }
 
@@ -54,7 +64,7 @@ static void onUpdate(uint32_t dtMs) {
     return;
   }
 
-  // Détecter les rebonds via la position Y de la balle
+  // Expressions selon la trajectoire (rebonds eux-mêmes gérés par onBallBounce callback)
   float lx, ly;
   if (BehaviorObjects::getLookTarget(lx, ly)) {
     if (ly < -0.3f && s_throwing) {
@@ -63,9 +73,7 @@ static void onUpdate(uint32_t dtMs) {
     }
     if (ly > 0.6f && !s_throwing) {
       FaceEngine::setExpression(FaceExpression::Excited);
-      FaceEngine::blink();
       s_throwing = true;
-      s_bounceCount++;
     }
   }
 
@@ -91,6 +99,7 @@ static void onUpdate(uint32_t dtMs) {
 }
 
 static void onExit() {
+  BehaviorObjects::setBounceCallback(nullptr);
   if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
   s_ballId = -1;
   FaceEngine::setAutoMode(false);
@@ -113,6 +122,7 @@ void playBallLaunchFrom(float fromX, float dirX) {
   s_phaseTimer = 0;
   s_throwing = true;
   FaceEngine::setExpression(FaceExpression::Excited);
+  GotchiHaptic::ballThrow();
 }
 
 static bool playOnTouch() {

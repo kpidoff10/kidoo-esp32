@@ -2,6 +2,7 @@
 #include "overlay_common.h"
 #include "overlay_anger.h"
 #include "overlay_sleep_zzz.h"
+// overlay_status desactive — les stats sont dans la view stats
 
 using namespace OverlayCommon;
 
@@ -31,7 +32,7 @@ void update(uint32_t dtMs) {
 void draw(Arduino_GFX* gfx) {
   if (!gfx) return;
 
-  s_gfx = gfx;  // garder ref pour clear au disable
+  s_gfx = gfx;
 
   BBox cur{};
   if (s_mangaCross) OverlayAnger::draw(gfx, cur);

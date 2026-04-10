@@ -1,6 +1,7 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
 #include "../../face_engine.h"
+#include "../../gotchi_haptic.h"
 #include <cstdlib>
 
 namespace {
@@ -13,6 +14,7 @@ static void onEnter() {
   FaceEngine::setExpression(FaceExpression::Happy);
   s_heartTimer = 0;
   s_exprTimer = 0;
+  GotchiHaptic::joyTap();
 }
 
 static void onUpdate(uint32_t dtMs) {
@@ -28,7 +30,7 @@ static void onUpdate(uint32_t dtMs) {
     float hx = 180.0f + (rand() % 100);
     float hy = 160.0f + (rand() % 40);
     BehaviorObjects::spawn(
-      ObjectShape::Circle, 0xFF6090, 12 + rand() % 8,
+      ObjectShape::Heart, 0xFF6090, 12 + rand() % 8,
       hx, hy,
       ((rand() % 60) - 30) / 1000.0f, -0.06f - (rand() % 30) / 1000.0f,
       0, 0, false, 2500
