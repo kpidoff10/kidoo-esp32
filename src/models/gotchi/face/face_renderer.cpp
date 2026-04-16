@@ -11,6 +11,7 @@
 #include "../config/config.h"
 #include "../config/gotchi_theme.h"
 #include "behavior/behavior_objects.h"
+#include "behavior/dirt_overlay.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -40,7 +41,7 @@ constexpr int16_t MOUTH_CY = SCR_CY + 85;
 constexpr int16_t FB_X = 20;
 constexpr int16_t FB_Y = 130;
 constexpr int16_t FB_W = 426;   // 20 à 446 — quasi tout l'écran en largeur
-constexpr int16_t FB_H = 270;   // 130 à 400 — yeux + bouche + goutte
+constexpr int16_t FB_H = 310;   // 130 à 440 — yeux + bouche + bas écran rond
 
 constexpr uint16_t COL_BG = 0x0000;
 // Couleurs dynamiques via GotchiTheme
@@ -400,6 +401,13 @@ void render(const EyeConfig& left, const EyeConfig& right, float lookX, float lo
       }
     }
   }
+
+  // Saleté (taches brunes) — dessiner dans le FB avant les objets
+  DirtOverlay::drawIntoFB(s_fbNext, FB_W, FB_H, FB_X, FB_Y);
+  // Éponge par-dessus la saleté (alpha blend dans le FB)
+  DirtOverlay::drawSpongeIntoFB(s_fbNext, FB_W, FB_H, FB_X, FB_Y);
+  // Brosse à dents
+  DirtOverlay::drawBrushIntoFB(s_fbNext, FB_W, FB_H, FB_X, FB_Y);
 
   // Objets visuels (balle, coeurs) seulement en mode normal
   if (!s_useViewport) {

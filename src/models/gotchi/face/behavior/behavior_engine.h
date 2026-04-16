@@ -39,6 +39,7 @@ Need getCurrentNeed();
 
 // Événements externes
 void onTouch();
+void onTouchAt(int16_t x, int16_t y);  // Tap localise (zones tactiles : yeux, bouche, chatouilles...)
 void onShake();
 void onPet();
 void onSwipe(float startX, float startY, float dirX, float dirY);
@@ -53,8 +54,15 @@ void requestBehavior(const Behavior* behavior);
 // Actions utilisateur
 bool tryPlay();  // Retourne false si le gotchi refuse de jouer
 void feed(const char* food);
-void heal();
+void stopFeeding();       // Arrêter le biberon (face feed bottle off)
+void startThermometer();  // Prendre la température
+void stopThermometer();   // Retirer le thermomètre
+void resetTimer();        // Reset le timer du behavior courant (empêche timeout)
+void giveMedicine();  // Donner un médicament (animation + heal)
+void heal();          // Heal direct sans animation
 void clean();
+void sleep();             // Endormir le gotchi
+void readBook();          // Lire un livre (tag)
 
 } // namespace BehaviorEngine
 
@@ -71,5 +79,7 @@ extern const Behavior BEHAVIOR_DIRTY;
 extern const Behavior BEHAVIOR_LONELY;
 extern const Behavior BEHAVIOR_CURIOUS;
 extern const Behavior BEHAVIOR_TANTRUM;
+extern const Behavior BEHAVIOR_THERMOMETER;
+extern const Behavior BEHAVIOR_MEDICINE;
 
 #endif

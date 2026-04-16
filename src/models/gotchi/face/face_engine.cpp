@@ -38,7 +38,9 @@ EyeConfig s_transStartRight;
 // Blink
 // ============================================
 enum class BlinkPhase { None, Closing, Closed, Opening };
+enum BlinkSide : uint8_t { BLINK_BOTH = 0, BLINK_LEFT = 1, BLINK_RIGHT = 2 };
 BlinkPhase s_blinkPhase = BlinkPhase::None;
+uint8_t s_blinkSide = BLINK_BOTH;
 uint32_t s_blinkTimer = 0;
 constexpr uint32_t BLINK_CLOSE_MS = 80;
 constexpr uint32_t BLINK_HOLD_MS  = 50;
@@ -49,6 +51,8 @@ float s_blinkSavedSlopeTopL = 0;
 float s_blinkSavedSlopeTopR = 0;
 float s_blinkSavedSlopeBotL = 0;
 float s_blinkSavedSlopeBotR = 0;
+inline bool blinkAffectsLeft()  { return s_blinkSide == BLINK_BOTH || s_blinkSide == BLINK_LEFT; }
+inline bool blinkAffectsRight() { return s_blinkSide == BLINK_BOTH || s_blinkSide == BLINK_RIGHT; }
 
 // ============================================
 // Auto behavior (blink + idle look)
@@ -116,11 +120,18 @@ void updateTrauma(uint32_t dtMs) {
 }
 
 // ============================================
-// Forced look (caresse — prioritaire sur tout)
+// Forced look (caresse / interactions tactiles — prioritaire sur tout)
 // ============================================
 bool s_forcedLook = false;
 uint32_t s_forcedLookTimer = 0;
-constexpr uint32_t FORCED_LOOK_MS = 250;
+uint32_t s_forcedLookDuration = 250;  // caresse = 250ms, tactile = 400-800ms
+
+// ============================================
+// Forced expression (tactile — empêche les behaviors/scènes d'écraser)
+// ============================================
+bool s_exprLocked = false;
+uint32_t s_exprLockTimer = 0;
+uint32_t s_exprLockDuration = 0;
 
 uint32_t randomRange(uint32_t minMs, uint32_t maxMs) {
   return minMs + (rand() % (maxMs - minMs + 1));
@@ -167,16 +178,22 @@ void updateBlink(uint32_t dtMs) {
 
   s_blinkTimer += dtMs;
 
+  const bool doL = blinkAffectsLeft();
+  const bool doR = blinkAffectsRight();
+
   switch (s_blinkPhase) {
     case BlinkPhase::Closing: {
       float t = clampf((float)s_blinkTimer / BLINK_CLOSE_MS, 0, 1);
-      s_currentLeft.height = (int16_t)(s_blinkSavedHeightL * (1.0f - t));
-      s_currentRight.height = (int16_t)(s_blinkSavedHeightR * (1.0f - t));
-      // Réduire le slope proportionnellement
-      s_currentLeft.slopeTop = s_blinkSavedSlopeTopL * (1.0f - t);
-      s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL * (1.0f - t);
-      s_currentRight.slopeTop = s_blinkSavedSlopeTopR * (1.0f - t);
-      s_currentRight.slopeBottom = s_blinkSavedSlopeBotR * (1.0f - t);
+      if (doL) {
+        s_currentLeft.height = (int16_t)(s_blinkSavedHeightL * (1.0f - t));
+        s_currentLeft.slopeTop = s_blinkSavedSlopeTopL * (1.0f - t);
+        s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL * (1.0f - t);
+      }
+      if (doR) {
+        s_currentRight.height = (int16_t)(s_blinkSavedHeightR * (1.0f - t));
+        s_currentRight.slopeTop = s_blinkSavedSlopeTopR * (1.0f - t);
+        s_currentRight.slopeBottom = s_blinkSavedSlopeBotR * (1.0f - t);
+      }
       if (s_blinkTimer >= BLINK_CLOSE_MS) {
         s_blinkPhase = BlinkPhase::Closed;
         s_blinkTimer = 0;
@@ -184,10 +201,14 @@ void updateBlink(uint32_t dtMs) {
       break;
     }
     case BlinkPhase::Closed: {
-      s_currentLeft.height = 1;
-      s_currentRight.height = 1;
-      s_currentLeft.slopeTop = s_currentLeft.slopeBottom = 0;
-      s_currentRight.slopeTop = s_currentRight.slopeBottom = 0;
+      if (doL) {
+        s_currentLeft.height = 1;
+        s_currentLeft.slopeTop = s_currentLeft.slopeBottom = 0;
+      }
+      if (doR) {
+        s_currentRight.height = 1;
+        s_currentRight.slopeTop = s_currentRight.slopeBottom = 0;
+      }
       if (s_blinkTimer >= BLINK_HOLD_MS) {
         s_blinkPhase = BlinkPhase::Opening;
         s_blinkTimer = 0;
@@ -196,20 +217,28 @@ void updateBlink(uint32_t dtMs) {
     }
     case BlinkPhase::Opening: {
       float t = clampf((float)s_blinkTimer / BLINK_OPEN_MS, 0, 1);
-      s_currentLeft.height = (int16_t)(s_blinkSavedHeightL * t);
-      s_currentRight.height = (int16_t)(s_blinkSavedHeightR * t);
-      s_currentLeft.slopeTop = s_blinkSavedSlopeTopL * t;
-      s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL * t;
-      s_currentRight.slopeTop = s_blinkSavedSlopeTopR * t;
-      s_currentRight.slopeBottom = s_blinkSavedSlopeBotR * t;
+      if (doL) {
+        s_currentLeft.height = (int16_t)(s_blinkSavedHeightL * t);
+        s_currentLeft.slopeTop = s_blinkSavedSlopeTopL * t;
+        s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL * t;
+      }
+      if (doR) {
+        s_currentRight.height = (int16_t)(s_blinkSavedHeightR * t);
+        s_currentRight.slopeTop = s_blinkSavedSlopeTopR * t;
+        s_currentRight.slopeBottom = s_blinkSavedSlopeBotR * t;
+      }
       if (s_blinkTimer >= BLINK_OPEN_MS) {
         s_blinkPhase = BlinkPhase::None;
-        s_currentLeft.height = s_blinkSavedHeightL;
-        s_currentRight.height = s_blinkSavedHeightR;
-        s_currentLeft.slopeTop = s_blinkSavedSlopeTopL;
-        s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL;
-        s_currentRight.slopeTop = s_blinkSavedSlopeTopR;
-        s_currentRight.slopeBottom = s_blinkSavedSlopeBotR;
+        if (doL) {
+          s_currentLeft.height = s_blinkSavedHeightL;
+          s_currentLeft.slopeTop = s_blinkSavedSlopeTopL;
+          s_currentLeft.slopeBottom = s_blinkSavedSlopeBotL;
+        }
+        if (doR) {
+          s_currentRight.height = s_blinkSavedHeightR;
+          s_currentRight.slopeTop = s_blinkSavedSlopeTopR;
+          s_currentRight.slopeBottom = s_blinkSavedSlopeBotR;
+        }
       }
       break;
     }
@@ -316,8 +345,16 @@ void update(uint32_t dtMs) {
   // Forced look timeout
   if (s_forcedLook) {
     s_forcedLookTimer += dtMs;
-    if (s_forcedLookTimer >= FORCED_LOOK_MS) {
+    if (s_forcedLookTimer >= s_forcedLookDuration) {
       s_forcedLook = false;
+    }
+  }
+
+  // Expression lock timeout (empeche behaviors/scenes d'ecraser pendant N ms)
+  if (s_exprLocked) {
+    s_exprLockTimer += dtMs;
+    if (s_exprLockTimer >= s_exprLockDuration) {
+      s_exprLocked = false;
     }
   }
 
@@ -337,10 +374,9 @@ void update(uint32_t dtMs) {
   FaceRenderer::render(s_currentLeft, s_currentRight, s_currentLookX, s_currentLookY, s_mouthState);
 }
 
-void setExpression(FaceExpression expr) {
+static void applyExpression(FaceExpression expr) {
   s_currentExpr = expr;
   FacePreset preset = FacePresets::getPreset(expr);
-
   s_transStartLeft = s_currentLeft;
   s_transStartRight = s_currentRight;
   s_targetLeft = preset.left;
@@ -349,15 +385,31 @@ void setExpression(FaceExpression expr) {
   s_transitioning = true;
 }
 
+void setExpression(FaceExpression expr) {
+  // Les behaviors/scenes passent par ici : si un lock est actif (interaction
+  // tactile recente), on ignore pour ne pas ecraser l'expression forcee.
+  if (s_exprLocked) return;
+  applyExpression(expr);
+}
+
+void setExpressionForced(FaceExpression expr, uint32_t durationMs) {
+  // Contourne le lock precedent, pose un nouveau lock.
+  applyExpression(expr);
+  s_exprLocked = true;
+  s_exprLockTimer = 0;
+  s_exprLockDuration = durationMs;
+}
+
 void lookAt(float x, float y) {
-  if (s_forcedLook) return;  // Caresse en cours, ignorer
+  if (s_forcedLook) return;  // Caresse ou tactile en cours, ignorer
   s_targetLookX = clampf(x, -1.0f, 1.0f);
   s_targetLookY = clampf(y, -1.0f, 1.0f);
 }
 
-void lookAtForced(float x, float y) {
+void lookAtForced(float x, float y, uint32_t durationMs) {
   s_forcedLook = true;
   s_forcedLookTimer = 0;
+  s_forcedLookDuration = durationMs;
   s_targetLookX = clampf(x, -1.0f, 1.0f);
   s_targetLookY = clampf(y, -1.0f, 1.0f);
   // Snap immediat (pas de ease-out)
@@ -365,9 +417,9 @@ void lookAtForced(float x, float y) {
   s_currentLookY = s_targetLookY;
 }
 
-void blink() {
+static void startBlink(uint8_t side) {
   if (s_blinkPhase != BlinkPhase::None) return; // Déjà en cours
-
+  s_blinkSide = side;
   s_blinkSavedHeightL = s_currentLeft.height > 0 ? s_currentLeft.height : s_targetLeft.height;
   s_blinkSavedHeightR = s_currentRight.height > 0 ? s_currentRight.height : s_targetRight.height;
   s_blinkSavedSlopeTopL = s_currentLeft.slopeTop;
@@ -377,6 +429,10 @@ void blink() {
   s_blinkPhase = BlinkPhase::Closing;
   s_blinkTimer = 0;
 }
+
+void blink()      { startBlink(BLINK_BOTH);  }
+void blinkLeft()  { startBlink(BLINK_LEFT);  }
+void blinkRight() { startBlink(BLINK_RIGHT); }
 
 void setAutoMode(bool enabled) {
   s_autoMode = enabled;

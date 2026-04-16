@@ -18,10 +18,10 @@ void applyPreset(GotchiTheme::Preset p) {
       s_colors.overlay = 0x073F;
       break;
     case P::Girl:
-      s_colors.eye     = 0xF81F;  // Magenta ~FF00FF
-      s_colors.inner   = 0x4010;  // Violet fonce
+      s_colors.eye     = 0xFDB8;  // Rose pastel ~FFB6C5
+      s_colors.inner   = 0x4108;  // Rose sombre
       s_colors.tongue  = 0xFE19;  // Rose clair
-      s_colors.overlay = 0xF81F;
+      s_colors.overlay = 0xFDB8;
       break;
     case P::Green:
       s_colors.eye     = 0x07E0;  // Vert ~00FF00

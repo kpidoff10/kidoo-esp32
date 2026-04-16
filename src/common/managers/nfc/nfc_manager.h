@@ -18,7 +18,8 @@
 
 // Callback appelé quand un tag est détecté
 // uid: buffer contenant l'UID, uidLength: longueur de l'UID
-typedef void (*NFCTagCallback)(uint8_t* uid, uint8_t uidLength);
+// blockData: données du bloc 4 (16 bytes), blockValid: true si la lecture a réussi
+typedef void (*NFCTagCallback)(uint8_t* uid, uint8_t uidLength, uint8_t* blockData, bool blockValid);
 
 class NFCManager {
 public:
@@ -127,7 +128,7 @@ public:
    * Si variantCode est 1-4, écrit uniquement cet octet en bloc 4 (reconnaissance fiable).
    * Sinon écrit la chaîne key (tronquée à 16 caractères).
    * @param key Clé pour affichage / fallback texte
-   * @param variantCode 1=Biberon, 2=Gâteau, 3=Pomme, 4=Bonbon (0 ou <0 = écrire le texte key)
+   * @param variantCode 1=Biberon, 2=Gâteau, 3=Pomme, 4=Bonbon, 5=Thermo, 6=Médic, 7=Clean, 8=Jeu (0 ou <0 = écrire le texte key)
    * @return true si l'écriture a réussi, false sinon
    */
   static bool writeTag(const String& key, int variantCode = 0);
@@ -168,6 +169,8 @@ private:
   struct TagEvent {
     uint8_t uid[10];
     uint8_t uidLength;
+    uint8_t blockData[16];  // Données bloc 4 lues dans le thread NFC (zero contention)
+    bool blockValid;        // true si la lecture bloc 4 a réussi
   };
   static QueueHandle_t tagEventQueue;
   static const size_t TAG_EVENT_QUEUE_LEN = 2;

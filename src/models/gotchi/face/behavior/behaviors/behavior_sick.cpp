@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_microbe_24.h"
 #include "../../face_engine.h"
 #include "../../gotchi_haptic.h"
 #include <cstdlib>
@@ -45,7 +46,7 @@ static void onUpdate(uint32_t dtMs) {
     if ((rand() % 2) == 0) GotchiHaptic::cough();
   }
 
-  // Germes verts qui flottent
+  // Microbes qui flottent (🦠)
   s_germTimer += dtMs;
   if (s_germTimer > 1800) {
     s_germTimer = 0;
@@ -53,7 +54,7 @@ static void onUpdate(uint32_t dtMs) {
     float dist = 130.0f + rand() % 40;
     float gx = 233.0f + dist * cosf(angle);
     float gy = 233.0f + dist * sinf(angle);
-    BehaviorObjects::spawn(ObjectShape::Circle, 0x60FF60, 8 + rand() % 6,
+    BehaviorObjects::spawnSprite(SPRITE_MICROBE_24_ASSET, 0,
       gx, gy, ((rand() % 20) - 10) / 1000.0f, ((rand() % 20) - 10) / 1000.0f,
       0, 0, false, 3000);
   }

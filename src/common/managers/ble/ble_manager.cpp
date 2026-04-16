@@ -84,13 +84,17 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     if (bleCommandQueue == nullptr) return;
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    String value = pCharacteristic->getValue();
+#else
     const std::string& value = pCharacteristic->getValue();
+#endif
     size_t len = value.length();
     if (len == 0 || len > BLE_COMMAND_MAX_SIZE) return;
 
     // Buffer statique pour éviter 513 bytes sur la stack de BTC_TASK
     static BLECommandMessage msg;
-    memcpy(msg.data, value.data(), len);
+    memcpy(msg.data, value.c_str(), len);
     msg.data[len] = '\0';
     msg.length = len;
 

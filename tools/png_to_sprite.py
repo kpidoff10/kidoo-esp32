@@ -59,6 +59,7 @@ def generate_header(name: str, w: int, h: int, alpha: list[int]) -> str:
         "",
         "#include <pgmspace.h>",
         "#include <cstdint>",
+        '#include "sprite_asset.h"',
         "",
         f"// Auto-generated from {name}.png ({w}x{h})",
         f"// Chaque byte = alpha du pixel (0=transparent, 255=opaque)",
@@ -79,6 +80,12 @@ def generate_header(name: str, w: int, h: int, alpha: list[int]) -> str:
 
     lines.extend([
         "};",
+        "",
+        f"// Asset générique réutilisable depuis le système de spawnSprite()",
+        f"inline constexpr SpriteAsset SPRITE_{upper}_ASSET = {{",
+        f"  SPRITE_{upper}_WIDTH, SPRITE_{upper}_HEIGHT,",
+        f"  SPRITE_{upper}_DATA, nullptr",
+        f"}};",
         "",
         f"#endif // SPRITE_{upper}_INCLUDED",
         "",

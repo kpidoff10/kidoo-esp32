@@ -1,7 +1,9 @@
 #include "behavior_objects.h"
+#include "dirt_overlay.h"
+#include "../overlay/face_overlay_layer.h"
 #include "../../config/config.h"
 #include "../face_renderer.h"
-#include "sprites/sprite_heart_24.h"
+#include "sprites/sprite_asset.h"
 #include <Arduino_GFX_Library.h>
 #include <esp_heap_caps.h>
 #include <pgmspace.h>
@@ -36,9 +38,11 @@ struct VisualObject {
   bool held = false;  // Tenu par le doigt (pas de physique)
   uint32_t lifetime = 0;
   uint32_t age = 0;
+  const SpriteAsset* asset = nullptr;  // Pour ObjectShape::Sprite
 };
 
 VisualObject s_pool[MAX_VISUAL_OBJECTS];
+BehaviorObjects::TopDrawCallback s_topDrawCb = nullptr;
 
 // Dessiner un pixel dans le framebuffer (coordonnees ecran → FB locales)
 inline void fbPx(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
@@ -87,34 +91,30 @@ inline uint16_t blend565(uint16_t bg, uint16_t fg, uint8_t alpha) {
   return (r << 11) | (g << 5) | b;
 }
 
-// Blit du sprite heart_24 (alpha map PROGMEM) avec scaling nearest et alpha-blend
-void drawHeart(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
-               int16_t cx, int16_t cy, int16_t size, uint16_t color) {
-  // size historique 12..19 → display ~24..38 (cœur visible ~14..22 px)
-  int16_t dst = size * 2;
-  if (dst < 8) dst = 8;
-  const int16_t srcW = SPRITE_HEART_24_WIDTH;
-  const int16_t srcH = SPRITE_HEART_24_HEIGHT;
-  int16_t x0 = cx - dst / 2;
-  int16_t y0 = cy - dst / 2;
-  for (int16_t dy = 0; dy < dst; dy++) {
-    int16_t sy = (dy * srcH) / dst;
-    int16_t py = y0 + dy;
-    int16_t ly = py - fbY;
+// Blit générique d'un SpriteAsset (alpha-only ou RGBA) dans le FB principal.
+// Pour alpha-only : `color` est utilisé. Pour RGBA : couleur native du sprite.
+void drawSprite(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
+                int16_t cx, int16_t cy, const SpriteAsset& s, uint16_t color) {
+  const int16_t srcW = s.width;
+  const int16_t srcH = s.height;
+  const int16_t x0 = cx - srcW / 2;
+  const int16_t y0 = cy - srcH / 2;
+  const bool hasRgb = (s.rgb565 != nullptr);
+  for (int16_t dy = 0; dy < srcH; dy++) {
+    int16_t ly = (y0 + dy) - fbY;
     if (ly < 0 || ly >= fbH) continue;
-    for (int16_t dx = 0; dx < dst; dx++) {
-      int16_t sx = (dx * srcW) / dst;
-      uint8_t a = pgm_read_byte(&SPRITE_HEART_24_DATA[sy * srcW + sx]);
+    const int rowOff = dy * srcW;
+    for (int16_t dx = 0; dx < srcW; dx++) {
+      uint8_t a = pgm_read_byte(&s.alpha[rowOff + dx]);
       if (a == 0) continue;
-      int16_t px = x0 + dx;
-      int16_t lx = px - fbX;
+      int16_t lx = (x0 + dx) - fbX;
       if (lx < 0 || lx >= fbW) continue;
+      uint16_t src = hasRgb ? pgm_read_word(&s.rgb565[rowOff + dx]) : color;
       uint16_t* p = &fb[ly * fbW + lx];
-      *p = blend565(*p, color, a);
+      *p = blend565(*p, src, a);
     }
   }
 }
-
 
 // Dessiner une goutte (cercle + triangle en bas)
 void drawDrop(uint16_t* fb, int16_t fbW, int16_t fbH, int16_t fbX, int16_t fbY,
@@ -145,6 +145,10 @@ static BehaviorObjects::BounceCallback s_bounceCb = nullptr;
 
 void setBounceCallback(BounceCallback cb) {
   s_bounceCb = cb;
+}
+
+void setTopDrawCallback(TopDrawCallback cb) {
+  s_topDrawCb = cb;
 }
 
 void update(uint32_t dtMs) {
@@ -214,25 +218,25 @@ void topFillCircle(int16_t cx, int16_t cy, int16_t r, uint16_t color) {
   }
 }
 
-void topDrawHeart(int16_t cx, int16_t cy, int16_t size, uint16_t color) {
-  int16_t dst = size * 2;
-  if (dst < 8) dst = 8;
-  const int16_t srcW = SPRITE_HEART_24_WIDTH;
-  const int16_t srcH = SPRITE_HEART_24_HEIGHT;
-  int16_t x0 = cx - dst / 2;
-  int16_t y0 = cy - dst / 2;
-  for (int16_t dy = 0; dy < dst; dy++) {
-    int16_t sy = (dy * srcH) / dst;
+// Variante top buffer du blit générique de sprite
+void topDrawSprite(int16_t cx, int16_t cy, const SpriteAsset& s, uint16_t color) {
+  const int16_t srcW = s.width;
+  const int16_t srcH = s.height;
+  const int16_t x0 = cx - srcW / 2;
+  const int16_t y0 = cy - srcH / 2;
+  const bool hasRgb = (s.rgb565 != nullptr);
+  for (int16_t dy = 0; dy < srcH; dy++) {
     int16_t ly = (y0 + dy) - TOP_Y;
     if (ly < 0 || ly >= TOP_H) continue;
-    for (int16_t dx = 0; dx < dst; dx++) {
-      int16_t sx = (dx * srcW) / dst;
-      uint8_t a = pgm_read_byte(&SPRITE_HEART_24_DATA[sy * srcW + sx]);
+    const int rowOff = dy * srcW;
+    for (int16_t dx = 0; dx < srcW; dx++) {
+      uint8_t a = pgm_read_byte(&s.alpha[rowOff + dx]);
       if (a == 0) continue;
       int16_t lx = (x0 + dx) - TOP_X;
       if (lx < 0 || lx >= TOP_W) continue;
+      uint16_t src = hasRgb ? pgm_read_word(&s.rgb565[rowOff + dx]) : color;
       uint16_t* p = &s_topBuf[ly * TOP_W + lx];
-      *p = blend565(*p, color, a);
+      *p = blend565(*p, src, a);
     }
   }
 }
@@ -276,21 +280,35 @@ void draw() {
       case ObjectShape::Drop:
         drawDrop(fb, fbW, fbH, fbX, fbY, sx, sy, o.size, o.color565);
         break;
-      case ObjectShape::Heart:
-        drawHeart(fb, fbW, fbH, fbX, fbY, sx, sy, o.size, o.color565);
+      case ObjectShape::Sprite:
+        if (o.asset) drawSprite(fb, fbW, fbH, fbX, fbY, sx, sy, *o.asset, o.color565);
         break;
     }
 
     // Aussi dessiner dans le top buffer (zone haute y=30-130)
-    if (o.shape == ObjectShape::Heart) {
-      if (sy - o.size < fbY) {
-        topDrawHeart(sx, sy, o.size, o.color565);
+    if (o.shape == ObjectShape::Sprite) {
+      if (o.asset && sy - (int16_t)(o.asset->height / 2) < fbY) {
+        topDrawSprite(sx, sy, *o.asset, o.color565);
         s_topDirty = true;
       }
     } else if (sy - r < fbY) {
       topFillCircle(sx, sy, r, o.color565);
       s_topDirty = true;
     }
+  }
+
+  // Saleté + éponge + brosse dans le top buffer (skip si ZZZ actifs pour éviter le clignotement)
+  if (s_topBuf && !FaceOverlayLayer::isSleepZzz()) {
+    DirtOverlay::drawIntoTopBuf(s_topBuf, TOP_W, TOP_H);
+    DirtOverlay::drawSpongeIntoTopBuf(s_topBuf, TOP_W, TOP_H);
+    DirtOverlay::drawBrushIntoTopBuf(s_topBuf, TOP_W, TOP_H);
+    if (DirtOverlay::isDirty() || DirtOverlay::isWashMode() || DirtOverlay::isBrushMode()) s_topDirty = true;
+  }
+
+  // Callback custom pour dessiner dans le top buffer (ex: température)
+  if (s_topDrawCb && s_topBuf) {
+    s_topDrawCb(s_topBuf, TOP_W, TOP_H);
+    s_topDirty = true;
   }
 
   // Flush le top buffer si dirty OU si c'etait dirty au frame precedent (pour nettoyer)
@@ -316,6 +334,30 @@ int spawn(ObjectShape shape, uint32_t color, int16_t size,
       o.held = false;
       o.lifetime = lifetimeMs;
       o.age = 0;
+      o.asset = nullptr;
+      return i;
+    }
+  }
+  return -1;
+}
+
+int spawnSprite(const SpriteAsset& asset, uint32_t color,
+                float x, float y, float vx, float vy,
+                float gravity, float bounce, bool trackEyes, uint32_t lifetimeMs) {
+  for (int i = 0; i < MAX_VISUAL_OBJECTS; i++) {
+    if (!s_pool[i].alive) {
+      auto& o = s_pool[i];
+      o.shape = ObjectShape::Sprite;
+      o.color565 = toRgb565(color);
+      o.size = asset.width;  // utilisé pour les checks de bbox génériques
+      o.x = x; o.y = y; o.vx = vx; o.vy = vy;
+      o.gravity = gravity; o.bounce = bounce;
+      o.trackEyes = trackEyes;
+      o.alive = true;
+      o.held = false;
+      o.lifetime = lifetimeMs;
+      o.age = 0;
+      o.asset = &asset;
       return i;
     }
   }

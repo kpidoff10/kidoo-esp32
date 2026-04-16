@@ -55,4 +55,8 @@ void setSleepZzz(bool enabled) {
   if (!enabled) OverlaySleepZzz::reset();
 }
 
+bool isSleepZzz() {
+  return s_sleepZzz;
+}
+
 } // namespace FaceOverlayLayer

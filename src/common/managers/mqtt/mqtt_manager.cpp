@@ -367,14 +367,13 @@ void MqttManager::threadFunction(void* parameter) {
       espClient.setHandshakeTimeout(10000);
 
       // Suspendre le watchdog IDLE Core 0 pendant le TLS handshake
-      // (bloque Core 0 pendant 5-15s, trigger le WDT sinon)
       TaskHandle_t idleCore0 = xTaskGetIdleTaskHandle();
-      esp_task_wdt_delete(idleCore0);
+      esp_err_t wdtErr = esp_task_wdt_delete(idleCore0);
 
       bool connectOk = mqttClient.connect(clientId, mqttUsername, mqttPassword);
 
-      // Réactiver le watchdog IDLE Core 0
-      esp_task_wdt_add(idleCore0);
+      // Réactiver seulement si on l'avait retiré (v3.x: idle pas enregistré)
+      if (wdtErr == ESP_OK) esp_task_wdt_add(idleCore0);
 
       if (connectOk) {
         mqttClient.subscribe(cmdTopic);

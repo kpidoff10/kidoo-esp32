@@ -21,11 +21,13 @@ constexpr float DEG2RAD = 3.14159265f / 180.0f;
 // Face engine scale 0.6 → yeux + bouche 60% de la taille normale
 // Viewport adapte : couvre le visage scale sans toucher les arcs (rayon 215+)
 // Tous les coins du viewport sont a < 150px du centre → bien a l'interieur
+// IMPORTANT : VP_W et VP_H doivent etre pairs (alignement QSPI CO5300 apres
+// rotation 90° du wrapper SwRot90).
 constexpr float FACE_SCALE = 0.6f;
 constexpr int16_t VP_X = 86;
 constexpr int16_t VP_Y = 40;
 constexpr int16_t VP_W = 254;
-constexpr int16_t VP_H = 135;
+constexpr int16_t VP_H = 134;
 
 struct StatWidget {
   lv_obj_t* arc;

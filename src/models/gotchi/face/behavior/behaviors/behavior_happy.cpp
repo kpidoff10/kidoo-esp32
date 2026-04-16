@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_heart_24.h"
 #include "../../face_engine.h"
 #include "../../gotchi_haptic.h"
 #include <cstdlib>
@@ -29,8 +30,8 @@ static void onUpdate(uint32_t dtMs) {
 
     float hx = 180.0f + (rand() % 100);
     float hy = 160.0f + (rand() % 40);
-    BehaviorObjects::spawn(
-      ObjectShape::Heart, 0xFF6090, 12 + rand() % 8,
+    BehaviorObjects::spawnSprite(
+      SPRITE_HEART_24_ASSET, 0xFF6090,
       hx, hy,
       ((rand() % 60) - 30) / 1000.0f, -0.06f - (rand() % 30) / 1000.0f,
       0, 0, false, 2500

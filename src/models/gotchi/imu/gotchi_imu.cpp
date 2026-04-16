@@ -75,9 +75,11 @@ bool update(uint32_t dtMs, float& shakeX, float& shakeY) {
 
   if (force > SHAKE_THRESHOLD) {
     s_shakeHits++;
-    // Accumuler la direction (ax = gauche/droite, ay = avant/arriere)
-    s_accDirX += ax;
-    s_accDirY += ay;
+    // Apres rotation 90° CCW du device (USB en bas) :
+    //   chip's +ax (etait user's right) pointe maintenant user's UP    -> -y
+    //   chip's +ay (etait user's down)  pointe maintenant user's RIGHT -> +x
+    s_accDirX += ay;
+    s_accDirY += -ax;
   }
 
   uint32_t now = millis();

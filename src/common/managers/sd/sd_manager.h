@@ -35,6 +35,7 @@ struct SDConfig {
   char wakeup_weekdaySchedule[512]; // Schedule par jour (JSON sérialisé: {"monday":{"hour":7,"minute":30,"activated":true},...})
   // Configuration Gotchi
   char gotchi_theme[16];     // Theme couleur: "boy", "girl", "green", "gold", "red", "white"
+  uint8_t speaker_volume;    // Volume speaker (0-100, défaut 80)
   // Configuration MQTT
   char cmdTokenSecret[128];  // Secret pour vérifier les tokens MQTT commands (HMAC-SHA256)
   // Note: Config Dream spécifique (nighttime_alert, etc.) → DreamConfigManager (clé "dream" dans config.json)

@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_question_24.h"
 #include "../../face_engine.h"
 #include <cstdlib>
 
@@ -56,7 +57,7 @@ static void onUpdate(uint32_t dtMs) {
     s_sparkTimer = 0;
     float sx = 150.0f + rand() % 166;
     float sy = 130.0f + rand() % 60;
-    BehaviorObjects::spawn(ObjectShape::Circle, 0xFFDD44, 8 + rand() % 6,
+    BehaviorObjects::spawnSprite(SPRITE_QUESTION_24_ASSET, 0,
       sx, sy, ((rand() % 30) - 15) / 1000.0f, -0.03f,
       0, 0, false, 2000);
   }

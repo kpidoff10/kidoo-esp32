@@ -4,6 +4,7 @@
 #include "../face/face_engine.h"
 #include "../face/overlay/face_overlay_layer.h"
 #include "../face/behavior/behavior_engine.h"
+#include "../face/behavior/dirt_overlay.h"
 #include "../face/gotchi_haptic.h"
 #include "../imu/gotchi_imu.h"
 #include "../battery/gotchi_battery.h"
@@ -19,6 +20,7 @@
 #include <lvgl.h>
 
 #include "touch/TouchDrvCST92xx.h"
+#include "arduino_co5300_swrot90.h"
 
 // GFX exposé pour face_renderer (dessin direct)
 static Arduino_GFX *s_gfx = nullptr;
@@ -64,6 +66,16 @@ void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
 }
 
 // ============================================
+// Touch : conversion physique -> logique apres rotation 90° CW de l'ecran
+// Le capteur CST9217 ne tourne pas avec l'ecran, on remappe les coords.
+// Inverse de la rotation logique->physique : (lx, ly) = (py, W-1-px)
+// ============================================
+static inline void rotateTouchLogical(uint16_t px, uint16_t py, int16_t &lx, int16_t &ly) {
+  lx = static_cast<int16_t>(py);
+  ly = static_cast<int16_t>((GOTCHI_LCD_WIDTH - 1) - px);
+}
+
+// ============================================
 // LVGL 9 : Touch read callback
 // ============================================
 void touchpad_read(lv_indev_t *drv, lv_indev_data_t *data) {
@@ -73,9 +85,11 @@ void touchpad_read(lv_indev_t *drv, lv_indev_data_t *data) {
   }
   const TouchPoints &tp = s_touch.getTouchPoints();
   if (s_touch.isPressed() && tp.hasPoints()) {
-    const TouchPoint &pt = tp.getPoint(0);
-    data->point.x = static_cast<int32_t>(pt.x);
-    data->point.y = static_cast<int32_t>(pt.y);
+    const auto &pt = tp.getPoint(0);
+    int16_t lx, ly;
+    rotateTouchLogical(pt.x, pt.y, lx, ly);
+    data->point.x = static_cast<int32_t>(lx);
+    data->point.y = static_cast<int32_t>(ly);
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
@@ -94,7 +108,7 @@ bool init() {
   s_bus = new Arduino_ESP32QSPI(
       GOTCHI_LCD_CS, GOTCHI_LCD_SCLK, GOTCHI_LCD_SDIO0, GOTCHI_LCD_SDIO1, GOTCHI_LCD_SDIO2,
       GOTCHI_LCD_SDIO3);
-  s_gfx = new Arduino_CO5300(s_bus, GOTCHI_LCD_RESET, 0, false, GOTCHI_LCD_WIDTH, GOTCHI_LCD_HEIGHT, 6, 0, 0, 0);
+  s_gfx = new Arduino_CO5300_SwRot90(s_bus, GOTCHI_LCD_RESET, 0, false, GOTCHI_LCD_WIDTH, GOTCHI_LCD_HEIGHT, 6, 0, 0, 0);
 
   if (!s_gfx->begin()) {
     Serial.println("[GOTCHI_LVGL] ERREUR: gfx->begin() échouée");
@@ -170,12 +184,19 @@ int16_t  s_touchStartX = 0;
 int16_t  s_touchStartY = 0;
 int16_t  s_touchLastX = 0;
 int16_t  s_touchLastY = 0;
+int16_t  s_touchPrevX = 0;     // position au dernier sample (pour delta incremental)
+int16_t  s_touchPrevY = 0;
+uint32_t s_pathLen = 0;        // chemin total parcouru depuis touchDown (somme des |delta|)
+uint32_t s_lastMoveAt = 0;     // dernier moment ou le doigt a vraiment bouge (>1px)
 uint32_t s_lastPetAt = 0;
 bool     s_isPetting = false;
-constexpr uint32_t TAP_MAX_DURATION = 400;
+constexpr uint32_t TAP_MAX_DURATION = 700;   // tap permissif (pouce un peu lent)
 constexpr uint32_t TAP_DEBOUNCE     = 300;
-constexpr uint32_t PET_MIN_HOLD     = 500;   // ms avant detection caresse
-constexpr int16_t  PET_MOVE_THRESH  = 15;    // pixels de mouvement minimum
+// Caresse = vrai frottement continu, pas un long press immobile.
+constexpr uint32_t PET_MIN_HOLD     = 400;   // ms minimum de contact
+constexpr uint32_t PET_PATH_THRESH  = 80;    // px de chemin cumule (path length, pas dist start->now)
+constexpr int16_t  PET_MOVE_NOISE   = 2;     // px : delta plus petit = bruit capteur, ignore
+constexpr uint32_t PET_RECENT_MOVE  = 200;   // ms : si pas bouge depuis ce delai, doigt arrete = pas une caresse
 constexpr uint32_t PET_INTERVAL     = 600;   // ms entre chaque event pet
 constexpr uint32_t SWIPE_MAX_DURATION = 500; // ms max pour un swipe
 constexpr int16_t  SWIPE_MIN_DIST    = 40;   // pixels minimum pour un swipe
@@ -213,13 +234,20 @@ void update() {
         // Doigt pose
         s_touchDownAt = now;
         s_isPetting = false;
-        s_pageSwipeConsumed = false;
+        // En mode wash/brush, bloquer le swipe dès le début du touch
+        s_pageSwipeConsumed = DirtOverlay::isWashMode() || DirtOverlay::isBrushMode();
+        s_pathLen = 0;
+        s_lastMoveAt = now;
         if (tp.hasPoints()) {
-          const TouchPoint &pt = tp.getPoint(0);
-          s_touchStartX = pt.x;
-          s_touchStartY = pt.y;
-          s_touchLastX = pt.x;
-          s_touchLastY = pt.y;
+          const auto &pt = tp.getPoint(0);
+          int16_t lx, ly;
+          rotateTouchLogical(pt.x, pt.y, lx, ly);
+          s_touchStartX = lx;
+          s_touchStartY = ly;
+          s_touchLastX  = lx;
+          s_touchLastY  = ly;
+          s_touchPrevX  = lx;
+          s_touchPrevY  = ly;
         }
         // Finger down (seulement sur la view face en mode user action)
         if (ViewManager::isFaceView()) {
@@ -230,14 +258,31 @@ void update() {
         }
       } else if (pressed && s_wasTouched) {
         if (tp.hasPoints()) {
-          const TouchPoint &pt = tp.getPoint(0);
-          s_touchLastX = pt.x;
-          s_touchLastY = pt.y;
+          const auto &pt = tp.getPoint(0);
+          int16_t lx, ly;
+          rotateTouchLogical(pt.x, pt.y, lx, ly);
+
+          // Delta incremental depuis le sample precedent (pas depuis le start).
+          // Filtre le bruit capteur (<2 px) pour pas accumuler du chemin sur un doigt immobile.
+          int16_t stepDx = lx - s_touchPrevX;
+          int16_t stepDy = ly - s_touchPrevY;
+          int16_t aStepDx = stepDx > 0 ? stepDx : -stepDx;
+          int16_t aStepDy = stepDy > 0 ? stepDy : -stepDy;
+          if (aStepDx > PET_MOVE_NOISE || aStepDy > PET_MOVE_NOISE) {
+            s_pathLen += (uint32_t)(aStepDx + aStepDy);
+            s_lastMoveAt = now;
+            s_touchPrevX = lx;
+            s_touchPrevY = ly;
+          }
+
+          s_touchLastX = lx;
+          s_touchLastY = ly;
 
           // Detect swipe page LIVE (pendant le mouvement, pas au lacher)
-          if (!s_pageSwipeConsumed && !s_isPetting) {
-            int16_t swDx = pt.x - s_touchStartX;
-            int16_t swDy = pt.y - s_touchStartY;
+          // Bloquer le swipe en mode wash (frottement pour nettoyer)
+          if (!s_pageSwipeConsumed && !s_isPetting && !DirtOverlay::isWashMode() && !DirtOverlay::isBrushMode()) {
+            int16_t swDx = lx - s_touchStartX;
+            int16_t swDy = ly - s_touchStartY;
             int16_t aSwDx = swDx > 0 ? swDx : -swDx;
             int16_t aSwDy = swDy > 0 ? swDy : -swDy;
             if (aSwDx > PAGE_SWIPE_THRESH && aSwDx > aSwDy * 2) {
@@ -247,6 +292,12 @@ void update() {
             }
           }
 
+          // Mode wash ou brush (prioritaire)
+          if (DirtOverlay::isWashMode()) {
+            DirtOverlay::onFingerMove((float)lx, (float)ly);
+          } else if (DirtOverlay::isBrushMode()) {
+            DirtOverlay::onBrushFingerMove((float)lx, (float)ly);
+          } else
           // Si le swipe page a ete consomme, ne rien faire d'autre
           if (s_pageSwipeConsumed) {
             // Skip tout le reste du touch move
@@ -255,17 +306,19 @@ void update() {
           if (ViewManager::isFaceView()) {
             bool isUserAction = (strcmp(BehaviorEngine::getCurrentBehavior(), "play") == 0);
             if (isUserAction) {
-              BehaviorEngine::onFingerMove((float)pt.x, (float)pt.y);
+              BehaviorEngine::onFingerMove((float)lx, (float)ly);
             } else {
-              // Caresse detection
-              int16_t dx = pt.x - s_touchStartX;
-              int16_t dy = pt.y - s_touchStartY;
-              int16_t dist = (dx > 0 ? dx : -dx) + (dy > 0 ? dy : -dy);
+              // Caresse = vrai frottement continu :
+              //   - assez de temps de contact (> PET_MIN_HOLD)
+              //   - chemin cumule significatif (path length, ignore le bruit capteur)
+              //   - mouvement RECENT (le doigt est encore en train de bouger,
+              //     pas un long press qui s'est immobilise)
               uint32_t held = now - s_touchDownAt;
-              if (held > PET_MIN_HOLD && dist > PET_MOVE_THRESH) {
+              bool moving = (now - s_lastMoveAt) < PET_RECENT_MOVE;
+              if (held > PET_MIN_HOLD && s_pathLen > PET_PATH_THRESH && moving) {
                 s_isPetting = true;
-                float normX = ((float)pt.x - (float)(GOTCHI_LCD_WIDTH / 2)) / (float)(GOTCHI_LCD_WIDTH / 2);
-                float normY = ((float)pt.y - (float)(GOTCHI_LCD_HEIGHT / 2)) / (float)(GOTCHI_LCD_HEIGHT / 2);
+                float normX = ((float)lx - (float)(GOTCHI_LCD_WIDTH / 2)) / (float)(GOTCHI_LCD_WIDTH / 2);
+                float normY = ((float)ly - (float)(GOTCHI_LCD_HEIGHT / 2)) / (float)(GOTCHI_LCD_HEIGHT / 2);
                 if (normX > 1.0f) normX = 1.0f;
                 if (normX < -1.0f) normX = -1.0f;
                 if (normY > 1.0f) normY = 1.0f;
@@ -285,12 +338,14 @@ void update() {
         int16_t totalDx = s_touchLastX - s_touchStartX;
         int16_t totalDy = s_touchLastY - s_touchStartY;
         int16_t totalDist = (totalDx > 0 ? totalDx : -totalDx) + (totalDy > 0 ? totalDy : -totalDy);
-        bool wasPetting = s_isPetting || (now - s_lastPetAt) < 1500;
+        // Caresse uniquement si elle a été détectée pendant CE press.
+        // (pas de fenêtre temporelle qui mangeait le tap suivant)
+        bool wasPetting = s_isPetting;
 
         // 1) Swipe → si deja consomme par page swipe live, skip
         if (s_pageSwipeConsumed) {
           // Page deja changee pendant le mouvement
-        } else if (!wasPetting && totalDist > SWIPE_MIN_DIST && duration < SWIPE_MAX_DURATION) {
+        } else if (!wasPetting && !DirtOverlay::isWashMode() && !DirtOverlay::isBrushMode() && totalDist > SWIPE_MIN_DIST && duration < SWIPE_MAX_DURATION) {
           if (ViewManager::handleSwipe(totalDx, totalDy, s_gfx)) {
             // Page changee
           } else if (ViewManager::isFaceView()) {
@@ -309,7 +364,8 @@ void update() {
             BehaviorEngine::onFingerUp((float)s_touchLastX, (float)s_touchLastY, fvx, fvy);
           } else if (!wasPetting && totalDist <= 20 && duration < TAP_MAX_DURATION && (now - s_lastTapAt) > TAP_DEBOUNCE) {
             s_lastTapAt = now;
-            BehaviorEngine::onTouch();
+            // Tap localise : reactions selon zone (yeux, bouche, chatouilles, front, cotes)
+            BehaviorEngine::onTouchAt(s_touchLastX, s_touchLastY);
           }
         }
         s_isPetting = false;

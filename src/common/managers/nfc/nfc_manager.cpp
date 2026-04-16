@@ -29,7 +29,7 @@ QueueHandle_t NFCManager::tagEventQueue = nullptr;
 TaskHandle_t NFCManager::taskHandle = nullptr;
 SemaphoreHandle_t NFCManager::nfcMutex = nullptr;
 volatile bool NFCManager::threadRunning = false;
-volatile bool NFCManager::autoDetectEnabled = true;  // Actif par défaut
+volatile bool NFCManager::autoDetectEnabled = true;  // Scan auto toutes les 1s
 
 // Dernier tag détecté
 uint8_t NFCManager::lastUID[10] = {0};
@@ -42,78 +42,65 @@ NFCTagCallback NFCManager::tagCallback = nullptr;
 
 // Configuration du thread NFC
 #define NFC_TASK_STACK_SIZE 4096
-#define NFC_TASK_PRIORITY 2  // Priorité très basse (ne doit JAMAIS interférer avec l'audio)
-#define NFC_SCAN_INTERVAL_MS 300  // Intervalle entre les scans (300ms) - plus espacé
-#define NFC_TAG_TIMEOUT_MS 1500   // Timeout pour considérer qu'un tag est parti
+#define NFC_TASK_PRIORITY 1           // Priorité minimale
+#define NFC_SCAN_INTERVAL_MS 300      // Scan toutes les 300ms (bus dédié, zéro conflit)
+#define NFC_SCAN_TIMEOUT_MS 50        // Timeout I2C confortable (bus dédié)
+#define NFC_TAG_TIMEOUT_MS 2000       // Timeout pour considérer qu'un tag est parti
 
 #ifdef HAS_NFC
+
 // =========================
-// Thread NFC
+// Thread NFC — polling léger (20ms I2C / 1000ms)
 // =========================
 void NFCManager::nfcTask(void* parameter) {
   (void)parameter;
-  
-  Serial.printf("[NFC] Thread demarre sur Core %d\n", xPortGetCoreID());
+
+  Serial.printf("[NFC] Thread demarre sur Core %d (scan toutes les %dms)\n", xPortGetCoreID(), NFC_SCAN_INTERVAL_MS);
   threadRunning = true;
-  
+
   uint8_t uid[10];
   uint8_t uidLength;
-  
+
   while (true) {
-    // Vérifier si la détection automatique est activée
-    if (autoDetectEnabled && nfcInstance != nullptr) {
-      // Prendre le mutex pour accéder au hardware NFC
-      if (xSemaphoreTake(nfcMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Essayer de détecter un tag (timeout TRÈS court de 50ms)
-        uint8_t success = nfcInstance->readPassiveTargetID(
-          PN532_MIFARE_ISO14443A, 
-          uid, 
-          &uidLength, 
-          50  // Timeout très court pour ne pas bloquer l'audio
-        );
-        
-        if (success) {
-          // Limiter la longueur
-          if (uidLength > 10) uidLength = 10;
-          
-          // Vérifier si c'est un nouveau tag ou le même
-          bool isNewTag = (uidLength != lastUIDLength) || 
-                          (memcmp(uid, lastUID, uidLength) != 0);
-          
-          // Mettre à jour les infos du tag
-          memcpy(lastUID, uid, uidLength);
-          lastUIDLength = uidLength;
-          tagPresent = true;
-          lastDetectionTime = millis();
-          
-          xSemaphoreGive(nfcMutex);  // Libérer le mutex d'abord
-          
-          // Mettre l'événement en file pour traitement dans la loop principale (éviter accès SD concurrent)
-          if (isNewTag && tagCallback != nullptr && tagEventQueue != nullptr) {
-            TagEvent ev = {};
-            uint8_t len = (lastUIDLength > 10) ? 10 : lastUIDLength;
-            memcpy(ev.uid, lastUID, len);
-            ev.uidLength = len;
-            if (xQueueSend(tagEventQueue, &ev, 0) != pdTRUE) {
-              Serial.println("[NFC] File evenements tag pleine, evenement ignore");
-            }
-          }
+    if (!autoDetectEnabled || nfcInstance == nullptr) {
+      vTaskDelay(pdMS_TO_TICKS(200));
+      continue;
+    }
+
+    // === Scan polling : 20ms I2C puis 1s de repos ===
+    if (xSemaphoreTake(nfcMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      uint8_t success = nfcInstance->readPassiveTargetID(
+        PN532_MIFARE_ISO14443A, uid, &uidLength, NFC_SCAN_TIMEOUT_MS);
+
+      if (success) {
+        if (uidLength > 10) uidLength = 10;
+        memcpy(lastUID, uid, uidLength);
+        lastUIDLength = uidLength;
+        bool wasAbsent = !tagPresent;
+        tagPresent = true;
+        lastDetectionTime = millis();
+
+        // Déclencher le callback quand le tag (ré)apparaît (absent → présent)
+        if (wasAbsent && tagCallback != nullptr && tagEventQueue != nullptr) {
+          Serial.printf("[NFC] Tag detecte! UID len=%d\n", uidLength);
+          TagEvent ev = {};
+          uint8_t len = (lastUIDLength > 10) ? 10 : lastUIDLength;
+          memcpy(ev.uid, lastUID, len);
+          ev.uidLength = len;
+          ev.blockValid = false;
+          xSemaphoreGive(nfcMutex);
+          xQueueSend(tagEventQueue, &ev, 0);
         } else {
           xSemaphoreGive(nfcMutex);
-          
-          // Pas de tag détecté
-          if (tagPresent && (millis() - lastDetectionTime > NFC_TAG_TIMEOUT_MS)) {
-            tagPresent = false;
-            // Réinitialiser l'UID pour que le même tag soit détecté comme "nouveau" la prochaine fois
-            lastUIDLength = 0;
-            memset(lastUID, 0, sizeof(lastUID));
-            Serial.println("[NFC] Tag retire");
-          }
+        }
+      } else {
+        xSemaphoreGive(nfcMutex);
+        if (tagPresent && (millis() - lastDetectionTime > NFC_TAG_TIMEOUT_MS)) {
+          tagPresent = false;
+          Serial.println("[NFC] Tag retire");
         }
       }
     }
-    
-    // Attendre avant le prochain scan
     vTaskDelay(pdMS_TO_TICKS(NFC_SCAN_INTERVAL_MS));
   }
 }
@@ -213,7 +200,7 @@ void NFCManager::processTagEvents() {
   }
   TagEvent ev;
   while (xQueueReceive(tagEventQueue, &ev, 0) == pdTRUE) {
-    tagCallback(ev.uid, ev.uidLength);
+    tagCallback(ev.uid, ev.uidLength, ev.blockData, ev.blockValid);
   }
 #endif // HAS_NFC
 }
@@ -268,21 +255,16 @@ bool NFCManager::testHardware() {
   Serial.println("[NFC] Test hardware...");
   Serial.println("[NFC] Mode: I2C");
 
-  // Initialiser le bus I2C
+  // Initialiser le bus I2C (safe à appeler plusieurs fois, Arduino garde les mêmes pins)
   NFC_WIRE.begin(NFC_SDA_PIN, NFC_SCL_PIN);
-  NFC_WIRE.setTimeout(500);
-  delay(200);  // laisser le PN532 demarrer
   delay(100);
 
   Serial.printf("[NFC] Pins I2C: SDA=%d, SCL=%d\n", NFC_SDA_PIN, NFC_SCL_PIN);
   Serial.printf("[NFC] Adresse I2C: 0x%02X\n", NFC_I2C_ADDRESS);
 
-  // Créer une instance temporaire du PN532 pour le test (I2C mode)
-  // Constructor I2C: Adafruit_PN532(irq, reset, &Wire)
-  // -1 = pas de pin IRQ/RST
+  // Créer une instance temporaire du PN532 pour le test (pas d'IRQ)
   Adafruit_PN532 nfc(-1, -1, &NFC_WIRE);
 
-  // Initialiser le module PN532
   nfc.begin();
   delay(200);
 
@@ -293,17 +275,15 @@ bool NFCManager::testHardware() {
   if (!versiondata) {
     Serial.println("[NFC] Module PN532 non detecte");
     Serial.println("[NFC] Verifiez:");
-    Serial.println("[NFC]   - Branchement SDA/SCL (GPIO 8/9)");
+    Serial.printf("[NFC]   - Branchement SDA/SCL (GPIO %d/%d)\n", NFC_SDA_PIN, NFC_SCL_PIN);
     Serial.println("[NFC]   - Alimentation 3.3V");
-    Serial.println("[NFC]   - Adresse I2C 0x24");
+    Serial.printf("[NFC]   - Adresse I2C 0x%02X\n", NFC_I2C_ADDRESS);
     firmwareVersion = 0;
     return false;
   }
 
-  // Le module est détecté
   firmwareVersion = versiondata;
 
-  // Afficher les infos du firmware
   Serial.print("[NFC] Chip PN5");
   Serial.println((versiondata >> 24) & 0xFF, HEX);
   Serial.print("[NFC] Firmware: ");
@@ -311,7 +291,6 @@ bool NFCManager::testHardware() {
   Serial.print(".");
   Serial.println((versiondata >> 8) & 0xFF, DEC);
 
-  // Configurer le PN532
   nfc.SAMConfig();
 
   // Créer l'instance statique pour les opérations futures
@@ -467,7 +446,7 @@ bool NFCManager::writeTag(const String& key, int variantCode) {
   uint8_t data[16];
   memset(data, 0, 16);
 
-  if (variantCode >= 1 && variantCode <= 4) {
+  if (variantCode >= 1 && variantCode <= 10) {
     // Écrire uniquement le code variant (1 octet) : reconnaissance fiable, pas de corruption texte
     data[0] = (uint8_t)variantCode;
     Serial.printf("[NFC] Ecriture du code variant %d sur le bloc 4...\n", variantCode);

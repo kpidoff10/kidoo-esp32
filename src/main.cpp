@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 #include "common/managers/init/init_manager.h"
 #include "common/managers/serial/serial_commands.h"
 #include "common/managers/mqtt/mqtt_manager.h"
@@ -49,6 +50,10 @@
  */
 
 void setup() {
+  // Arduino v3.x: WiFiClientSecure spam esp_task_wdt_reset. Désactiver le WDT.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_deinit();
+#endif
   // Forcer la fréquence CPU maximale pour de meilleures performances
   // ESP32-S3 : 240MHz, ESP32-C3 : 160MHz max
   #if IS_SINGLE_CORE

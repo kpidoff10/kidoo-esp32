@@ -62,14 +62,15 @@
 #define SD_CS_PIN 41
 
 // ============================================
-// Audio ES8311 / micros (référence Waveshare — intégration future)
+// Audio ES8311 / micros (pins Waveshare officielles — intégration future)
 // ============================================
 
-#define GOTCHI_I2S_MCK_IO 16
-#define GOTCHI_I2S_BCK_IO 9
-#define GOTCHI_I2S_WS_IO 45
-#define GOTCHI_I2S_DI_IO 10
-#define GOTCHI_I2S_DO_IO 8
+#define GOTCHI_I2S_MCK_IO 42   // MCLK
+#define GOTCHI_I2S_BCK_IO 9    // Bit Clock
+#define GOTCHI_I2S_WS_IO  45   // Word Select / LRCK
+#define GOTCHI_I2S_DI_IO  8    // Data In (from ES7210 mic)
+#define GOTCHI_I2S_DO_IO  10   // Data Out (to ES8311 speaker)
+#define GOTCHI_PA_PIN     46   // Power Amplifier enable (HIGH = speaker ON)
 
 // ============================================
 // BLE — pas de bouton physique sur Gotchi
@@ -127,15 +128,16 @@
 #define VIBRATOR_PIN 16
 
 // ============================================
-// NFC — PN532 (sur le bus I2C principal partage, pads SDA/SCL en bas de la carte)
+// NFC — PN532 (bus I2C dédié Wire1 sur RXD/TXD, zéro conflit touch)
 // ============================================
 
 #ifndef HAS_NFC
 #define HAS_NFC true
 #endif
 
-#define NFC_SDA_PIN IIC_SDA  // GPIO 15 — pad SDA
-#define NFC_SCL_PIN IIC_SCL  // GPIO 14 — pad SCL
+#define NFC_USE_WIRE1                // Bus I2C séparé (Wire1)
+#define NFC_SDA_PIN 44               // RXD sur header 8-PIN
+#define NFC_SCL_PIN 43               // TXD sur header 8-PIN
 #define NFC_I2C_ADDRESS 0x24
 
 #endif // CONFIG_GOTCHI_H

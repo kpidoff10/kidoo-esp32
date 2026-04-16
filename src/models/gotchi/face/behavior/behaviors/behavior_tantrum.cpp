@@ -1,8 +1,8 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_anger_26.h"
 #include "../../face_engine.h"
 #include "../../gotchi_haptic.h"
-#include "../../overlay/face_overlay_layer.h"
 #include <cstdlib>
 
 namespace {
@@ -14,7 +14,6 @@ uint32_t s_shakeTimer = 0;
 static void onEnter() {
   FaceEngine::setAutoMode(true);
   FaceEngine::setExpression(FaceExpression::Angry);
-  FaceOverlayLayer::setMangaCross(true);
   BehaviorEngine::getStats().mouthState = -0.5f;
   s_angerTimer = 0;
   s_exprTimer = 0;
@@ -48,20 +47,19 @@ static void onUpdate(uint32_t dtMs) {
     stats.mouthState = -0.4f - 0.3f * ((float)(rand() % 100) / 100.0f);
   }
 
-  // Particules rouges de colère
+  // Symboles de colère qui giclent (💢)
   s_angerTimer += dtMs;
   if (s_angerTimer > 600) {
     s_angerTimer = 0;
     float ax = 160.0f + rand() % 146;
     float ay = 140.0f + rand() % 50;
-    BehaviorObjects::spawn(ObjectShape::Circle, 0xFF4040, 10 + rand() % 8,
+    BehaviorObjects::spawnSprite(SPRITE_ANGER_26_ASSET, 0,
       ax, ay, ((rand() % 60) - 30) / 1000.0f, -0.06f,
       0, 0, false, 1500);
   }
 }
 
 static void onExit() {
-  FaceOverlayLayer::setMangaCross(false);
   BehaviorObjects::destroyAll();
   FaceEngine::setAutoMode(false);
 }

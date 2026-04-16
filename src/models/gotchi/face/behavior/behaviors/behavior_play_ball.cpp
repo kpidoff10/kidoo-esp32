@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_tennis_36.h"
 #include "../../face_engine.h"
 #include "../../gotchi_haptic.h"
 #include <cstdlib>
@@ -26,8 +27,8 @@ void throwBall() {
 
   if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
 
-  s_ballId = BehaviorObjects::spawn(
-    ObjectShape::Circle, 0xFF3030, 24,
+  s_ballId = BehaviorObjects::spawnSprite(
+    SPRITE_TENNIS_36_ASSET, 0,
     startX, 150.0f, vx, -0.22f,
     0.0014f, 0.72f, true, 0
   );
@@ -113,8 +114,8 @@ void playBallLaunchFrom(float fromX, float dirX) {
   if (s_ballId >= 0) BehaviorObjects::destroy(s_ballId);
 
   float vx = dirX * (0.08f + (rand() % 40) / 1000.0f);
-  s_ballId = BehaviorObjects::spawn(
-    ObjectShape::Circle, 0xFF3030, 24,
+  s_ballId = BehaviorObjects::spawnSprite(
+    SPRITE_TENNIS_36_ASSET, 0,
     fromX, 160.0f, vx, -0.20f,
     0.0014f, 0.72f, true, 0
   );

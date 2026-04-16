@@ -49,23 +49,24 @@ struct BehaviorStats {
     float sec = dtMs / 1000.0f;
     float min = sec / 60.0f;
 
-    // --- Decay de base ---
-    hunger     -= 2.0f  * min;   // Faim monte (stat baisse)
-    energy     -= 0.8f  * min;
-    happiness  -= 0.3f  * min;
-    health     -= 0.1f  * min;   // Très lent naturellement
-    hygiene    -= 1.5f  * min;
-    boredom    += 1.5f  * min;
-    excitement -= 8.0f  * min;   // Décroît vite
+    // --- Decay de base (~2-3 jours pour atteindre 0) ---
+    // Une stat passe de 100 a 0 en : duree_h = 100 / (rate * 60)
+    hunger     -= 0.06f * min;   // ~28h pour avoir faim
+    energy     -= 0.08f * min;   // ~21h sans dormir
+    happiness  -= 0.03f * min;   // ~55h sans interaction
+    health     -= 0.01f * min;   // ~165h naturellement (tres tres lent)
+    hygiene    -= 0.04f * min;   // ~42h sans toilette
+    boredom    += 0.08f * min;   // ~21h pour s'ennuyer a fond
+    excitement -= 4.0f  * min;   // Decroit vite (etat temporaire)
 
-    // --- Interactions entre stats (cercles vicieux) ---
-    if (hunger < 10)  health    -= 0.5f * min;  // La faim rend malade
-    if (hygiene < 15) health    -= 0.3f * min;  // La saleté rend malade
-    if (health < 30)  happiness -= 1.0f * min;  // Être malade rend triste
-    if (energy < 10)  happiness -= 0.5f * min;  // La fatigue rend triste
-    if (boredom > 80) happiness -= 0.3f * min;  // L'ennui rend triste
+    // --- Interactions entre stats (cercles vicieux, divises par ~2) ---
+    if (hunger < 10)  health    -= 0.02f * min;
+    if (hygiene < 15) health    -= 0.01f * min;
+    if (health < 30)  happiness -= 0.04f * min;
+    if (energy < 10)  happiness -= 0.02f * min;
+    if (boredom > 80) happiness -= 0.02f * min;
 
-    // --- Irritabilité décroît naturellement ---
+    // --- Irritabilite decroit naturellement (~30min retour au calme) ---
     irritability -= 3.0f * min;
 
     // --- Âge ---

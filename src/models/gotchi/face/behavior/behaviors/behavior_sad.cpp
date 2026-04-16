@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_droplet_22.h"
 #include "../../face_engine.h"
 #include <cstdlib>
 
@@ -25,10 +26,10 @@ static void onUpdate(uint32_t dtMs) {
   if (s_tearTimer > 1200) {
     s_tearTimer = 0;
 
-    // Larme sous l'oeil gauche
+    // Larme sous l'oeil gauche (💧)
     float tearX = 138.0f + (rand() % 20) - 10;
-    BehaviorObjects::spawn(
-      ObjectShape::Drop, 0x60C0FF, 10,
+    BehaviorObjects::spawnSprite(
+      SPRITE_DROPLET_22_ASSET, 0,
       tearX, 290.0f, 0, 0.05f,
       0.0008f, 0, false, 2000
     );
@@ -36,8 +37,8 @@ static void onUpdate(uint32_t dtMs) {
     // Larme sous l'oeil droit (avec délai aléatoire)
     if (rand() % 3 != 0) {
       float tearX2 = 328.0f + (rand() % 20) - 10;
-      BehaviorObjects::spawn(
-        ObjectShape::Drop, 0x60C0FF, 10,
+      BehaviorObjects::spawnSprite(
+        SPRITE_DROPLET_22_ASSET, 0,
         tearX2, 290.0f, 0, 0.04f,
         0.0008f, 0, false, 2000
       );

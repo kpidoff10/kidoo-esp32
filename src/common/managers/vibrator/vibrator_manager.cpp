@@ -7,9 +7,14 @@
 #endif
 
 // PWM — fréquence basse (500 Hz) pour un couple perçu plus fort sur les vibreurs type moteur DC
-static const int VIBRATOR_PWM_CHANNEL = 0;
-static const int VIBRATOR_PWM_FREQ     = 500;
+static const int VIBRATOR_PWM_FREQ       = 500;
 static const int VIBRATOR_PWM_RESOLUTION = 8;  // 0-255
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  #define VIBRATOR_LEDC_WRITE(duty) ledcWrite(VIBRATOR_PIN, (duty))
+#else
+  static const int VIBRATOR_PWM_CHANNEL = 0;
+  #define VIBRATOR_LEDC_WRITE(duty) ledcWrite(VIBRATOR_PWM_CHANNEL, (duty))
+#endif
 
 bool VibratorManager::initialized = false;
 uint8_t VibratorManager::currentIntensity = 255;
@@ -25,10 +30,13 @@ bool VibratorManager::init() {
   Serial.printf("[VIBRATOR] Init pin GPIO %d (PWM)\n", VIBRATOR_PIN);
 
   pinMode(VIBRATOR_PIN, OUTPUT);
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(VIBRATOR_PIN, VIBRATOR_PWM_FREQ, VIBRATOR_PWM_RESOLUTION);
+#else
   ledcSetup(VIBRATOR_PWM_CHANNEL, VIBRATOR_PWM_FREQ, VIBRATOR_PWM_RESOLUTION);
   ledcAttachPin(VIBRATOR_PIN, VIBRATOR_PWM_CHANNEL);
-
-  ledcWrite(VIBRATOR_PWM_CHANNEL, 0);
+#endif
+  VIBRATOR_LEDC_WRITE(0);
   currentOn = false;
   currentIntensity = 255;
   initialized = true;
@@ -45,7 +53,7 @@ void VibratorManager::setIntensity(uint8_t value) {
   if (!initialized) return;
   currentIntensity = value;
   if (currentOn) {
-    ledcWrite(VIBRATOR_PWM_CHANNEL, currentIntensity);
+    VIBRATOR_LEDC_WRITE(currentIntensity);
   }
 }
 
@@ -60,7 +68,7 @@ void VibratorManager::setOn(bool on) {
   // pour empecher les behaviors (pulseAuto) de venir clobber l'etat.
   manualOverride = on;
   pulseAutoEndAt = 0;  // annule toute pulse auto en cours
-  ledcWrite(VIBRATOR_PWM_CHANNEL, on ? currentIntensity : 0);
+  VIBRATOR_LEDC_WRITE(on ? currentIntensity : 0);
 }
 
 bool VibratorManager::isOn() {
@@ -83,7 +91,7 @@ void VibratorManager::pulseAuto(uint32_t durationMs, uint8_t intensity) {
   // Ecriture directe pour ne pas passer par setOn() (qui activerait manualOverride).
   currentIntensity = intensity;
   currentOn = true;
-  ledcWrite(VIBRATOR_PWM_CHANNEL, intensity);
+  VIBRATOR_LEDC_WRITE(intensity);
   pulseAutoEndAt = millis() + durationMs;
   if (pulseAutoEndAt == 0) pulseAutoEndAt = 1;  // Eviter sentinelle
 }
@@ -101,7 +109,7 @@ void VibratorManager::stop() {
   currentOn = false;
   manualOverride = false;
   pulseAutoEndAt = 0;
-  ledcWrite(VIBRATOR_PWM_CHANNEL, 0);
+  VIBRATOR_LEDC_WRITE(0);
 }
 
 bool VibratorManager::playEffect(Effect effect) {

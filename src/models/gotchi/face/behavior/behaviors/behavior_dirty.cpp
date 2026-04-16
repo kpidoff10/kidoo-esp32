@@ -1,5 +1,6 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_fly_22.h"
 #include "../../face_engine.h"
 #include <cstdlib>
 
@@ -28,13 +29,13 @@ static void onUpdate(uint32_t dtMs) {
     FaceEngine::setExpression(exprs[rand() % 3]);
   }
 
-  // Particules marrons
+  // Mouches qui tournent autour (🪰)
   s_dirtTimer += dtMs;
   if (s_dirtTimer > 1500) {
     s_dirtTimer = 0;
     float dx = 150.0f + rand() % 166;
     float dy = 280.0f + rand() % 80;
-    BehaviorObjects::spawn(ObjectShape::Circle, 0x8B6914, 6 + rand() % 5,
+    BehaviorObjects::spawnSprite(SPRITE_FLY_22_ASSET, 0,
       dx, dy, ((rand() % 30) - 15) / 1000.0f, -0.01f,
       0.0003f, 0, false, 2500);
   }

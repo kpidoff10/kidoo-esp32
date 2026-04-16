@@ -1,11 +1,26 @@
 #include "../behavior_engine.h"
 #include "../behavior_objects.h"
+#include "../sprites/sprite_cookie_22.h"
+#include "../sprites/sprite_strawberry_22.h"
+#include "../sprites/sprite_apple_22.h"
+#include "../sprites/sprite_donut_22.h"
+#include "../sprites/sprite_pizza_22.h"
 #include "../../face_engine.h"
 #include <cstdlib>
 
 namespace {
 uint32_t s_crumbTimer = 0;
 uint32_t s_exprTimer = 0;
+
+// Le gotchi a envie de différents trucs à manger 🍪🍓🍎🍩🍕
+const SpriteAsset* const FOOD_ASSETS[] = {
+  &SPRITE_COOKIE_22_ASSET,
+  &SPRITE_STRAWBERRY_22_ASSET,
+  &SPRITE_APPLE_22_ASSET,
+  &SPRITE_DONUT_22_ASSET,
+  &SPRITE_PIZZA_22_ASSET,
+};
+constexpr int FOOD_COUNT = sizeof(FOOD_ASSETS) / sizeof(FOOD_ASSETS[0]);
 }
 
 static void onEnter() {
@@ -34,12 +49,13 @@ static void onUpdate(uint32_t dtMs) {
     FaceEngine::setExpression(exprs[rand() % 3]);
   }
 
-  // Petites miettes jaunes
+  // Idées de bouffe qui flottent — alterne entre cookie/fraise/pomme/donut/pizza
   s_crumbTimer += dtMs;
   if (s_crumbTimer > 2000) {
     s_crumbTimer = 0;
     float cx = 180.0f + rand() % 100;
-    BehaviorObjects::spawn(ObjectShape::Circle, 0xFFCC00, 6 + rand() % 4,
+    const SpriteAsset* food = FOOD_ASSETS[rand() % FOOD_COUNT];
+    BehaviorObjects::spawnSprite(*food, 0,
       cx, 350.0f, ((rand() % 40) - 20) / 1000.0f, -0.02f,
       0.0005f, 0, false, 2500);
   }

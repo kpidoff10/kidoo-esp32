@@ -14,6 +14,7 @@ void draw(Arduino_GFX* gfx);
 
 void setMangaCross(bool enabled);
 void setSleepZzz(bool enabled);
+bool isSleepZzz();
 
 } // namespace FaceOverlayLayer
 
